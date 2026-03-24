@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Logistica & Eventos | Control</title>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="toast-container"></div>
+    <div class="main-wrapper">
+        <div id="view-auth">
+            <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
+            <p style="color:var(--accent); font-weight:800; font-size:0.9rem; letter-spacing: 2px;">EVENTOS</p>
+            <div id="auth-login" class="form-group" style="margin-top:20px;">
+                <input type="email" id="login-email" placeholder="Correo">
+                <input type="password" id="login-pass" placeholder="Contraseña">
+                <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
+                <p class="toggle-text">¿Nuevo? <a href="#" onclick="toggleAuth('reg')">Crear cuenta</a></p>
+            </div>
+            <div id="auth-register" style="display:none;" class="form-group">
+                <input type="text" id="reg-nombre" placeholder="Nombre">
+                <input type="text" id="reg-apellido" placeholder="Apellido">
+                <input type="email" id="reg-email" placeholder="Correo">
+                <input type="password" id="reg-pass" placeholder="Clave (6+ carac.)">
+                <select id="reg-color">
+                    <option value="" disabled selected>Color de Equipo</option>
+                    <option value="Verde">Verde</option>
+                    <option value="Naranja">Naranja</option>
+                    <option value="Morado">Morado</option>
+                    <option value="Azul">Azul</option>
+                </select>
+                <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
+                <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
+                <p class="toggle-text"><a href="#" onclick="toggleAuth('login')">Volver</a></p>
+            </div>
+        </div>
+
+        <div id="view-home" style="display:none; flex-direction:column; height:100%;">
+            <header>
+                <h2 style="margin:0; font-size:0.9rem; letter-spacing: 1px;">LOGISTICA & EVENTOS</h2>
+                <div id="user-rank-badge" class="badge-rank">---</div>
+            </header>
+            <nav class="nav-menu">
+                <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados">INICIO</button>
+                <button onclick="showSection('boletas-ins')" class="nav-item" id="nav-boletas-ins">VENTA</button>
+                <button onclick="showSection('boletas-list')" class="nav-item" id="nav-boletas-list">LISTA</button>
+                <button onclick="showSection('perfil')" class="nav-item" id="nav-perfil">PERFIL</button>
+                <button onclick="showSection('usuarios-adm')" class="nav-item" id="nav-usuarios-adm" style="display:none;">PERSONAL</button>
+            </nav>
+            <div class="content-scroll">
+                <section id="sec-comunicados" class="section-content">
+                    <div id="admin-com-form" style="display:none;" class="form-group">
+                        <input type="text" id="com-titulo" placeholder="Título del Comunicado">
+                        <textarea id="com-mensaje" placeholder="Mensaje principal..."></textarea>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                            <input type="date" id="com-fecha-ev">
+                            <input type="time" id="com-hora-ev">
+                        </div>
+                        <input type="text" id="com-lugar-ev" placeholder="Lugar (Opcional)">
+                        <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR COMUNICADO</button>
+                    </div>
+                    <div id="comunicados-list"></div>
+                </section>
+
+                <section id="sec-boletas-ins" class="section-content">
+                    <div class="form-group">
+                        <input type="text" id="ins-rec-nom" placeholder="Nombre y Apellido del Recreador">
+                        <input type="text" id="ins-n-boleta" placeholder="Número de Boleta">
+                        <input type="text" id="ins-com-nom" placeholder="Nombre y Apellido del Comprador">
+                        <input type="tel" id="ins-com-tel" placeholder="WhatsApp Comprador">
+                        <button class="btn-primary" onclick="inscribirBoleta()">REGISTRAR VENTA</button>
+                    </div>
+                </section>
+
+                <section id="sec-boletas-list" class="section-content">
+                    <div class="filter-bar">
+                        <select id="filter-color" onchange="listenData()" style="display:none;">
+                            <option value="Todos">Todos los Equipos</option>
+                            <option value="Verde">Verde</option>
+                            <option value="Naranja">Naranja</option>
+                            <option value="Morado">Morado</option>
+                            <option value="Azul">Azul</option>
+                        </select>
+                        <select id="filter-estado" onchange="listenData()">
+                            <option value="Todos">Todos los Estados</option>
+                            <option value="Activa">Activa</option>
+                            <option value="Pendiente">Pendiente</option>
+                        </select>
+                    </div>
+                    <button id="btn-rep-ventas" class="btn-excel" style="display:none;" onclick="exportarVentasExcel()">REPORTE VENTAS (EXCEL)</button>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Equipo</th>
+                                    <th>Recreador</th>
+                                    <th>Comprador</th>
+                                    <th>WhatsApp</th>
+                                    <th>Estado</th>
+                                    <th>Fecha</th>
+                                    <th class="col-gestion" style="display:none;">Gestión</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-boletas-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <section id="sec-perfil" class="section-content">
+                    <div class="id-card-mini">
+                        <div class="avatar-circle" id="p-initials">S</div>
+                        <h3 id="p-full-name">---</h3>
+                        <p id="p-rango-view" class="badge-rango-perfil">---</p>
+                        <p id="p-equipo-view" style="font-size:0.7rem; font-weight:800; margin-top:5px;">EQUIPO: ---</p>
+                    </div>
+                    <div class="form-group">
+                        <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;">
+                            ⚠️ LOS DATOS SE GUARDAN UNA SOLA VEZ
+                        </p>
+                        <label class="label-hint">DOCUMENTO:</label>
+                        <input type="text" id="edit-doc" placeholder="Número ID">
+                        <label class="label-hint">WHATSAPP:</label>
+                        <input type="text" id="edit-tel" placeholder="Número personal">
+                        <label class="label-hint">COLOR DE EQUIPO:</label>
+                        <select id="edit-color">
+                            <option value="Verde">Verde</option>
+                            <option value="Naranja">Naranja</option>
+                            <option value="Morado">Morado</option>
+                            <option value="Azul">Azul</option>
+                        </select>
+                        <label class="label-hint">FECHA DE NACIMIENTO:</label>
+                        <input type="date" id="edit-nacimiento">
+                        <button id="btn-guardar-perfil" class="btn-primary" onclick="guardarPerfil()">GUARDAR DATOS PERMANENTES</button>
+                    </div>
+                </section>
+
+                <section id="sec-usuarios-adm" class="section-content">
+                    <div class="filter-bar">
+                        <input type="text" id="search-user" placeholder="Buscar..." oninput="loadAllUsers()" style="flex:2;">
+                        <select id="filter-user-color" onchange="loadAllUsers()" style="flex:1;">
+                            <option value="Todos">Equipos</option>
+                            <option value="Verde">Verde</option>
+                            <option value="Naranja">Naranja</option>
+                            <option value="Morado">Morado</option>
+                            <option value="Azul">Azul</option>
+                        </select>
+                    </div>
+                    <button id="btn-rep-personal" class="btn-excel" style="background:#6366f1; display:none;" onclick="exportarPersonalExcel()">REPORTE PERSONAL (EXCEL)</button>
+                    <div class="table-container">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Integrante</th>
+                                    <th>Rango</th>
+                                    <th>Edad</th>
+                                    <th>Documento</th>
+                                    <th>Celular</th>
+                                    <th>Equipo</th>
+                                    <th>Registro</th>
+                                    <th class="col-rango-admin" style="display:none;">Asignar</th>
+                                    <th class="col-rango-admin" style="display:none;">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody id="lista-usuarios-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+            <button onclick="handleLogout()" class="btn-logout">CERRAR SESIÓN</button>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

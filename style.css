@@ -1,0 +1,83 @@
+:root {
+    --primary: #0f172a;
+    --accent: #38bdf8;
+    --glass: rgba(255, 255, 255, 0.95);
+    --bg-gradient: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+}
+body {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    margin: 0; min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg-gradient); padding: 10px; box-sizing: border-box;
+}
+.main-wrapper {
+    width: 100%; max-width: 480px; 
+    height: 700px;
+    background: var(--glass);
+    backdrop-filter: blur(20px); border-radius: 35px;
+    padding: 30px 20px; text-align: center;
+    box-shadow: 0 30px 60px rgba(0,0,0,0.5);
+    display: flex; flex-direction: column;
+}
+.content-scroll { flex-grow: 1; overflow-y: auto; padding-right: 5px; margin-bottom: 10px; }
+.section-content { display: none; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+.badge-rank { background: var(--primary); color: var(--accent); font-size: 0.5rem; font-weight: 800; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; }
+
+.nav-menu { display: flex; gap: 4px; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; overflow-x: auto; }
+.nav-item { background: none; border: none; padding: 10px 10px; font-size: 0.6rem; font-weight: 800; color: #64748b; cursor: pointer; border-radius: 8px; white-space: nowrap; }
+.nav-item.active { background: var(--primary); color: white; }
+
+.filter-bar { display: flex; gap: 5px; margin-bottom: 10px; }
+.filter-bar input { flex: 2; padding: 8px; font-size: 0.7rem; border-radius: 8px; border: 1px solid #cbd5e1; }
+.filter-bar select { flex: 1; padding: 8px; font-size: 0.65rem; font-weight: 800; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; }
+
+.id-card-mini { background: var(--primary); color: white; border-radius: 20px; padding: 20px; margin-bottom: 15px; }
+.avatar-circle { width: 50px; height: 50px; background: var(--accent); color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 800; margin: 0 auto 10px; }
+.badge-rango-perfil { font-size: 0.55rem; background: var(--accent); color: var(--primary); display: inline-block; padding: 2px 12px; border-radius: 10px; font-weight: 800; text-transform: uppercase; }
+
+.form-group { display: flex; flex-direction: column; gap: 8px; }
+input, select, textarea { text-align: center; padding: 12px; border-radius: 12px; border: 1px solid #cbd5e1; font-family: inherit; font-size: 0.8rem; }
+input:disabled, select:disabled { background-color: #f1f5f9; color: #94a3b8; cursor: not-allowed; border: 1px dashed #cbd5e1; }
+.label-hint { font-size: 0.55rem; color: #64748b; font-weight: 800; text-align: left; margin-left: 5px; }
+
+.btn-primary { background: var(--primary); color: white; border: none; padding: 15px; border-radius: 12px; font-weight: 800; cursor: pointer; text-transform: uppercase; width: 100%; }
+.btn-excel { background: #10b981; color: white; border: none; padding: 10px; border-radius: 10px; font-size: 0.6rem; font-weight: 800; cursor: pointer; margin-bottom: 10px; width: 100%; }
+
+.table-container { width: 100%; overflow-x: auto; border-radius: 12px; border: 1px solid #f1f5f9; }
+table { width: 100%; border-collapse: collapse; min-width: 800px; }
+td { padding: 10px 5px; border-bottom: 1px solid #f1f5f9; font-size: 0.65rem; color: #334155; }
+th { font-size: 0.55rem; color: var(--accent); text-transform: uppercase; padding: 10px 5px; background: #f8fafc; }
+
+.priv-tag { background: #e2e8f0; color: #64748b; font-size: 0.5rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; }
+.badge-rango { background: #f1f5f9; color: var(--primary); padding: 3px 8px; border-radius: 6px; font-size: 0.55rem; font-weight: 800; border: 1px solid #cbd5e1; }
+.select-rango { padding: 4px; font-size: 0.6rem; border-radius: 6px; border: 1px solid var(--accent); font-weight: 700; }
+
+.btn-status { border: none; padding: 6px 10px; border-radius: 6px; font-size: 0.6rem; font-weight: 800; cursor: pointer; }
+.btn-approve { background: #dcfce7; color: #166534; }
+.btn-pending { background: #fef9c3; color: #854d0e; }
+.btn-delete { background: #fee2e2; color: #991b1b; }
+
+.team-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 3px; }
+.bg-Verde { background: #10b981; } 
+.bg-Naranja { background: #f97316; }
+.bg-Morado { background: #8b5cf6; } 
+.bg-Azul { background: #3b82f6; }
+
+.btn-logout { background: none; border: none; color: #ef4444; font-weight: 700; cursor: pointer; padding-top: 15px; font-size: 0.7rem; }
+#toast-container { position: fixed; top: 15px; width: 100%; display: flex; justify-content: center; z-index: 1000; }
+.toast { background: white; padding: 8px 15px; border-radius: 8px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); font-weight: 700; font-size: 0.75rem; border-left: 4px solid var(--accent); }
+
+/* SECCION INICIO PROFESIONAL */
+.com-card { background: #ffffff; border-radius: 20px; padding: 20px; margin-bottom: 15px; text-align: left; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; }
+.com-tag { font-size: 0.5rem; font-weight: 800; color: var(--accent); background: #e0f2fe; padding: 3px 8px; border-radius: 5px; }
+.com-header h3 { margin: 8px 0; font-size: 1rem; color: var(--primary); }
+.com-body { font-size: 0.75rem; color: #475569; line-height: 1.4; margin-bottom: 12px; }
+.com-meta-box { background: #f8fafc; border-radius: 12px; padding: 10px; display: flex; flex-wrap: wrap; gap: 10px; font-size: 0.65rem; font-weight: 700; color: #64748b; margin-bottom: 10px; }
+.com-countdown { background: var(--primary); color: white; text-align: center; padding: 6px; border-radius: 10px; font-size: 0.7rem; margin-bottom: 10px; }
+.com-countdown.today { background: #10b981; animation: pulse 2s infinite; }
+@keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+.com-footer { font-size: 0.55rem; color: #94a3b8; text-align: right; }
+.del-com-btn { position: absolute; top: 15px; right: 15px; background: #fee2e2; color: #ef4444; border: none; width: 24px; height: 24px; border-radius: 50%; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
