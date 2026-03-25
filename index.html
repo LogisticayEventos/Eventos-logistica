@@ -13,6 +13,14 @@
 </head>
 <body>
     <div id="toast-container"></div>
+    
+    <div id="modal-carnet" class="modal">
+        <div class="modal-content">
+            <button class="close-modal" onclick="cerrarModal()">✕</button>
+            <div id="carnet-detalle-render"></div>
+        </div>
+    </div>
+
     <div class="main-wrapper">
         <div id="view-auth">
             <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
@@ -58,11 +66,22 @@
                     <div id="admin-com-form" style="display:none;" class="form-group">
                         <input type="text" id="com-titulo" placeholder="Título del Comunicado">
                         <textarea id="com-mensaje" placeholder="Mensaje principal..."></textarea>
+                        
+                        <label class="label-hint">ENVIAR A:</label>
+                        <div id="com-colores-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; background: #f8fafc; padding: 10px; border-radius: 12px; border: 1px solid #cbd5e1; margin-bottom: 5px;">
+                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Todos" checked> TODOS</label>
+                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Verde"> VERDE</label>
+                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Naranja"> NARANJA</label>
+                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Morado"> MORADO</label>
+                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Azul"> AZUL</label>
+                        </div>
+
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <input type="date" id="com-fecha-ev">
                             <input type="time" id="com-hora-ev">
                         </div>
                         <input type="text" id="com-lugar-ev" placeholder="Lugar (Opcional)">
+                        <input type="url" id="com-link-doc" placeholder="Enlace del documento (Drive, Dropbox, etc.)">
                         <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR COMUNICADO</button>
                     </div>
                     <div id="comunicados-list"></div>
@@ -118,9 +137,37 @@
                         <div class="avatar-circle" id="p-initials">S</div>
                         <h3 id="p-full-name">---</h3>
                         <p id="p-rango-view" class="badge-rango-perfil">---</p>
-                        <p id="p-equipo-view" style="font-size:0.7rem; font-weight:800; margin-top:5px;">EQUIPO: ---</p>
+                        
+                        <div class="id-card-details">
+                            <div class="id-detail-item">
+                                <span class="detail-label">EQUIPO</span>
+                                <span id="p-equipo-view" class="detail-value">---</span>
+                            </div>
+                            <div class="id-detail-item">
+                                <span class="detail-label">DOCUMENTO</span>
+                                <span id="p-doc-view" class="detail-value">---</span>
+                            </div>
+                            <div class="id-detail-item">
+                                <span class="detail-label">WHATSAPP</span>
+                                <span id="p-tel-view" class="detail-value">---</span>
+                            </div>
+                            <div class="id-detail-item">
+                                <span class="detail-label">NACIMIENTO</span>
+                                <span id="p-nac-view" class="detail-value">---</span>
+                            </div>
+                            <div class="id-detail-item">
+                                <span class="detail-label">EDAD</span>
+                                <span id="p-edad-view" class="detail-value">---</span>
+                            </div>
+                            <div class="id-detail-item">
+                                <span class="detail-label">ÚLTIMA CONEXIÓN</span>
+                                <span id="p-conexion-view" class="detail-value">---</span>
+                            </div>
+                        </div>
+                        <p class="card-brand-footer">LOGISTICA & EVENTOS</p>
                     </div>
-                    <div class="form-group">
+                    
+                    <div id="perfil-edit-form" class="form-group">
                         <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;">
                             ⚠️ LOS DATOS SE GUARDAN UNA SOLA VEZ
                         </p>
@@ -164,6 +211,7 @@
                                     <th>Celular</th>
                                     <th>Equipo</th>
                                     <th>Registro</th>
+                                    <th>Acción</th>
                                     <th class="col-rango-admin" style="display:none;">Asignar</th>
                                     <th class="col-rango-admin" style="display:none;">Acción</th>
                                 </tr>

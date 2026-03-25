@@ -53,17 +53,36 @@ function loadUser() {
         let rango = (email === ADMIN_EMAIL) ? "Administrador" : (d.rango || "Recreador");
 
         document.getElementById('p-full-name').innerText = (d.nombre + " " + (d.apellido || "")).toUpperCase();
-        document.getElementById('p-equipo-view').innerText = "EQUIPO: " + (d.color || "---");
         document.getElementById('p-rango-view').innerText = rango.toUpperCase();
         document.getElementById('p-initials').innerText = d.nombre ? d.nombre[0] : "S";
+        
+        document.getElementById('p-equipo-view').innerText = (d.color || "---").toUpperCase();
+        document.getElementById('p-doc-view').innerText = d.doc || "---";
+        document.getElementById('p-tel-view').innerText = d.tel || "---";
+        document.getElementById('p-nac-view').innerText = d.nacimiento || "---";
+        document.getElementById('p-edad-view').innerText = calcularEdad(d.nacimiento).toUpperCase();
+        
+        const ahora = new Date();
+        document.getElementById('p-conexion-view').innerText = ahora.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
         document.getElementById('user-rank-badge').innerText = rango.toUpperCase();
         
-        const docI = document.getElementById('edit-doc'), telI = document.getElementById('edit-tel'), colI = document.getElementById('edit-color'), nacI = document.getElementById('edit-nacimiento'), btnG = document.getElementById('btn-guardar-perfil');
-        if (d.doc) { docI.value = d.doc; docI.disabled = true; }
-        if (d.tel) { telI.value = d.tel; telI.disabled = true; }
-        if (d.color) { colI.value = d.color; colI.disabled = true; }
-        if (d.nacimiento) { nacI.value = d.nacimiento; nacI.disabled = true; }
-        if (d.doc && d.tel && d.nacimiento) { btnG.style.display = 'none'; }
+        const formEdit = document.getElementById('perfil-edit-form');
+
+        if (d.doc && d.tel && d.nacimiento) { 
+            formEdit.style.display = 'none'; 
+        } else {
+            formEdit.style.display = 'flex';
+            const docI = document.getElementById('edit-doc'), 
+                  telI = document.getElementById('edit-tel'), 
+                  colI = document.getElementById('edit-color'), 
+                  nacI = document.getElementById('edit-nacimiento');
+
+            if (d.doc) { docI.value = d.doc; docI.disabled = true; }
+            if (d.tel) { telI.value = d.tel; telI.disabled = true; }
+            if (d.color) { colI.value = d.color; colI.disabled = true; }
+            if (d.nacimiento) { nacI.value = d.nacimiento; nacI.disabled = true; }
+        }
 
         const esAdmin = (rango === "Administrador"), esCGeneral = (rango === "Coordinador General"), esCoordinador = (rango === "Coordinador"), esRecreador = (rango === "Recreador");
 
@@ -94,6 +113,7 @@ function listenData() {
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
     const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
+    const userColor = currentUserData.color || "Gris";
     
     const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
 
@@ -104,17 +124,23 @@ function listenData() {
         
         snap.forEach(doc => {
             const b = doc.data(); const col = mapa[b.vendedor] || 'Gris';
+            
+            // FILTRO DE PRIVACIDAD: Si no es mando alto, solo ve sus propias boletas
             if(!(esAdmin || esCGeneral || esCoordinador) && b.vendedor !== email) return;
+            
+            // FILTRO DINÁMICO SEGÚN SELECCIÓN (EQUIPO Y ESTADO)
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
             
             const fObj = new Date(b.creado), fStr = fObj.toLocaleDateString('es-CO', {day:'2-digit', month:'2-digit'}) + " " + fObj.toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit', hour12: false});
+            let waBtn = b.t ? `<a href="https://wa.me/57${b.t}" target="_blank" class="wa-quick-btn">💬</a>` : "";
+
             let accionHtml = "";
             if(esAdmin || esCGeneral) {
                 const btnB = esAdmin ? `<button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}')">🗑️</button>` : "";
                 accionHtml = `<td class="col-gestion"><div style="display:flex; gap:2px; justify-content:center;"><button class="btn-status btn-approve" onclick="cambiarEstado('${doc.id}', 'Activa')">✓</button><button class="btn-status btn-pending" onclick="cambiarEstado('${doc.id}', 'Pendiente')">⏳</button>${btnB}</div></td>`;
             }
-            body.innerHTML += `<tr><td style="font-weight:800;">#${b.n}</td><td><span class="team-dot bg-${col}"></span> ${col}</td><td>${b.recreador || '---'}</td><td>${b.c || '---'}</td><td>${b.t || '---'}</td><td style="font-weight:800; color:${b.estado === 'Activa' ? '#10b981' : '#f59e0b'}">${b.estado}</td><td style="font-size:0.55rem;">${fStr}</td>${accionHtml}</tr>`;
+            body.innerHTML += `<tr><td style="font-weight:800;">#${b.n}</td><td><span class="team-dot bg-${col}"></span> ${col}</td><td>${b.recreador || '---'}</td><td>${b.c || '---'}</td><td>${b.t || '---'} ${waBtn}</td><td style="font-weight:800; color:${b.estado === 'Activa' ? '#10b981' : '#f59e0b'}">${b.estado}</td><td style="font-size:0.55rem;">${fStr}</td>${accionHtml}</tr>`;
         });
     });
 
@@ -122,8 +148,18 @@ function listenData() {
         const list = document.getElementById('comunicados-list'); list.innerHTML = "";
         snap.forEach(doc => { 
             const c = doc.data(); 
+
+            if (!(esAdmin || esCGeneral)) {
+                const destinatarios = c.destinatarios || ["Todos"];
+                if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
+            }
+
             const del = (esAdmin || esCGeneral) ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${doc.id}').delete()">✕</button>` : '';
-            let extraInfo = "", countdownHtml = "";
+            let extraInfo = "", countdownHtml = "", docBtn = "";
+
+            if(c.linkDoc) {
+                docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 VER DOCUMENTO ADJUNTO</a>`;
+            }
 
             if(c.fechaEv) {
                 const fEv = new Date(c.fechaEv + "T" + (c.horaEv || "00:00")), hoy = new Date();
@@ -133,7 +169,7 @@ function listenData() {
                 else if (dias === 0) countdownHtml = `<div class="com-countdown today">¡Es Hoy!</div>`;
             }
 
-            list.innerHTML += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">COMUNICADO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
+            list.innerHTML += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">COMUNICADO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
         });
     });
 }
@@ -152,15 +188,59 @@ function loadAllUsers() {
             
             const edadDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : calcularEdad(u.nacimiento);
             const docDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : (u.doc || '---');
-            const telDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : (u.tel || '---');
+            
+            let waBtn = (!esRangoAlto && u.tel) ? `<a href="https://wa.me/57${u.tel}" target="_blank" class="wa-quick-btn">💬</a>` : "";
+            const telDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : (u.tel ? u.tel + " " + waBtn : '---');
 
             if((nom.includes(search) || (u.doc && u.doc.includes(search))) && (filterColor === "Todos" || u.color === filterColor)) {
                 let colAsignar = esAdmin ? `<td><select class="select-rango" onchange="asignarRango('${doc.id}', this.value)"><option value="" disabled selected>Cambiar</option><option value="Administrador">Admin</option><option value="Coordinador General">C. Gral</option><option value="Coordinador">Coord</option><option value="Recreador">Rec</option></select></td><td><button class="btn-status btn-delete" onclick="eliminarUsuario('${doc.id}')">🗑️</button></td>` : "";
-                body.innerHTML += `<tr><td style="font-weight:700;">${u.nombre}<br><small>${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${edadDisplay}</td><td>${docDisplay}</td><td>${telDisplay}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${colAsignar}</tr>`;
+                
+                let btnVer = `<td><button class="btn-status" style="background:#e2e8f0;" onclick="verCarnet('${doc.id}')">👁️</button></td>`;
+                
+                body.innerHTML += `<tr><td style="font-weight:700;">${u.nombre}<br><small>${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${edadDisplay}</td><td>${docDisplay}</td><td>${telDisplay}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${btnVer}${colAsignar}</tr>`;
             }
         });
     });
 }
+
+async function verCarnet(email) {
+    const docUser = await db.collection("usuarios").doc(email).get();
+    const u = docUser.data();
+    const snapBoletas = await db.collection("boletas").where("vendedor", "==", email).get();
+    
+    let activas = 0, pendientes = 0;
+    snapBoletas.forEach(b => {
+        if(b.data().estado === 'Activa') activas++;
+        else if(b.data().estado === 'Pendiente') pendientes++;
+    });
+
+    const ahora = new Date();
+    const horaCon = ahora.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+    const render = document.getElementById('carnet-detalle-render');
+    render.innerHTML = `
+        <div class="id-card-mini" style="margin-bottom:0; display: flex; flex-direction: column; align-items: center;">
+            <div class="avatar-circle">${u.nombre ? u.nombre[0] : "S"}</div>
+            <h3 style="text-align: center; width: 100%;">${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</h3>
+            <p class="badge-rango-perfil">${(u.rango || "Recreador").toUpperCase()}</p>
+            <div class="id-card-details">
+                <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color || "---").toUpperCase()}</span></div>
+                <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc || "---"}</span></div>
+                <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel || "---"}</span></div>
+                <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
+                <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">ÚLTIMA CONEXIÓN</span><span class="detail-value">${horaCon}</span></div>
+                <div class="id-detail-item" style="grid-column: span 2; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin-top: 10px; display: flex; flex-direction: row; justify-content: space-around; text-align: center;">
+                    <div><span class="detail-label">ACTIVAS</span><br><span class="detail-value" style="color:#10b981; font-size:1.2rem;">${activas}</span></div>
+                    <div><span class="detail-label">PENDIENTES</span><br><span class="detail-value" style="color:#f59e0b; font-size:1.2rem;">${pendientes}</span></div>
+                </div>
+            </div>
+            <p style="font-size:0.55rem; color:var(--accent); margin-top:15px; font-weight:800; text-align: center; width: 100%; letter-spacing: 2px;">LOGISTICA & EVENTOS</p>
+        </div>
+    `;
+    document.getElementById('modal-carnet').style.display = 'flex';
+}
+
+function cerrarModal() { document.getElementById('modal-carnet').style.display = 'none'; }
 
 function asignarRango(email, nuevoRango) { db.collection("usuarios").doc(email).update({ rango: nuevoRango }).then(() => notify("🎖️ Rango actualizado")); }
 function cambiarEstado(id, nuevoEstado) { db.collection("boletas").doc(id).update({ estado: nuevoEstado }).then(() => notify("✅ Estado actualizado")); }
@@ -188,10 +268,47 @@ function exportarPersonalExcel() {
 }
 
 function exportarVentasExcel() {
+    // 1. Obtener los valores de los filtros actuales de la interfaz
+    const filterCol = document.getElementById('filter-color').value;
+    const filterEst = document.getElementById('filter-estado').value;
+
     db.collection("boletas").orderBy("creado", "desc").get().then(async snap => {
-        const rows = [["#", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
-        snap.forEach(doc => { const b = doc.data(); rows.push([b.n, b.recreador || '---', b.c || '---', b.t || '---', b.estado, new Date(b.creado).toLocaleString()]); });
-        const ws = XLSX.utils.aoa_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Ventas"); XLSX.writeFile(wb, "Logistica_Ventas.xlsx");
+        // Encabezados del Excel
+        const rows = [["#", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
+        
+        // Obtener mapa de colores de usuarios para el filtrado por equipo
+        const uSnap = await db.collection("usuarios").get();
+        const mapaColores = {}; 
+        uSnap.forEach(u => mapaColores[u.id] = u.data().color || 'Gris');
+
+        snap.forEach(doc => {
+            const b = doc.data();
+            const col = mapaColores[b.vendedor] || 'Gris';
+
+            // 2. Aplicar la misma lógica de filtrado que la tabla visual
+            if(filterCol !== "Todos" && col !== filterCol) return;
+            if(filterEst !== "Todos" && b.estado !== filterEst) return;
+
+            // Si pasa los filtros, se añade a las filas del Excel
+            rows.push([
+                b.n, 
+                col,
+                b.recreador || '---', 
+                b.c || '---', 
+                b.t || '---', 
+                b.estado, 
+                new Date(b.creado).toLocaleString('es-CO')
+            ]);
+        });
+
+        // 3. Generar y descargar el archivo
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Ventas Filtradas");
+        
+        // Nombre de archivo dinámico según el filtro para mayor claridad
+        const nombreArchivo = `Reporte_Ventas_${filterCol}_${filterEst}.xlsx`;
+        XLSX.writeFile(wb, nombreArchivo);
     });
 }
 
@@ -201,7 +318,10 @@ function toggleAuth(v) { document.getElementById('auth-login').style.display = v
 function notify(m) { const c = document.getElementById('toast-container'); const t = document.createElement('div'); t.className = 'toast'; t.innerText = m; c.appendChild(t); setTimeout(() => t.remove(), 3000); }
 
 function publicarComunicado() { 
-    const t = document.getElementById('com-titulo').value, m = document.getElementById('com-mensaje').value, f = document.getElementById('com-fecha-ev').value, h = document.getElementById('com-hora-ev').value, l = document.getElementById('com-lugar-ev').value;
+    const t = document.getElementById('com-titulo').value, m = document.getElementById('com-mensaje').value, f = document.getElementById('com-fecha-ev').value, h = document.getElementById('com-hora-ev').value, l = document.getElementById('com-lugar-ev').value, ld = document.getElementById('com-link-doc').value;
+    const checkboxes = document.querySelectorAll('input[name="dest-color"]:checked');
+    const coloresSeleccionados = Array.from(checkboxes).map(cb => cb.value);
     if(!t || !m) return notify("⚠️ Título y mensaje obligatorios");
-    db.collection("comunicados").add({ titulo: t, mensaje: m, fechaEv: f || null, horaEv: h || null, lugarEv: l || null, fecha: Date.now() }).then(() => { ['com-titulo','com-mensaje','com-fecha-ev','com-hora-ev','com-lugar-ev'].forEach(id => document.getElementById(id).value=""); notify("📣 Publicado"); }); 
+    if(coloresSeleccionados.length === 0) return notify("⚠️ Selecciona al menos un destinatario");
+    db.collection("comunicados").add({ titulo: t, mensaje: m, destinatarios: coloresSeleccionados, fechaEv: f || null, horaEv: h || null, lugarEv: l || null, linkDoc: ld || null, fecha: Date.now() }).then(() => { ['com-titulo','com-mensaje','com-fecha-ev','com-hora-ev','com-lugar-ev','com-link-doc'].forEach(id => document.getElementById(id).value=""); document.querySelectorAll('input[name="dest-color"]').forEach(cb => cb.checked = cb.value === "Todos"); notify("📣 Publicado"); }); 
 }

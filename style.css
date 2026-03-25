@@ -34,9 +34,28 @@ header { display: flex; justify-content: space-between; align-items: center; mar
 .filter-bar input { flex: 2; padding: 8px; font-size: 0.7rem; border-radius: 8px; border: 1px solid #cbd5e1; }
 .filter-bar select { flex: 1; padding: 8px; font-size: 0.65rem; font-weight: 800; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; }
 
-.id-card-mini { background: var(--primary); color: white; border-radius: 20px; padding: 20px; margin-bottom: 15px; }
-.avatar-circle { width: 50px; height: 50px; background: var(--accent); color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 800; margin: 0 auto 10px; }
+/* CARNET MINI - CENTRADO TOTAL */
+.id-card-mini { 
+    background: var(--primary); 
+    color: white; 
+    border-radius: 25px; 
+    padding: 25px 20px; 
+    margin-bottom: 20px; 
+    box-shadow: 0 10px 20px rgba(0,0,0,0.2); 
+    display: flex; 
+    flex-direction: column; 
+    align-items: center; 
+    text-align: center;
+}
+.avatar-circle { width: 50px; height: 50px; background: var(--accent); color: var(--primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; font-weight: 800; margin-bottom: 10px; }
+.id-card-mini h3 { margin: 10px 0 5px 0; width: 100%; font-size: 1rem; }
 .badge-rango-perfil { font-size: 0.55rem; background: var(--accent); color: var(--primary); display: inline-block; padding: 2px 12px; border-radius: 10px; font-weight: 800; text-transform: uppercase; }
+
+.id-card-details { margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px; width: 100%; }
+.id-detail-item { display: flex; flex-direction: column; align-items: center; }
+.detail-label { font-size: 0.45rem; color: var(--accent); font-weight: 800; letter-spacing: 1px; }
+.detail-value { font-size: 0.7rem; font-weight: 700; color: #f1f5f9; }
+.card-brand-footer { font-size:0.55rem; color:var(--accent); margin-top:15px; font-weight:800; text-align: center; width: 100%; letter-spacing: 2px; }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 input, select, textarea { text-align: center; padding: 12px; border-radius: 12px; border: 1px solid #cbd5e1; font-family: inherit; font-size: 0.8rem; }
@@ -66,11 +85,12 @@ th { font-size: 0.55rem; color: var(--accent); text-transform: uppercase; paddin
 .bg-Morado { background: #8b5cf6; } 
 .bg-Azul { background: #3b82f6; }
 
+.wa-quick-btn { background: #25d366; color: white; text-decoration: none; padding: 2px 5px; border-radius: 6px; font-size: 0.7rem; margin-left: 5px; display: inline-flex; align-items: center; justify-content: center; }
+
 .btn-logout { background: none; border: none; color: #ef4444; font-weight: 700; cursor: pointer; padding-top: 15px; font-size: 0.7rem; }
 #toast-container { position: fixed; top: 15px; width: 100%; display: flex; justify-content: center; z-index: 1000; }
 .toast { background: white; padding: 8px 15px; border-radius: 8px; box-shadow: 0 10px 20px rgba(0,0,0,0.1); font-weight: 700; font-size: 0.75rem; border-left: 4px solid var(--accent); }
 
-/* SECCION INICIO PROFESIONAL */
 .com-card { background: #ffffff; border-radius: 20px; padding: 20px; margin-bottom: 15px; text-align: left; position: relative; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; }
 .com-tag { font-size: 0.5rem; font-weight: 800; color: var(--accent); background: #e0f2fe; padding: 3px 8px; border-radius: 5px; }
 .com-header h3 { margin: 8px 0; font-size: 1rem; color: var(--primary); }
@@ -81,3 +101,11 @@ th { font-size: 0.55rem; color: var(--accent); text-transform: uppercase; paddin
 @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
 .com-footer { font-size: 0.55rem; color: #94a3b8; text-align: right; }
 .del-com-btn { position: absolute; top: 15px; right: 15px; background: #fee2e2; color: #ef4444; border: none; width: 24px; height: 24px; border-radius: 50%; font-size: 0.7rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+
+.com-doc-link { display: block; background: #f1f5f9; color: var(--primary); text-decoration: none; padding: 10px; border-radius: 10px; text-align: center; font-size: 0.65rem; font-weight: 800; border: 1px dashed var(--accent); margin-bottom: 10px; }
+.com-doc-link:hover { background: #e2e8f0; }
+
+/* MODAL CARNET */
+.modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); align-items: center; justify-content: center; }
+.modal-content { padding: 10px; width: 90%; max-width: 350px; position: relative; }
+.close-modal { position: absolute; top: -20px; right: 10px; background: white; border: none; border-radius: 50%; width: 30px; height: 30px; font-weight: 800; cursor: pointer; z-index: 10; }
