@@ -34,7 +34,6 @@ header { display: flex; justify-content: space-between; align-items: center; mar
 .filter-bar input { flex: 2; padding: 8px; font-size: 0.7rem; border-radius: 8px; border: 1px solid #cbd5e1; }
 .filter-bar select { flex: 1; padding: 8px; font-size: 0.65rem; font-weight: 800; border-radius: 8px; border: 1px solid #cbd5e1; background: #f8fafc; }
 
-/* CARNET MINI - CENTRADO TOTAL */
 .id-card-mini { 
     background: var(--primary); 
     color: white; 
@@ -70,7 +69,6 @@ table { width: 100%; border-collapse: collapse; min-width: 800px; }
 td { padding: 10px 5px; border-bottom: 1px solid #f1f5f9; font-size: 0.65rem; color: #334155; }
 th { font-size: 0.55rem; color: var(--accent); text-transform: uppercase; padding: 10px 5px; background: #f8fafc; }
 
-.priv-tag { background: #e2e8f0; color: #64748b; font-size: 0.5rem; padding: 2px 6px; border-radius: 4px; font-weight: 800; }
 .badge-rango { background: #f1f5f9; color: var(--primary); padding: 3px 8px; border-radius: 6px; font-size: 0.55rem; font-weight: 800; border: 1px solid #cbd5e1; }
 .select-rango { padding: 4px; font-size: 0.6rem; border-radius: 6px; border: 1px solid var(--accent); font-weight: 700; }
 
@@ -105,7 +103,6 @@ th { font-size: 0.55rem; color: var(--accent); text-transform: uppercase; paddin
 .com-doc-link { display: block; background: #f1f5f9; color: var(--primary); text-decoration: none; padding: 10px; border-radius: 10px; text-align: center; font-size: 0.65rem; font-weight: 800; border: 1px dashed var(--accent); margin-bottom: 10px; }
 .com-doc-link:hover { background: #e2e8f0; }
 
-/* MODAL CARNET */
 .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); align-items: center; justify-content: center; }
 .modal-content { padding: 10px; width: 90%; max-width: 350px; position: relative; }
 .close-modal { position: absolute; top: -20px; right: 10px; background: white; border: none; border-radius: 50%; width: 30px; height: 30px; font-weight: 800; cursor: pointer; z-index: 10; }

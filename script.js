@@ -96,6 +96,7 @@ function loadUser() {
 
         document.querySelectorAll('.col-gestion').forEach(el => el.style.display = (esAdmin || esCGeneral) ? 'table-cell' : 'none');
         document.querySelectorAll('.col-rango-admin').forEach(el => el.style.display = esAdmin ? 'table-cell' : 'none');
+        document.querySelectorAll('.col-rango-permiso').forEach(el => el.style.display = (esAdmin || esCGeneral || esCoordinador) ? 'table-cell' : 'none');
 
         listenData();
         if(!esRecreador) loadAllUsers();
@@ -125,10 +126,8 @@ function listenData() {
         snap.forEach(doc => {
             const b = doc.data(); const col = mapa[b.vendedor] || 'Gris';
             
-            // FILTRO DE PRIVACIDAD: Si no es mando alto, solo ve sus propias boletas
             if(!(esAdmin || esCGeneral || esCoordinador) && b.vendedor !== email) return;
             
-            // FILTRO DINÁMICO SEGÚN SELECCIÓN (EQUIPO Y ESTADO)
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
             
@@ -154,7 +153,8 @@ function listenData() {
                 if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
             }
 
-            const del = (esAdmin || esCGeneral) ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${doc.id}').delete()">✕</button>` : '';
+            const del = esAdmin ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${doc.id}').delete()">✕</button>` : '';
+            
             let extraInfo = "", countdownHtml = "", docBtn = "";
 
             if(c.linkDoc) {
@@ -175,7 +175,10 @@ function listenData() {
 }
 
 function loadAllUsers() {
-    const email = auth.currentUser.email, esAdmin = (email === ADMIN_EMAIL || (currentUserData && currentUserData.rango === "Administrador"));
+    const email = auth.currentUser.email;
+    const userRango = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData ? currentUserData.rango : "Recreador");
+    const esAdmin = (userRango === "Administrador");
+
     const search = document.getElementById('search-user').value.toLowerCase(), filterColor = document.getElementById('filter-user-color').value;
 
     db.collection("usuarios").onSnapshot(snap => {
@@ -186,21 +189,42 @@ function loadAllUsers() {
             const rango = u.rango || "Recreador";
             const esRangoAlto = (rango === "Administrador" || rango === "Coordinador General" || rango === "Coordinador");
             
-            const edadDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : calcularEdad(u.nacimiento);
-            const docDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : (u.doc || '---');
-            
-            let waBtn = (!esRangoAlto && u.tel) ? `<a href="https://wa.me/57${u.tel}" target="_blank" class="wa-quick-btn">💬</a>` : "";
-            const telDisplay = esRangoAlto ? "<span class='priv-tag'>Privado</span>" : (u.tel ? u.tel + " " + waBtn : '---');
+            // PRIORI: Solo el Administrador puede ver datos de Administrador, Coordinador General y Coordinador.
+            // Si el usuario actual NO es admin y el integrante es de rango alto, se oculta COMPLETAMENTE de la lista.
+            if (!esAdmin && esRangoAlto) return;
 
             if((nom.includes(search) || (u.doc && u.doc.includes(search))) && (filterColor === "Todos" || u.color === filterColor)) {
-                let colAsignar = esAdmin ? `<td><select class="select-rango" onchange="asignarRango('${doc.id}', this.value)"><option value="" disabled selected>Cambiar</option><option value="Administrador">Admin</option><option value="Coordinador General">C. Gral</option><option value="Coordinador">Coord</option><option value="Recreador">Rec</option></select></td><td><button class="btn-status btn-delete" onclick="eliminarUsuario('${doc.id}')">🗑️</button></td>` : "";
+                let colPermisos = "";
+                
+                // Solo se llega aquí si es Admin o si el integrante es Recreador
+                const esCGeneral = (userRango === "Coordinador General");
+                const esCoordinador = (userRango === "Coordinador");
+
+                if(esAdmin || esCGeneral || esCoordinador) {
+                    const statusIns = u.inscripcion === "SI" ? "SI" : "NO";
+                    const classIns = u.inscripcion === "SI" ? "btn-approve" : "btn-delete";
+                    const attrClick = (esAdmin || esCGeneral) ? `onclick="toggleInscripcion('${doc.id}', '${statusIns}')"` : `style="cursor:default; opacity:0.8;"`;
+                    colPermisos += `<td><button class="btn-status ${classIns}" ${attrClick}>${statusIns}</button></td>`;
+                }
+
+                let colAdminOnly = "";
+                if(esAdmin) {
+                    colAdminOnly = `
+                    <td><select class="select-rango" onchange="asignarRango('${doc.id}', this.value)"><option value="" disabled selected>Cambiar</option><option value="Administrador">Admin</option><option value="Coordinador General">C. Gral</option><option value="Coordinador">Coord</option><option value="Recreador">Rec</option></select></td>
+                    <td><button class="btn-status btn-delete" onclick="eliminarUsuario('${doc.id}')">🗑️</button></td>`;
+                }
                 
                 let btnVer = `<td><button class="btn-status" style="background:#e2e8f0;" onclick="verCarnet('${doc.id}')">👁️</button></td>`;
                 
-                body.innerHTML += `<tr><td style="font-weight:700;">${u.nombre}<br><small>${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${edadDisplay}</td><td>${docDisplay}</td><td>${telDisplay}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${btnVer}${colAsignar}</tr>`;
+                body.innerHTML += `<tr><td style="font-weight:700;">${u.nombre}<br><small>${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${calcularEdad(u.nacimiento)}</td><td>${u.doc || '---'}</td><td>${u.tel || '---'} ${u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" class="wa-quick-btn">💬</a>` : ""}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${btnVer}${colPermisos}${colAdminOnly}</tr>`;
             }
         });
     });
+}
+
+function toggleInscripcion(email, estadoActual) {
+    const nuevoEstado = estadoActual === "SI" ? "NO" : "SI";
+    db.collection("usuarios").doc(email).update({ inscripcion: nuevoEstado }).then(() => notify("📝 Inscripción: " + nuevoEstado));
 }
 
 async function verCarnet(email) {
@@ -250,7 +274,7 @@ function eliminarUsuario(email) { if(confirm("¿Eliminar usuario?")) db.collecti
 function registrarConCodigo() {
     const n = document.getElementById('reg-nombre').value, a = document.getElementById('reg-apellido').value, e = document.getElementById('reg-email').value, p = document.getElementById('reg-pass').value, col = document.getElementById('reg-color').value, c = document.getElementById('reg-invite').value.trim();
     if(c !== INVITE_CODE) return notify("❌ Código Incorrecto");
-    auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador' }).then(() => location.reload())).catch(err => notify(err.message));
+    auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador', inscripcion: 'NO' }).then(() => location.reload())).catch(err => notify(err.message));
 }
 
 function inscribirBoleta() {
@@ -260,23 +284,38 @@ function inscribirBoleta() {
 }
 
 function exportarPersonalExcel() {
+    const search = document.getElementById('search-user').value.toLowerCase();
+    const filterColor = document.getElementById('filter-user-color').value;
+
     db.collection("usuarios").get().then(snap => {
-        const rows = [["NOMBRE", "APELLIDO", "RANGO", "EDAD", "CORREO", "DOC", "TEL", "EQUIPO"]];
-        snap.forEach(doc => { const u = doc.data(); if(doc.id === ADMIN_EMAIL) return; rows.push([u.nombre, u.apellido || "", u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color]); });
-        const ws = XLSX.utils.aoa_to_sheet(rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Personal"); XLSX.writeFile(wb, "Logistica_Personal.xlsx");
+        const rows = [["NOMBRE", "APELLIDO", "RANGO", "EDAD", "CORREO", "DOC", "TEL", "EQUIPO", "INSCRIPCION"]];
+        snap.forEach(doc => { 
+            const u = doc.data(); 
+            if(doc.id === ADMIN_EMAIL) return; 
+
+            const nom = (u.nombre + " " + (u.apellido || "")).toLowerCase();
+            const docId = (u.doc || "").toLowerCase();
+
+            if((nom.includes(search) || docId.includes(search)) && (filterColor === "Todos" || u.color === filterColor)) {
+                rows.push([u.nombre, u.apellido || "", u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
+            }
+        });
+        const ws = XLSX.utils.aoa_to_sheet(rows); 
+        const wb = XLSX.utils.book_new(); 
+        XLSX.utils.book_append_sheet(wb, ws, "Personal Filtrado"); 
+        
+        const nombreArchivo = `Logistica_Personal_${filterColor}_${new Date().toLocaleDateString()}.xlsx`;
+        XLSX.writeFile(wb, nombreArchivo);
     });
 }
 
 function exportarVentasExcel() {
-    // 1. Obtener los valores de los filtros actuales de la interfaz
     const filterCol = document.getElementById('filter-color').value;
     const filterEst = document.getElementById('filter-estado').value;
 
     db.collection("boletas").orderBy("creado", "desc").get().then(async snap => {
-        // Encabezados del Excel
         const rows = [["#", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
         
-        // Obtener mapa de colores de usuarios para el filtrado por equipo
         const uSnap = await db.collection("usuarios").get();
         const mapaColores = {}; 
         uSnap.forEach(u => mapaColores[u.id] = u.data().color || 'Gris');
@@ -285,11 +324,9 @@ function exportarVentasExcel() {
             const b = doc.data();
             const col = mapaColores[b.vendedor] || 'Gris';
 
-            // 2. Aplicar la misma lógica de filtrado que la tabla visual
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
 
-            // Si pasa los filtros, se añade a las filas del Excel
             rows.push([
                 b.n, 
                 col,
@@ -301,12 +338,10 @@ function exportarVentasExcel() {
             ]);
         });
 
-        // 3. Generar y descargar el archivo
         const ws = XLSX.utils.aoa_to_sheet(rows);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Ventas Filtradas");
         
-        // Nombre de archivo dinámico según el filtro para mayor claridad
         const nombreArchivo = `Reporte_Ventas_${filterCol}_${filterEst}.xlsx`;
         XLSX.writeFile(wb, nombreArchivo);
     });
