@@ -158,7 +158,7 @@ function listenData() {
             let extraInfo = "", countdownHtml = "", docBtn = "";
 
             if(c.linkDoc) {
-                docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 VER DOCUMENTO ADJUNTO</a>`;
+                docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 DOCUMENTO</a>`;
             }
 
             if(c.fechaEv) {
@@ -169,7 +169,7 @@ function listenData() {
                 else if (dias === 0) countdownHtml = `<div class="com-countdown today">¡Es Hoy!</div>`;
             }
 
-            list.innerHTML += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">COMUNICADO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
+            list.innerHTML += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">INFO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
         });
     });
 }
@@ -189,14 +189,11 @@ function loadAllUsers() {
             const rango = u.rango || "Recreador";
             const esRangoAlto = (rango === "Administrador" || rango === "Coordinador General" || rango === "Coordinador");
             
-            // PRIORI: Solo el Administrador puede ver datos de Administrador, Coordinador General y Coordinador.
-            // Si el usuario actual NO es admin y el integrante es de rango alto, se oculta COMPLETAMENTE de la lista.
             if (!esAdmin && esRangoAlto) return;
 
             if((nom.includes(search) || (u.doc && u.doc.includes(search))) && (filterColor === "Todos" || u.color === filterColor)) {
                 let colPermisos = "";
                 
-                // Solo se llega aquí si es Admin o si el integrante es Recreador
                 const esCGeneral = (userRango === "Coordinador General");
                 const esCoordinador = (userRango === "Coordinador");
 

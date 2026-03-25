@@ -51,8 +51,9 @@
 
         <div id="view-home" style="display:none; flex-direction:column; height:100%;">
             <header>
-                <h2 style="margin:0; font-size:0.9rem; letter-spacing: 1px;">LOGISTICA & EVENTOS</h2>
                 <div id="user-rank-badge" class="badge-rank">---</div>
+                <h2 style="margin:0; font-size:0.9rem; letter-spacing: 1px; flex-grow: 1; text-align: center;">LOGISTICA & EVENTOS</h2>
+                <div style="width: 50px;"></div>
             </header>
             <nav class="nav-menu">
                 <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados">INICIO</button>
@@ -63,26 +64,25 @@
             </nav>
             <div class="content-scroll">
                 <section id="sec-comunicados" class="section-content">
-                    <div id="admin-com-form" style="display:none;" class="form-group">
-                        <input type="text" id="com-titulo" placeholder="Título del Comunicado">
-                        <textarea id="com-mensaje" placeholder="Mensaje principal..."></textarea>
+                    <div id="admin-com-form" style="display:none;" class="form-group admin-panel-lite">
+                        <input type="text" id="com-titulo" placeholder="Título">
+                        <textarea id="com-mensaje" placeholder="Mensaje..."></textarea>
                         
-                        <label class="label-hint">ENVIAR A:</label>
-                        <div id="com-colores-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; background: #f8fafc; padding: 10px; border-radius: 12px; border: 1px solid #cbd5e1; margin-bottom: 5px;">
-                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Todos" checked> TODOS</label>
-                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Verde"> VERDE</label>
-                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Naranja"> NARANJA</label>
-                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Morado"> MORADO</label>
-                            <label style="font-size:0.7rem; display:flex; align-items:center; gap:5px;"><input type="checkbox" name="dest-color" value="Azul"> AZUL</label>
+                        <div class="color-selector-mini">
+                            <label><input type="checkbox" name="dest-color" value="Todos" checked><span>TODOS</span></label>
+                            <label><input type="checkbox" name="dest-color" value="Verde"><span>VERDE</span></label>
+                            <label><input type="checkbox" name="dest-color" value="Naranja"><span>NARANJA</span></label>
+                            <label><input type="checkbox" name="dest-color" value="Morado"><span>MORADO</span></label>
+                            <label><input type="checkbox" name="dest-color" value="Azul"><span>AZUL</span></label>
                         </div>
 
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <input type="date" id="com-fecha-ev">
                             <input type="time" id="com-hora-ev">
                         </div>
-                        <input type="text" id="com-lugar-ev" placeholder="Lugar (Opcional)">
-                        <input type="url" id="com-link-doc" placeholder="Enlace del documento (Drive, Dropbox, etc.)">
-                        <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR COMUNICADO</button>
+                        <input type="text" id="com-lugar-ev" placeholder="Lugar">
+                        <input type="url" id="com-link-doc" placeholder="Link de documento">
+                        <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR</button>
                     </div>
                     <div id="comunicados-list"></div>
                 </section>
