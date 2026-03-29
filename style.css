@@ -102,3 +102,5 @@ th { font-size: 0.55rem; color: var(--accent); text-transform: uppercase; paddin
 .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); align-items: center; justify-content: center; }
 .modal-content { padding: 10px; width: 90%; max-width: 350px; position: relative; }
 .close-modal { position: absolute; top: -20px; right: 10px; background: white; border: none; border-radius: 50%; width: 30px; height: 30px; font-weight: 800; cursor: pointer; z-index: 10; }
+
+.total-count-display { margin-top: 10px; font-size: 0.7rem; font-weight: 800; color: var(--primary); text-align: left; padding: 5px; border-left: 3px solid var(--accent); background: #f8fafc; }

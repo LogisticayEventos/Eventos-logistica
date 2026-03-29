@@ -19,6 +19,10 @@ auth.onAuthStateChanged(user => {
     if (user) {
         document.getElementById('view-auth').style.display = 'none';
         document.getElementById('view-home').style.display = 'flex';
+        // Registrar última conexión en la BD
+        db.collection("usuarios").doc(user.email).update({
+            lastLogin: Date.now()
+        }).catch(() => {});
         loadUser();
     } else {
         document.getElementById('view-auth').style.display = 'block';
@@ -62,8 +66,9 @@ function loadUser() {
         document.getElementById('p-nac-view').innerText = d.nacimiento || "---";
         document.getElementById('p-edad-view').innerText = calcularEdad(d.nacimiento).toUpperCase();
         
-        const ahora = new Date();
-        document.getElementById('p-conexion-view').innerText = ahora.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        // Mostrar última conexión real desde la BD
+        const lastLoginStr = d.lastLogin ? new Date(d.lastLogin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "---";
+        document.getElementById('p-conexion-view').innerText = lastLoginStr;
 
         document.getElementById('user-rank-badge').innerText = rango.toUpperCase();
         
@@ -123,6 +128,7 @@ function listenData() {
         const uSnap = await db.collection("usuarios").get();
         const mapa = {}; uSnap.forEach(u => mapa[u.id] = u.data().color || 'Gris');
         
+        let contador = 0;
         snap.forEach(doc => {
             const b = doc.data(); const col = mapa[b.vendedor] || 'Gris';
             
@@ -131,6 +137,7 @@ function listenData() {
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
             
+            contador++;
             const fObj = new Date(b.creado), fStr = fObj.toLocaleDateString('es-CO', {day:'2-digit', month:'2-digit'}) + " " + fObj.toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit', hour12: false});
             let waBtn = b.t ? `<a href="https://wa.me/57${b.t}" target="_blank" class="wa-quick-btn">💬</a>` : "";
 
@@ -139,8 +146,9 @@ function listenData() {
                 const btnB = esAdmin ? `<button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}')">🗑️</button>` : "";
                 accionHtml = `<td class="col-gestion"><div style="display:flex; gap:2px; justify-content:center;"><button class="btn-status btn-approve" onclick="cambiarEstado('${doc.id}', 'Activa')">✓</button><button class="btn-status btn-pending" onclick="cambiarEstado('${doc.id}', 'Pendiente')">⏳</button>${btnB}</div></td>`;
             }
-            body.innerHTML += `<tr><td style="font-weight:800;">#${b.n}</td><td><span class="team-dot bg-${col}"></span> ${col}</td><td>${b.recreador || '---'}</td><td>${b.c || '---'}</td><td>${b.t || '---'} ${waBtn}</td><td style="font-weight:800; color:${b.estado === 'Activa' ? '#10b981' : '#f59e0b'}">${b.estado}</td><td style="font-size:0.55rem;">${fStr}</td>${accionHtml}</tr>`;
+            body.innerHTML += `<tr><td style="font-weight:800;">${contador}</td><td style="font-weight:800;">${b.n || '---'}</td><td><span class="team-dot bg-${col}"></span> ${col}</td><td>${b.recreador || '---'}</td><td>${b.c || '---'}</td><td>${b.t || '---'} ${waBtn}</td><td style="font-weight:800; color:${b.estado === 'Activa' ? '#10b981' : '#f59e0b'}">${b.estado}</td><td style="font-size:0.55rem;">${fStr}</td>${accionHtml}</tr>`;
         });
+        document.getElementById('conteo-boletas-total').innerText = "Total registros: " + contador;
     });
 
     db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
@@ -183,6 +191,7 @@ function loadAllUsers() {
 
     db.collection("usuarios").onSnapshot(snap => {
         const body = document.getElementById('lista-usuarios-body'); body.innerHTML = "";
+        let contadorPersonal = 0;
         snap.forEach(doc => {
             const u = doc.data(); if(doc.id === ADMIN_EMAIL) return;
             const nom = (u.nombre + " " + (u.apellido || "")).toLowerCase();
@@ -192,6 +201,7 @@ function loadAllUsers() {
             if (!esAdmin && esRangoAlto) return;
 
             if((nom.includes(search) || (u.doc && u.doc.includes(search))) && (filterColor === "Todos" || u.color === filterColor)) {
+                contadorPersonal++;
                 let colPermisos = "";
                 
                 const esCGeneral = (userRango === "Coordinador General");
@@ -213,9 +223,10 @@ function loadAllUsers() {
                 
                 let btnVer = `<td><button class="btn-status" style="background:#e2e8f0;" onclick="verCarnet('${doc.id}')">👁️</button></td>`;
                 
-                body.innerHTML += `<tr><td style="font-weight:700;">${u.nombre}<br><small>${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${calcularEdad(u.nacimiento)}</td><td>${u.doc || '---'}</td><td>${u.tel || '---'} ${u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" class="wa-quick-btn">💬</a>` : ""}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${btnVer}${colPermisos}${colAdminOnly}</tr>`;
+                body.innerHTML += `<tr><td style="font-weight:800;">${contadorPersonal}</td><td style="font-weight:700;">${u.nombre}<br><small>${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${calcularEdad(u.nacimiento)}</td><td>${u.doc || '---'}</td><td>${u.tel || '---'} ${u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" class="wa-quick-btn">💬</a>` : ""}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${btnVer}${colPermisos}${colAdminOnly}</tr>`;
             }
         });
+        document.getElementById('conteo-personal-total').innerText = "Total integrantes: " + contadorPersonal;
     });
 }
 
@@ -235,8 +246,8 @@ async function verCarnet(email) {
         else if(b.data().estado === 'Pendiente') pendientes++;
     });
 
-    const ahora = new Date();
-    const horaCon = ahora.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    // Recuperar última conexión real guardada en la BD para el carnet
+    const horaCon = u.lastLogin ? new Date(u.lastLogin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "---";
 
     const render = document.getElementById('carnet-detalle-render');
     render.innerHTML = `
@@ -285,7 +296,8 @@ function exportarPersonalExcel() {
     const filterColor = document.getElementById('filter-user-color').value;
 
     db.collection("usuarios").get().then(snap => {
-        const rows = [["NOMBRE", "APELLIDO", "RANGO", "EDAD", "CORREO", "DOC", "TEL", "EQUIPO", "INSCRIPCION"]];
+        const rows = [["N°", "NOMBRE", "APELLIDO", "RANGO", "EDAD", "CORREO", "DOC", "TEL", "EQUIPO", "INSCRIPCION"]];
+        let exportContador = 0;
         snap.forEach(doc => { 
             const u = doc.data(); 
             if(doc.id === ADMIN_EMAIL) return; 
@@ -294,9 +306,13 @@ function exportarPersonalExcel() {
             const docId = (u.doc || "").toLowerCase();
 
             if((nom.includes(search) || docId.includes(search)) && (filterColor === "Todos" || u.color === filterColor)) {
-                rows.push([u.nombre, u.apellido || "", u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
+                exportContador++;
+                rows.push([exportContador, u.nombre, u.apellido || "", u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
             }
         });
+        
+        rows.push(["", "TOTAL:", exportContador, "", "", "", "", "", "", ""]);
+
         const ws = XLSX.utils.aoa_to_sheet(rows); 
         const wb = XLSX.utils.book_new(); 
         XLSX.utils.book_append_sheet(wb, ws, "Personal Filtrado"); 
@@ -311,12 +327,13 @@ function exportarVentasExcel() {
     const filterEst = document.getElementById('filter-estado').value;
 
     db.collection("boletas").orderBy("creado", "desc").get().then(async snap => {
-        const rows = [["#", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
+        const rows = [["ITEM", "BOLETA", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
         
         const uSnap = await db.collection("usuarios").get();
         const mapaColores = {}; 
         uSnap.forEach(u => mapaColores[u.id] = u.data().color || 'Gris');
 
+        let exportContador = 0;
         snap.forEach(doc => {
             const b = doc.data();
             const col = mapaColores[b.vendedor] || 'Gris';
@@ -324,7 +341,9 @@ function exportarVentasExcel() {
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
 
+            exportContador++;
             rows.push([
+                exportContador,
                 b.n, 
                 col,
                 b.recreador || '---', 
@@ -334,6 +353,8 @@ function exportarVentasExcel() {
                 new Date(b.creado).toLocaleString('es-CO')
             ]);
         });
+        
+        rows.push(["", "TOTAL:", exportContador, "", "", "", "", ""]);
 
         const ws = XLSX.utils.aoa_to_sheet(rows);
         const wb = XLSX.utils.book_new();
