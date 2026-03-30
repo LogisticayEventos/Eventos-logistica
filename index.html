@@ -31,17 +31,13 @@
                 <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
                 <p class="toggle-text">¿Nuevo? <a href="#" onclick="toggleAuth('reg')">Crear cuenta</a></p>
             </div>
-            <div id="auth-register" style="display:none;" class="form-group">
+            <div id="auth-register" class="form-group" style="display:none;">
                 <input type="text" id="reg-nombre" placeholder="Nombre">
                 <input type="text" id="reg-apellido" placeholder="Apellido">
                 <input type="email" id="reg-email" placeholder="Correo">
                 <input type="password" id="reg-pass" placeholder="Clave (6+ carac.)">
-                <select id="reg-color">
+                <select id="reg-color" class="dynamic-colors">
                     <option value="" disabled selected>Color de Equipo</option>
-                    <option value="Verde">Verde</option>
-                    <option value="Naranja">Naranja</option>
-                    <option value="Morado">Morado</option>
-                    <option value="Azul">Azul</option>
                 </select>
                 <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
                 <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
@@ -61,21 +57,16 @@
                 <button onclick="showSection('boletas-list')" class="nav-item" id="nav-boletas-list">LISTA</button>
                 <button onclick="showSection('perfil')" class="nav-item" id="nav-perfil">PERFIL</button>
                 <button onclick="showSection('usuarios-adm')" class="nav-item" id="nav-usuarios-adm" style="display:none;">PERSONAL</button>
+                <button onclick="showSection('administracion')" class="nav-item" id="nav-administracion" style="display:none;">ADMIN</button>
             </nav>
             <div class="content-scroll">
                 <section id="sec-comunicados" class="section-content">
                     <div id="admin-com-form" style="display:none;" class="form-group admin-panel-lite">
                         <input type="text" id="com-titulo" placeholder="Título">
                         <textarea id="com-mensaje" placeholder="Mensaje..."></textarea>
-                        
-                        <div class="color-selector-mini">
+                        <div class="color-selector-mini" id="com-destinatarios-list">
                             <label><input type="checkbox" name="dest-color" value="Todos" checked><span>TODOS</span></label>
-                            <label><input type="checkbox" name="dest-color" value="Verde"><span>VERDE</span></label>
-                            <label><input type="checkbox" name="dest-color" value="Naranja"><span>NARANJA</span></label>
-                            <label><input type="checkbox" name="dest-color" value="Morado"><span>MORADO</span></label>
-                            <label><input type="checkbox" name="dest-color" value="Azul"><span>AZUL</span></label>
                         </div>
-
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                             <input type="date" id="com-fecha-ev">
                             <input type="time" id="com-hora-ev">
@@ -99,12 +90,8 @@
 
                 <section id="sec-boletas-list" class="section-content">
                     <div class="filter-bar">
-                        <select id="filter-color" onchange="listenData()" style="display:none;">
+                        <select id="filter-color" onchange="listenData()" class="dynamic-colors" style="display:none;">
                             <option value="Todos">Todos los Equipos</option>
-                            <option value="Verde">Verde</option>
-                            <option value="Naranja">Naranja</option>
-                            <option value="Morado">Morado</option>
-                            <option value="Azul">Azul</option>
                         </select>
                         <select id="filter-estado" onchange="listenData()">
                             <option value="Todos">Todos los Estados</option>
@@ -139,50 +126,25 @@
                         <div class="avatar-circle" id="p-initials">S</div>
                         <h3 id="p-full-name">---</h3>
                         <p id="p-rango-view" class="badge-rango-perfil">---</p>
-                        
                         <div class="id-card-details">
-                            <div class="id-detail-item">
-                                <span class="detail-label">EQUIPO</span>
-                                <span id="p-equipo-view" class="detail-value">---</span>
-                            </div>
-                            <div class="id-detail-item">
-                                <span class="detail-label">DOCUMENTO</span>
-                                <span id="p-doc-view" class="detail-value">---</span>
-                            </div>
-                            <div class="id-detail-item">
-                                <span class="detail-label">WHATSAPP</span>
-                                <span id="p-tel-view" class="detail-value">---</span>
-                            </div>
-                            <div class="id-detail-item">
-                                <span class="detail-label">NACIMIENTO</span>
-                                <span id="p-nac-view" class="detail-value">---</span>
-                            </div>
-                            <div class="id-detail-item">
-                                <span class="detail-label">EDAD</span>
-                                <span id="p-edad-view" class="detail-value">---</span>
-                            </div>
-                            <div class="id-detail-item">
-                                <span class="detail-label">ÚLTIMA CONEXIÓN</span>
-                                <span id="p-conexion-view" class="detail-value">---</span>
-                            </div>
+                            <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span id="p-equipo-view" class="detail-value">---</span></div>
+                            <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span id="p-doc-view" class="detail-value">---</span></div>
+                            <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span id="p-tel-view" class="detail-value">---</span></div>
+                            <div class="id-detail-item"><span class="detail-label">NACIMIENTO</span><span id="p-nac-view" class="detail-value">---</span></div>
+                            <div class="id-detail-item"><span class="detail-label">EDAD</span><span id="p-edad-view" class="detail-value">---</span></div>
+                            <div class="id-detail-item"><span class="detail-label">ÚLTIMA CONEXIÓN</span><span id="p-conexion-view" class="detail-value">---</span></div>
                         </div>
                         <p class="card-brand-footer">LOGISTICA & EVENTOS</p>
                     </div>
-                    
                     <div id="perfil-edit-form" class="form-group">
-                        <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;">
-                            ⚠️ LOS DATOS SE GUARDAN UNA SOLA VEZ
-                        </p>
+                        <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;">⚠️ LOS DATOS SE GUARDAN UNA SOLA VEZ</p>
                         <label class="label-hint">DOCUMENTO:</label>
                         <input type="text" id="edit-doc" placeholder="Número ID">
                         <label class="label-hint">WHATSAPP:</label>
                         <input type="text" id="edit-tel" placeholder="Número personal">
                         <label class="label-hint">COLOR DE EQUIPO:</label>
-                        <select id="edit-color">
-                            <option value="Verde">Verde</option>
-                            <option value="Naranja">Naranja</option>
-                            <option value="Morado">Morado</option>
-                            <option value="Azul">Azul</option>
+                        <select id="edit-color" class="dynamic-colors">
+                            <option value="" disabled selected>Selecciona tu equipo</option>
                         </select>
                         <label class="label-hint">FECHA DE NACIMIENTO:</label>
                         <input type="date" id="edit-nacimiento">
@@ -193,12 +155,8 @@
                 <section id="sec-usuarios-adm" class="section-content">
                     <div class="filter-bar">
                         <input type="text" id="search-user" placeholder="Buscar..." oninput="loadAllUsers()" style="flex:2;">
-                        <select id="filter-user-color" onchange="loadAllUsers()" style="flex:1;">
+                        <select id="filter-user-color" onchange="loadAllUsers()" class="dynamic-colors" style="flex:1;">
                             <option value="Todos">Equipos</option>
-                            <option value="Verde">Verde</option>
-                            <option value="Naranja">Naranja</option>
-                            <option value="Morado">Morado</option>
-                            <option value="Azul">Azul</option>
                         </select>
                     </div>
                     <button id="btn-rep-personal" class="btn-excel" style="background:#6366f1; display:none;" onclick="exportarPersonalExcel()">REPORTE PERSONAL (EXCEL)</button>
@@ -224,6 +182,95 @@
                         </table>
                     </div>
                     <div id="conteo-personal-total" class="total-count-display">Total integrantes: 0</div>
+                </section>
+
+                <section id="sec-administracion" class="section-content">
+                    <div class="admin-grid-container">
+                        <div class="admin-card stats-main">
+                            <div class="stat-item">
+                                <span class="stat-val" id="resumen-personal-total-admin">0</span>
+                                <span class="stat-lab">PERSONAL</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="stat-val" id="resumen-boletas-total">0</span>
+                                <span class="stat-lab">BOLETAS</span>
+                            </div>
+                        </div>
+
+                        <div class="admin-card">
+                            <p class="admin-card-title">ESTADO DE VENTAS</p>
+                            <div class="status-pill-container">
+                                <div class="status-pill pill-active">
+                                    <span class="pill-dot"></span> Activas: <b id="resumen-boletas-activas">0</b>
+                                </div>
+                                <div class="status-pill pill-pending">
+                                    <span class="pill-dot"></span> Pendientes: <b id="resumen-boletas-pendientes">0</b>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="admin-card">
+                            <p class="admin-card-title">CÓDIGO DE ACCESO</p>
+                            <div class="invite-box">
+                                <span id="current-invite-code-admin" class="invite-code-display">---</span>
+                                <div id="admin-edit-panel-code" style="display:none; margin-top:10px;">
+                                    <input type="text" id="new-invite-code" placeholder="Nuevo" class="mini-input">
+                                    <button class="btn-mini" onclick="actualizarCodigoInvitacion()">CAMBIAR</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="admin-card">
+                            <p class="admin-card-title">GESTIÓN DE EQUIPOS</p>
+                            <div id="admin-edit-panel-teams" style="display:none;">
+                                <div class="add-team-row">
+                                    <input type="text" id="new-team-name" placeholder="Nombre equipo">
+                                    <button class="btn-mini btn-add" onclick="agregarEquipo()">+</button>
+                                </div>
+                            </div>
+                            <div id="admin-teams-list" class="teams-flex-container"></div>
+                        </div>
+
+                        <div class="admin-card full-width" id="admin-delete-range-panel" style="display:none;">
+                            <p class="admin-card-title">ELIMINAR PERSONAL POR RANGO DE REGISTRO</p>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <div>
+                                    <label class="label-hint">DESDE:</label>
+                                    <input type="date" id="del-fecha-inicio" class="mini-input">
+                                </div>
+                                <div>
+                                    <label class="label-hint">HASTA:</label>
+                                    <input type="date" id="del-fecha-fin" class="mini-input">
+                                </div>
+                            </div>
+                            <button class="btn-mini btn-delete" style="margin-top:10px; padding:10px;" onclick="eliminarPersonalPorRango()">ELIMINAR REGISTROS EN ESTE RANGO</button>
+                            <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* ESTA ACCIÓN ES IRREVERSIBLE</p>
+                        </div>
+
+                        <div class="admin-card full-width" id="admin-delete-boletas-panel" style="display:none;">
+                            <p class="admin-card-title">ELIMINAR BOLETAS POR RANGO DE FECHA</p>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                                <div>
+                                    <label class="label-hint">DESDE:</label>
+                                    <input type="date" id="del-bol-inicio" class="mini-input">
+                                </div>
+                                <div>
+                                    <label class="label-hint">HASTA:</label>
+                                    <input type="date" id="del-bol-fin" class="mini-input">
+                                </div>
+                            </div>
+                            <button class="btn-mini btn-delete" style="margin-top:10px; padding:10px;" onclick="eliminarBoletasPorRango()">ELIMINAR BOLETAS EN ESTE RANGO</button>
+                            <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* LAS BOLETAS YA JUGADAS SE BORRARÁN PERMANENTEMENTE</p>
+                        </div>
+
+                        <div class="admin-card full-width">
+                            <p class="admin-card-title">DESGLOSE POR EQUIPOS</p>
+                            <div class="grid-summary-details">
+                                <div id="resumen-boletas-equipos" class="summary-list"></div>
+                                <div id="resumen-personal-equipos" class="summary-list"></div>
+                            </div>
+                        </div>
+                    </div>
                 </section>
             </div>
             <button onclick="handleLogout()" class="btn-logout">CERRAR SESIÓN</button>
