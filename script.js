@@ -13,7 +13,7 @@ const auth = firebase.auth();
 const ADMIN_EMAIL = "franboy1221@gmail.com";
 
 let currentUserData = null;
-let currentInviteCode = "CARGANDO...";
+let listadoCodigosInvitacion = [];
 let listadoEquipos = [];
 
 auth.onAuthStateChanged(user => {
@@ -25,7 +25,7 @@ auth.onAuthStateChanged(user => {
     } else {
         document.getElementById('view-auth').style.display = 'block';
         document.getElementById('view-home').style.display = 'none';
-        listenInviteCode();
+        listenInviteCodes();
         listenEquipos();
     }
 });
@@ -85,25 +85,46 @@ function eliminarEquipo(col) {
     db.collection("configuracion").doc("equipos").set({ lista: nuevaLista }).then(() => notify("🗑️ Equipo eliminado"));
 }
 
-function listenInviteCode() {
+function listenInviteCodes() {
     db.collection("configuracion").doc("seguridad").onSnapshot(doc => {
-        if (doc.exists) {
-            currentInviteCode = doc.data().codigoInvitacion;
-            if(document.getElementById('current-invite-code-admin')) document.getElementById('current-invite-code-admin').innerText = currentInviteCode;
-        } else {
-            currentInviteCode = "LOGISTICA001";
-        }
+        listadoCodigosInvitacion = (doc.exists && doc.data().listaCodigos) ? doc.data().listaCodigos : ["LOGISTICA001"];
+        actualizarPanelAdminCodigos();
     });
 }
 
-function actualizarCodigoInvitacion() {
-    const nuevoCodigo = document.getElementById('new-invite-code').value.trim();
+function actualizarPanelAdminCodigos() {
+    const listDiv = document.getElementById('admin-invite-codes-list');
+    if(!listDiv) return;
+    listDiv.innerHTML = "";
+    listadoCodigosInvitacion.forEach(cod => {
+        listDiv.innerHTML += `<div class="team-mini-badge" style="background:#fef9c3; border: 1px solid #fde047;">${cod} <span onclick="eliminarCodigoInvitacion('${cod}')">✕</span></div>`;
+    });
+}
+
+function agregarCodigoInvitacion() {
+    const input = document.getElementById('new-invite-code');
+    const nuevoCodigo = input.value.trim();
     if(nuevoCodigo.length < 4) return notify("⚠️ El código debe ser más largo");
+    if(listadoCodigosInvitacion.includes(nuevoCodigo)) return notify("⚠️ El código ya existe");
+    
+    const nuevaLista = [...listadoCodigosInvitacion, nuevoCodigo];
     db.collection("configuracion").doc("seguridad").set({
-        codigoInvitacion: nuevoCodigo,
+        listaCodigos: nuevaLista,
         actualizadoPor: auth.currentUser.email,
         fechaCambio: Date.now()
-    }).then(() => { notify("✅ Código actualizado"); document.getElementById('new-invite-code').value = ""; });
+    }).then(() => { 
+        notify("✅ Código añadido"); 
+        input.value = ""; 
+    });
+}
+
+function eliminarCodigoInvitacion(cod) {
+    if(listadoCodigosInvitacion.length <= 1) return notify("⚠️ Debe haber al menos un código");
+    if(!confirm(`¿Eliminar el código "${cod}"?`)) return;
+    const nuevaLista = listadoCodigosInvitacion.filter(c => c !== cod);
+    db.collection("configuracion").doc("seguridad").update({
+        listaCodigos: nuevaLista
+    }).then(() => notify("🗑️ Código eliminado"));
 }
 
 function loadUser() {
@@ -112,7 +133,7 @@ function loadUser() {
         const d = doc.data() || {};
         currentUserData = d;
         currentUserData.email = email;
-        listenInviteCode();
+        listenInviteCodes();
         listenEquipos();
         let rango = (email === ADMIN_EMAIL) ? "Administrador" : (d.rango || "Recreador");
         document.getElementById('p-full-name').innerText = (d.nombre + " " + (d.apellido || "")).toUpperCase();
@@ -165,8 +186,8 @@ function showSection(id) {
 
 function registrarConCodigo() {
     const n = document.getElementById('reg-nombre').value, a = document.getElementById('reg-apellido').value, e = document.getElementById('reg-email').value, p = document.getElementById('reg-pass').value, col = document.getElementById('reg-color').value, c = document.getElementById('reg-invite').value.trim();
-    if(c !== currentInviteCode) return notify("❌ Código Incorrecto o Expirado");
-    auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador', inscripcion: 'NO' }).then(() => location.reload())).catch(err => notify(err.message));
+    if(!listadoCodigosInvitacion.includes(c)) return notify("❌ Código Incorrecto o Expirado");
+    auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador', inscripcion: 'NO', codigoUsado: c }).then(() => location.reload())).catch(err => notify(err.message));
 }
 
 function listenData() {
@@ -338,19 +359,25 @@ async function verCarnet(email) {
     document.getElementById('modal-carnet').style.display = 'flex';
 }
 
-function eliminarPersonalPorRango() {
-    const inicio = document.getElementById('del-fecha-inicio').value;
-    const fin = document.getElementById('del-fecha-fin').value;
-    if (!inicio || !fin) return notify("⚠️ Selecciona ambas fechas");
-    const tsInicio = new Date(inicio + "T00:00:00").getTime();
-    const tsFin = new Date(fin + "T23:59:59").getTime();
-    if (!confirm(`¿Seguro que deseas eliminar TODOS los usuarios registrados entre ${inicio} y ${fin}? Esta acción no se puede deshacer.`)) return;
-    db.collection("usuarios").where("creado", ">=", tsInicio).where("creado", "<=", tsFin).get().then(snap => {
-        if (snap.empty) return notify("No se encontraron usuarios en ese rango");
+function eliminarPersonalPorCodigoInvitacion() {
+    const codigo = document.getElementById('del-invite-code').value.trim();
+    if (!codigo) return notify("⚠️ Ingresa un código de invitación");
+    if (!confirm(`¿Seguro que deseas eliminar TODOS los usuarios registrados con el código "${codigo}"? Esta acción no se puede deshacer.`)) return;
+    
+    db.collection("usuarios").where("codigoUsado", "==", codigo).get().then(snap => {
+        if (snap.empty) return notify("No se encontraron usuarios con ese código");
         let batch = db.batch();
         let count = 0;
-        snap.forEach(doc => { if (doc.id !== ADMIN_EMAIL) { batch.delete(doc.ref); count++; } });
-        batch.commit().then(() => { notify(`🗑️ Se eliminaron ${count} registros de personal`); document.getElementById('del-fecha-inicio').value = ""; document.getElementById('del-fecha-fin').value = ""; });
+        snap.forEach(doc => { 
+            if (doc.id !== ADMIN_EMAIL) { 
+                batch.delete(doc.ref); 
+                count++; 
+            } 
+        });
+        batch.commit().then(() => { 
+            notify(`🗑️ Se eliminaron ${count} registros de personal`); 
+            document.getElementById('del-invite-code').value = ""; 
+        });
     }).catch(err => notify("Error: " + err.message));
 }
 

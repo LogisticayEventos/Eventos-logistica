@@ -210,14 +210,14 @@
                         </div>
 
                         <div class="admin-card">
-                            <p class="admin-card-title">CÓDIGO DE ACCESO</p>
-                            <div class="invite-box">
-                                <span id="current-invite-code-admin" class="invite-code-display">---</span>
-                                <div id="admin-edit-panel-code" style="display:none; margin-top:10px;">
-                                    <input type="text" id="new-invite-code" placeholder="Nuevo" class="mini-input">
-                                    <button class="btn-mini" onclick="actualizarCodigoInvitacion()">CAMBIAR</button>
+                            <p class="admin-card-title">GESTIÓN DE CÓDIGOS</p>
+                            <div id="admin-edit-panel-code" style="display:none;">
+                                <div style="display: flex; gap: 5px; margin-bottom: 8px;">
+                                    <input type="text" id="new-invite-code" placeholder="Nuevo Código" class="mini-input" style="margin-bottom:0;">
+                                    <button class="btn-mini btn-add" style="width:35px !important;" onclick="agregarCodigoInvitacion()">+</button>
                                 </div>
                             </div>
+                            <div id="admin-invite-codes-list" class="teams-flex-container"></div>
                         </div>
 
                         <div class="admin-card">
@@ -232,19 +232,12 @@
                         </div>
 
                         <div class="admin-card full-width" id="admin-delete-range-panel" style="display:none;">
-                            <p class="admin-card-title">ELIMINAR PERSONAL POR RANGO DE REGISTRO</p>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                <div>
-                                    <label class="label-hint">DESDE:</label>
-                                    <input type="date" id="del-fecha-inicio" class="mini-input">
-                                </div>
-                                <div>
-                                    <label class="label-hint">HASTA:</label>
-                                    <input type="date" id="del-fecha-fin" class="mini-input">
-                                </div>
+                            <p class="admin-card-title">ELIMINAR PERSONAL POR CÓDIGO DE INVITACIÓN</p>
+                            <div style="display: flex; gap: 8px;">
+                                <input type="text" id="del-invite-code" placeholder="Ej: COO001" class="mini-input" style="flex-grow: 1; margin-bottom: 0;">
+                                <button class="btn-mini btn-delete" style="width: auto; padding: 0 15px;" onclick="eliminarPersonalPorCodigoInvitacion()">ELIMINAR</button>
                             </div>
-                            <button class="btn-mini btn-delete" style="margin-top:10px; padding:10px;" onclick="eliminarPersonalPorRango()">ELIMINAR REGISTROS EN ESTE RANGO</button>
-                            <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* ESTA ACCIÓN ES IRREVERSIBLE</p>
+                            <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* SE ELIMINARÁ EL PERSONAL REGISTRADO CON ESTE CÓDIGO</p>
                         </div>
 
                         <div class="admin-card full-width" id="admin-delete-boletas-panel" style="display:none;">
