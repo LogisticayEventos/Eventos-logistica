@@ -149,7 +149,10 @@ function loadUser() {
         document.getElementById('user-rank-badge').innerText = rango.toUpperCase();
         const formEdit = document.getElementById('perfil-edit-form');
         if (d.doc && d.tel && d.nacimiento) { formEdit.style.display = 'none'; } else { formEdit.style.display = 'flex'; }
-        const esAdmin = (rango === "Administrador"), esCGeneral = (rango === "Coordinador General"), esCoordinador = (rango === "Coordinador"), esRecreador = (rango === "Recreador");
+        const esAdmin = (email === ADMIN_EMAIL), esCGeneral = (rango === "Coordinador General"), esCoordinador = (rango === "Coordinador"), esRecreador = (rango === "Recreador");
+        
+        document.getElementById('container-buscador-global').style.display = esAdmin ? 'block' : 'none';
+
         document.getElementById('nav-usuarios-adm').style.display = (!esRecreador) ? 'block' : 'none';
         const navAdmin = document.getElementById('nav-administracion');
         if (esAdmin || esCGeneral || esCoordinador) {
@@ -166,12 +169,12 @@ function loadUser() {
         const canExport = (esAdmin || esCGeneral);
         document.getElementById('btn-rep-ventas').style.display = canExport ? 'block' : 'none';
         document.getElementById('btn-rep-personal').style.display = canExport ? 'block' : 'none';
-        document.querySelectorAll('.col-gestion').forEach(el => el.style.display = (esAdmin || esCGeneral) ? 'table-cell' : 'none');
         document.querySelectorAll('.col-rango-admin').forEach(el => el.style.display = esAdmin ? 'table-cell' : 'none');
         document.querySelectorAll('.col-rango-permiso').forEach(el => el.style.display = (!esRecreador) ? 'table-cell' : 'none');
         listenData();
         if(!esRecreador) loadAllUsers();
         showSection('comunicados');
+        actualizarListaEntregadasVisual();
     });
 }
 
@@ -193,41 +196,87 @@ function registrarConCodigo() {
 function listenData() {
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
-    const userColor = currentUserData.color || "Gris";
+    const esAdmin = (email === ADMIN_EMAIL), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
     const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
 
     db.collection("boletas").orderBy("creado", "desc").onSnapshot(async snap => {
         const body = document.getElementById('lista-boletas-body'); body.innerHTML = ""; 
         const uSnap = await db.collection("usuarios").get();
-        const mapa = {}; uSnap.forEach(u => mapa[u.id] = u.data().color || 'Gris');
+        const mapaColor = {}; 
+        const mapaEntregadas = {};
+        const mapaRecreadores = {}; 
+
+        uSnap.forEach(u => {
+            const data = u.data();
+            mapaColor[u.id] = data.color || 'Gris';
+            mapaEntregadas[u.id] = data.boletasEntregadas || [];
+        });
         
         let contadorTotal = 0, activas = 0, pendientes = 0;
         let boletasPorEquipo = {};
+        let setBoletasVendidasGlobal = new Set();
 
         snap.forEach(doc => {
-            const b = doc.data(); const col = mapa[b.vendedor] || 'Gris';
-            
+            const b = doc.data(); 
+            const col = mapaColor[b.vendedor] || 'Gris';
+            if(b.n) setBoletasVendidasGlobal.add(b.n.toString());
+
+            const recKey = b.recreador || 'Sin Nombre';
+            if(!mapaRecreadores[recKey]) {
+                mapaRecreadores[recKey] = { 
+                    color: col, 
+                    total: 0, 
+                    activas: 0, 
+                    pendientes: 0, 
+                    ids: [], 
+                    emailVendedor: b.vendedor,
+                    entregadas: mapaEntregadas[b.vendedor] ? mapaEntregadas[b.vendedor].length : 0,
+                    fechaVenta: b.creado ? new Date(b.creado).toLocaleDateString() : '---'
+                };
+            }
+
             contadorTotal++;
-            if(b.estado === 'Activa') activas++; else pendientes++;
+            if(b.estado === 'Activa') { activas++; mapaRecreadores[recKey].activas++; } 
+            else { pendientes++; mapaRecreadores[recKey].pendientes++; }
+            
+            mapaRecreadores[recKey].total++;
+            mapaRecreadores[recKey].ids.push({ id: doc.id, ...b });
+
             if(!boletasPorEquipo[col]) boletasPorEquipo[col] = { total: 0, activas: 0, pendientes: 0 };
             boletasPorEquipo[col].total++;
             if(b.estado === 'Activa') boletasPorEquipo[col].activas++; else boletasPorEquipo[col].pendientes++;
-
-            if(!(esAdmin || esCGeneral || esCoordinador) && b.vendedor !== email) return;
-            if(filterCol !== "Todos" && col !== filterCol) return;
-            if(filterEst !== "Todos" && b.estado !== filterEst) return;
-            const fObj = new Date(b.creado), fStr = fObj.toLocaleDateString('es-CO', {day:'2-digit', month:'2-digit'}) + " " + fObj.toLocaleTimeString('es-CO', {hour:'2-digit', minute:'2-digit', hour12: false});
-            let waBtn = b.t ? `<a href="https://wa.me/57${b.t}" target="_blank" class="wa-quick-btn">💬</a>` : "";
-            let accionHtml = "";
-            if(esAdmin || esCGeneral) {
-                const btnB = esAdmin ? `<button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}')">🗑️</button>` : "";
-                accionHtml = `<td class="col-gestion"><div style="display:flex; gap:2px; justify-content:center;"><button class="btn-status btn-approve" onclick="cambiarEstado('${doc.id}', 'Activa')">✓</button><button class="btn-status btn-pending" onclick="cambiarEstado('${doc.id}', 'Pendiente')">⏳</button>${btnB}</div></td>`;
-            }
-            body.innerHTML += `<tr><td style="font-weight:800;">${contadorTotal}</td><td style="font-weight:800;">${b.n || '---'}</td><td><span class="team-dot" style="background:${col.toLowerCase()}"></span> ${col}</td><td>${b.recreador || '---'}</td><td>${b.c || '---'}</td><td>${b.t || '---'} ${waBtn}</td><td style="font-weight:800; color:${b.estado === 'Activa' ? '#10b981' : '#f59e0b'}">${b.estado}</td><td style="font-size:0.55rem;">${fStr}</td>${accionHtml}</tr>`;
         });
 
-        document.getElementById('conteo-boletas-total').innerText = "Total registros: " + contadorTotal;
+        let index = 1;
+        for (let nombre in mapaRecreadores) {
+            const data = mapaRecreadores[nombre];
+            if(!(esAdmin || esCGeneral || esCoordinador) && data.emailVendedor !== email) continue;
+            if(filterCol !== "Todos" && data.color !== filterCol) continue;
+            
+            if(filterEst === "Activa" && data.activas === 0) continue;
+            if(filterEst === "Pendiente" && data.pendientes === 0) continue;
+
+            const accionHtml = (esAdmin) 
+                ? `<td><button class="btn-status btn-delete" style="padding: 4px 8px; font-size: 0.5rem;" onclick="eliminarTodosRegistrosRecreador('${nombre}')">ELIMINAR</button></td>`
+                : `<td><span class="badge-rango" style="background:#e2e8f0; font-size:0.5rem;">${data.emailVendedor === email ? 'MIS VENTAS' : 'REGISTRO'}</span></td>`;
+
+            body.innerHTML += `
+                <tr>
+                    <td style="font-weight:800;">${index++}</td>
+                    <td><span class="team-dot" style="background:${data.color.toLowerCase()}"></span> ${data.color}</td>
+                    <td style="font-weight:800; color:var(--primary); cursor:pointer; text-decoration:underline;" onclick="abrirGestionBoletas('${nombre}')">
+                        ${nombre.toUpperCase()}
+                    </td>
+                    <td style="font-weight:800; color:#6366f1;">${data.entregadas}</td>
+                    <td><b>${data.total}</b> (A:${data.activas} | P:${data.pendientes})</td>
+                    <td style="font-size:0.55rem;">${data.fechaVenta}</td>
+                    ${accionHtml}
+                </tr>`;
+        }
+
+        document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
+        actualizarListaEntregadasVisual(setBoletasVendidasGlobal);
+
         if(esAdmin || esCGeneral || esCoordinador) {
             document.getElementById('resumen-boletas-total').innerText = contadorTotal;
             document.getElementById('resumen-boletas-activas').innerText = activas;
@@ -242,6 +291,7 @@ function listenData() {
 
     db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
         const list = document.getElementById('comunicados-list'); list.innerHTML = "";
+        const userColor = currentUserData ? currentUserData.color : "Gris";
         snap.forEach(doc => { 
             const c = doc.data(); 
             if (!(esAdmin || esCGeneral)) {
@@ -263,10 +313,186 @@ function listenData() {
     });
 }
 
+async function buscarDuenioBoleta() {
+    const numero = document.getElementById('search-n-boleta').value.trim();
+    const resultDiv = document.getElementById('resultado-busqueda-boleta');
+    if(!numero) return notify("⚠️ Ingresa un número de boleta");
+
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = `<p style="font-size:0.6rem; color:var(--primary); font-weight:800;">Buscando...</p>`;
+
+    const snapVentas = await db.collection("boletas").where("n", "==", numero).get();
+    if(!snapVentas.empty) {
+        const b = snapVentas.docs[0].data();
+        const uDoc = await db.collection("usuarios").doc(b.vendedor).get();
+        const u = uDoc.data() || { nombre: "Desconocido" };
+        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        
+        resultDiv.innerHTML = `
+            <div style="background: white; border: 2px solid ${colorEstado}; padding: 10px; border-radius: 12px; text-align: left;">
+                <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${b.estado})</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900;">RECREADOR: ${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</p>
+                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#64748b;">EQUIPO: ${(u.color || "---").toUpperCase()}</p>
+                <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--primary);">Comprador: <b>${b.c}</b></p>
+            </div>`;
+        return;
+    }
+
+    const snapUsers = await db.collection("usuarios").get();
+    let recreadorEncontrado = null;
+    snapUsers.forEach(doc => {
+        const u = doc.data();
+        if(u.boletasEntregadas && u.boletasEntregadas.includes(numero)) {
+            recreadorEncontrado = { ...u, email: doc.id };
+        }
+    });
+
+    if(recreadorEncontrado) {
+        resultDiv.innerHTML = `
+            <div style="background: #fee2e2; border: 2px solid #ef4444; padding: 10px; border-radius: 12px; text-align: left;">
+                <p style="margin:0; font-size:0.5rem; font-weight:800; color:#ef4444;">ESTADO: FÍSICA (SIN VENTA REGISTRADA)</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900;">RECREADOR: ${(recreadorEncontrado.nombre + " " + (recreadorEncontrado.apellido || "")).toUpperCase()}</p>
+                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#64748b;">EQUIPO: ${(recreadorEncontrado.color || "---").toUpperCase()}</p>
+            </div>`;
+    } else {
+        resultDiv.innerHTML = `<p style="font-size:0.6rem; color:#ef4444; font-weight:800; background:#fee2e2; padding:10px; border-radius:10px;">❌ BOLETA NO REGISTRADA EN EL SISTEMA</p>`;
+    }
+}
+
+async function eliminarTodosRegistrosRecreador(nombreRecreador) {
+    if (!confirm(`¿Estás seguro de eliminar TODOS los registros de boletas para: ${nombreRecreador}?`)) return;
+    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
+    let batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit().then(() => notify(`🗑️ Registros de ${nombreRecreador} eliminados`));
+}
+
+async function abrirGestionBoletas(nombreRecreador) {
+    const email = auth.currentUser.email;
+    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
+    const esAdmin = (email === ADMIN_EMAIL);
+    const puedeEditar = (r === "Administrador" || r === "Coordinador General");
+    
+    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
+    
+    let entregadasHtml = "";
+    if (snap.docs.length > 0) {
+        const vEmail = snap.docs[0].data().vendedor;
+        const uDoc = await db.collection("usuarios").doc(vEmail).get();
+        const bEntregadas = uDoc.exists ? (uDoc.data().boletasEntregadas || []) : [];
+        const setVendidas = new Set(snap.docs.map(d => d.data().n.toString()));
+        
+        entregadasHtml = `<p class="label-hint" style="margin-top:10px;">FÍSICAS REGISTRADAS:</p><div class="teams-flex-container" style="margin-bottom:15px;">`;
+        bEntregadas.forEach(num => {
+            const isSold = setVendidas.has(num.toString());
+            const colB = isSold ? "#dcfce7" : "#fee2e2";
+            const colS = isSold ? "#10b981" : "#ef4444";
+            
+            const delBtn = esAdmin ? `<span onclick="eliminarBoletaEntregadaDeOtro('${vEmail}', '${num}')" style="color:#ef4444; cursor:pointer; margin-left:4px;">✕</span>` : "";
+            entregadasHtml += `<div class="team-mini-badge" style="background:${colB}; border:1px solid ${colS};">${num}${delBtn}</div>`;
+        });
+        entregadasHtml += `</div>`;
+    }
+
+    const render = document.getElementById('gestion-boletas-render');
+    render.innerHTML = `<h3 style="font-size:0.9rem; color:var(--primary); margin-bottom:5px; border-bottom:2px solid var(--accent); padding-bottom:5px;">GESTIÓN: ${nombreRecreador.toUpperCase()}</h3>`;
+    render.innerHTML += entregadasHtml;
+    
+    let htmlTable = `
+        <div class="table-container" style="min-width:100%;">
+            <table style="min-width:400px;">
+                <thead>
+                    <tr>
+                        <th>N°</th>
+                        <th>Comprador</th>
+                        <th>Estado</th>
+                        ${puedeEditar ? '<th>Acción</th>' : ''}
+                    </tr>
+                </thead>
+                <tbody>`;
+    
+    snap.forEach(doc => {
+        const b = doc.data();
+        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        let botones = "";
+        if(puedeEditar) {
+            const nuevoEstado = b.estado === 'Activa' ? 'Pendiente' : 'Activa';
+            const icon = b.estado === 'Activa' ? '⏳' : '✓';
+            botones = `
+                <td style="display:flex; gap:5px; justify-content:center;">
+                    <button class="btn-status" style="background:#e2e8f0;" onclick="cambiarEstado('${doc.id}', '${nuevoEstado}'); cerrarModalGestion();"> ${icon} </button>
+                    <button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}'); cerrarModalGestion();"> 🗑️ </button>
+                </td>`;
+        }
+        htmlTable += `
+            <tr>
+                <td style="font-weight:800;">${b.n || '--'}</td>
+                <td style="font-size:0.6rem;">${b.c || '--'}<br><small>${b.t || ''}</small></td>
+                <td style="font-weight:800; color:${colorEstado}">${b.estado}</td>
+                ${botones}
+            </tr>`;
+    });
+    
+    htmlTable += `</tbody></table></div>`;
+    render.innerHTML += htmlTable;
+    document.getElementById('modal-gestion-boletas').style.display = 'flex';
+}
+
+function cerrarModalGestion() { document.getElementById('modal-gestion-boletas').style.display = 'none'; }
+
+function registrarBoletaEntregada() {
+    const input = document.getElementById('input-boleta-entregada');
+    const valor = input.value.trim();
+    if(!valor) return;
+    const entregadas = currentUserData.boletasEntregadas || [];
+    if(entregadas.includes(valor)) return notify("⚠️ Esta boleta ya está registrada");
+    entregadas.push(valor);
+    db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas }).then(() => {
+        input.value = "";
+        notify("✅ Boleta registrada");
+    });
+}
+
+function eliminarBoletaEntregada(num) {
+    if(auth.currentUser.email !== ADMIN_EMAIL) return notify("⚠️ Solo el administrador puede borrar boletas físicas");
+    const entregadas = currentUserData.boletasEntregadas.filter(n => n !== num);
+    db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas }).then(() => notify("🗑️ Eliminada"));
+}
+
+async function eliminarBoletaEntregadaDeOtro(vEmail, num) {
+    if(auth.currentUser.email !== ADMIN_EMAIL) return;
+    if(!confirm("¿Eliminar registro físico de esta boleta?")) return;
+    const uDoc = await db.collection("usuarios").doc(vEmail).get();
+    const list = uDoc.data().boletasEntregadas || [];
+    const nuevaLista = list.filter(n => n !== num);
+    db.collection("usuarios").doc(vEmail).update({ boletasEntregadas: nuevaLista }).then(() => {
+        notify("🗑️ Registro físico eliminado");
+        cerrarModalGestion();
+    });
+}
+
+function actualizarListaEntregadasVisual(setVendidas = null) {
+    const container = document.getElementById('lista-entregadas-tags');
+    if(!container || !currentUserData) return;
+    container.innerHTML = "";
+    const entregadas = currentUserData.boletasEntregadas || [];
+    const esAdmin = (auth.currentUser.email === ADMIN_EMAIL);
+    
+    entregadas.forEach(num => {
+        let isSold = false;
+        if(setVendidas && setVendidas.has(num.toString())) isSold = true;
+        const colorBg = isSold ? "#dcfce7" : "#fee2e2";
+        const colorBorder = isSold ? "#10b981" : "#ef4444";
+        
+        const delBtn = esAdmin ? `<span onclick="eliminarBoletaEntregada('${num}')">✕</span>` : "";
+        container.innerHTML += `<div class="team-mini-badge" style="background:${colorBg}; border: 1px solid ${colorBorder};">${num} ${delBtn}</div>`;
+    });
+}
+
 function loadAllUsers() {
     const email = auth.currentUser.email;
     const userRango = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData ? currentUserData.rango : "Recreador");
-    const esAdmin = (userRango === "Administrador");
+    const esAdmin = (email === ADMIN_EMAIL);
     const search = document.getElementById('search-user').value.toLowerCase(), filterColor = document.getElementById('filter-user-color').value;
 
     db.collection("usuarios").orderBy("creado", "desc").onSnapshot(snap => {
@@ -347,15 +573,56 @@ function publicarComunicado() {
     if(!t || !m) return notify("⚠️ Título y mensaje obligatorios");
     db.collection("comunicados").add({ titulo: t, mensaje: m, destinatarios: coloresSeleccionados, fechaEv: f || null, horaEv: h || null, lugarEv: l || null, linkDoc: ld || null, fecha: Date.now() }).then(() => { ['com-titulo','com-mensaje','com-fecha-ev','com-hora-ev','com-lugar-ev','com-link-doc'].forEach(id => document.getElementById(id).value=""); notify("📣 Publicado"); }); 
 }
+
 async function verCarnet(email) {
     const docUser = await db.collection("usuarios").doc(email).get();
     const u = docUser.data();
     const snapBoletas = await db.collection("boletas").where("vendedor", "==", email).get();
     let activas = 0, pendientes = 0;
-    snapBoletas.forEach(b => { if(b.data().estado === 'Activa') activas++; else if(b.data().estado === 'Pendiente') pendientes++; });
+    const setVendidas = new Set();
+    snapBoletas.forEach(b => { 
+        const bd = b.data();
+        if(bd.estado === 'Activa') activas++; else if(bd.estado === 'Pendiente') pendientes++; 
+        if(bd.n) setVendidas.add(bd.n.toString());
+    });
+
+    const entregadas = u.boletasEntregadas || [];
+    const esAdmin = (auth.currentUser.email === ADMIN_EMAIL);
+    let tagsEntregadasHtml = "";
+    entregadas.forEach(num => {
+        const isSold = setVendidas.has(num.toString());
+        const colorBg = isSold ? "#dcfce7" : "#fee2e2";
+        const colorBorder = isSold ? "#10b981" : "#ef4444";
+        const delBtn = esAdmin ? `<span onclick="eliminarBoletaEntregadaDeOtro('${email}', '${num}')" style="margin-left:3px; cursor:pointer;">✕</span>` : "";
+        tagsEntregadasHtml += `<div class="team-mini-badge" style="background:${colorBg}; border: 1px solid ${colorBorder}; font-size: 0.45rem;">${num}${delBtn}</div>`;
+    });
+
     const lastLoginStr = u.lastLogin ? new Date(u.lastLogin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "---";
     const render = document.getElementById('carnet-detalle-render');
-    render.innerHTML = `<div class="id-card-mini" style="margin-bottom:0;"><div class="avatar-circle">${u.nombre ? u.nombre[0] : "S"}</div><h3>${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</h3><p class="badge-rango-perfil">${(u.rango || "Recreador").toUpperCase()}</p><div class="id-card-details"><div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color || "---").toUpperCase()}</span></div><div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc || "---"}</span></div><div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel || "---"}</span></div><div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div><div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">ÚLTIMA CONEXIÓN</span><span class="detail-value">${lastLoginStr}</span></div><div class="id-detail-item" style="grid-column: span 2; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin-top: 10px; display: flex; flex-direction: row; justify-content: space-around; text-align: center;"><div><span class="detail-label">ACTIVAS</span><br><span class="detail-value" style="color:#10b981; font-size:1.2rem;">${activas}</span></div><div><span class="detail-label">PENDIENTES</span><br><span class="detail-value" style="color:#f59e0b; font-size:1.2rem;">${pendientes}</span></div></div></div><p class="card-brand-footer">LOGISTICA & EVENTOS</p></div>`;
+    render.innerHTML = `
+        <div class="id-card-mini" style="margin-bottom:0;">
+            <div class="avatar-circle">${u.nombre ? u.nombre[0] : "S"}</div>
+            <h3>${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</h3>
+            <p class="badge-rango-perfil">${(u.rango || "Recreador").toUpperCase()}</p>
+            <div class="id-card-details">
+                <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color || "---").toUpperCase()}</span></div>
+                <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc || "---"}</span></div>
+                <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel || "---"}</span></div>
+                <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
+                <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">ÚLTIMA CONEXIÓN</span><span class="detail-value">${lastLoginStr}</span></div>
+                
+                <div class="id-detail-item" style="grid-column: span 2; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 15px; margin-top: 5px;">
+                    <span class="detail-label" style="margin-bottom:5px;">BOLETAS ENTREGADAS</span>
+                    <div class="teams-flex-container" style="justify-content:center;">${tagsEntregadasHtml || '<span style="font-size:0.5rem; opacity:0.5;">NINGUNA</span>'}</div>
+                </div>
+
+                <div class="id-detail-item" style="grid-column: span 2; background: rgba(255,255,255,0.1); padding: 10px; border-radius: 10px; margin-top: 10px; display: flex; flex-direction: row; justify-content: space-around; text-align: center;">
+                    <div><span class="detail-label">ACTIVAS</span><br><span class="detail-value" style="color:#10b981; font-size:1.2rem;">${activas}</span></div>
+                    <div><span class="detail-label">PENDIENTES</span><br><span class="detail-value" style="color:#f59e0b; font-size:1.2rem;">${pendientes}</span></div>
+                </div>
+            </div>
+            <p class="card-brand-footer">LOGISTICA & EVENTOS</p>
+        </div>`;
     document.getElementById('modal-carnet').style.display = 'flex';
 }
 

@@ -21,6 +21,13 @@
         </div>
     </div>
 
+    <div id="modal-gestion-boletas" class="modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <button class="close-modal" onclick="cerrarModalGestion()">✕</button>
+            <div id="gestion-boletas-render"></div>
+        </div>
+    </div>
+
     <div class="main-wrapper">
         <div id="view-auth">
             <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
@@ -89,6 +96,24 @@
                 </section>
 
                 <section id="sec-boletas-list" class="section-content">
+                    <div id="container-buscador-global" class="form-group" style="display: none; margin-bottom: 20px; border: 2px solid var(--accent); padding: 15px; border-radius: 20px; background: #f0f9ff;">
+                        <p class="label-hint" style="text-align: center; color: var(--primary); font-weight: 900;">BUSCADOR GLOBAL DE BOLETA (PREMIOS)</p>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="search-n-boleta" placeholder="Ingresa N° de Boleta" style="flex-grow: 1;">
+                            <button class="btn-mini" style="width: 80px !important; background: var(--primary);" onclick="buscarDuenioBoleta()">BUSCAR</button>
+                        </div>
+                        <div id="resultado-busqueda-boleta" style="margin-top: 10px; display: none;"></div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px; border: 1px solid #e2e8f0; padding: 15px; border-radius: 20px;">
+                        <p class="label-hint" style="text-align: center;">REGISTRAR BOLETAS ENTREGADAS (FÍSICAS)</p>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="input-boleta-entregada" placeholder="N° Boleta" style="flex-grow: 1;">
+                            <button class="btn-mini btn-add" style="width: 50px !important;" onclick="registrarBoletaEntregada()">+</button>
+                        </div>
+                        <div id="lista-entregadas-tags" class="teams-flex-container" style="margin-top: 10px;"></div>
+                    </div>
+
                     <div class="filter-bar">
                         <select id="filter-color" onchange="listenData()" class="dynamic-colors" style="display:none;">
                             <option value="Todos">Todos los Equipos</option>
@@ -105,14 +130,12 @@
                             <thead>
                                 <tr>
                                     <th>N°</th>
-                                    <th>Boleta</th>
                                     <th>Equipo</th>
                                     <th>Recreador</th>
-                                    <th>Comprador</th>
-                                    <th>WhatsApp</th>
-                                    <th>Estado</th>
+                                    <th>Entregadas</th>
+                                    <th>Vendidas</th>
                                     <th>Fecha</th>
-                                    <th class="col-gestion" style="display:none;">Gestión</th>
+                                    <th>Acción</th>
                                 </tr>
                             </thead>
                             <tbody id="lista-boletas-body"></tbody>
