@@ -10,20 +10,21 @@
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="style.css">
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div id="toast-container"></div>
     
     <div id="modal-carnet" class="modal">
         <div class="modal-content">
-            <button class="close-modal" onclick="cerrarModal()">✕</button>
+            <button class="close-modal" onclick="cerrarModal()"><i class="fa-solid fa-xmark"></i></button>
             <div id="carnet-detalle-render"></div>
         </div>
     </div>
 
     <div id="modal-gestion-boletas" class="modal">
         <div class="modal-content" style="max-width: 450px;">
-            <button class="close-modal" onclick="cerrarModalGestion()">✕</button>
+            <button class="close-modal" onclick="cerrarModalGestion()"><i class="fa-solid fa-xmark"></i></button>
             <div id="gestion-boletas-render"></div>
         </div>
     </div>
@@ -31,12 +32,12 @@
     <div class="main-wrapper">
         <div id="view-auth">
             <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
-            <p style="color:var(--accent); font-weight:800; font-size:0.9rem; letter-spacing: 2px;">EVENTOS</p>
+            <p style="color:var(--accent); font-weight:800; font-size:0.9rem; letter-spacing: 2px; text-shadow: 0 0 8px var(--accent-glow);">EVENTOS</p>
             <div id="auth-login" class="form-group" style="margin-top:20px;">
                 <input type="email" id="login-email" placeholder="Correo">
                 <input type="password" id="login-pass" placeholder="Contraseña">
                 <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
-                <p class="toggle-text">¿Nuevo? <a href="#" onclick="toggleAuth('reg')">Crear cuenta</a></p>
+                <p class="toggle-text" style="color:#94a3b8;">¿Nuevo? <a href="#" onclick="toggleAuth('reg')" style="color:var(--accent);">Crear cuenta</a></p>
             </div>
             <div id="auth-register" class="form-group" style="display:none;">
                 <input type="text" id="reg-nombre" placeholder="Nombre">
@@ -48,7 +49,7 @@
                 </select>
                 <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
                 <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
-                <p class="toggle-text"><a href="#" onclick="toggleAuth('login')">Volver</a></p>
+                <p class="toggle-text" style="color:#94a3b8;"><a href="#" onclick="toggleAuth('login')" style="color:var(--accent);">Volver</a></p>
             </div>
         </div>
 
@@ -96,20 +97,20 @@
                 </section>
 
                 <section id="sec-boletas-list" class="section-content">
-                    <div id="container-buscador-global" class="form-group" style="display: none; margin-bottom: 20px; border: 2px solid var(--accent); padding: 15px; border-radius: 20px; background: #f0f9ff;">
-                        <p class="label-hint" style="text-align: center; color: var(--primary); font-weight: 900;">BUSCADOR GLOBAL DE BOLETA (PREMIOS)</p>
+                    <div id="container-buscador-global" class="form-group" style="display: none; margin-bottom: 20px; border: 1px solid var(--accent); padding: 15px; border-radius: 20px; background: rgba(0, 240, 255, 0.05);">
+                        <p class="label-hint" style="text-align: center; color: var(--accent); font-weight: 900;">BUSCADOR GLOBAL DE BOLETA (PREMIOS)</p>
                         <div style="display: flex; gap: 8px;">
                             <input type="text" id="search-n-boleta" placeholder="Ingresa N° de Boleta" style="flex-grow: 1;">
-                            <button class="btn-mini" style="width: 80px !important; background: var(--primary);" onclick="buscarDuenioBoleta()">BUSCAR</button>
+                            <button class="btn-mini" style="width: 80px !important;" onclick="buscarDuenioBoleta()">BUSCAR</button>
                         </div>
                         <div id="resultado-busqueda-boleta" style="margin-top: 10px; display: none;"></div>
                     </div>
 
-                    <div class="form-group" style="margin-bottom: 20px; border: 1px solid #e2e8f0; padding: 15px; border-radius: 20px;">
+                    <div class="form-group" style="margin-bottom: 20px; border: 1px solid rgba(0,240,255,0.2); padding: 15px; border-radius: 20px; background: rgba(30, 41, 59, 0.5);">
                         <p class="label-hint" style="text-align: center;">REGISTRAR BOLETAS ENTREGADAS (FÍSICAS)</p>
                         <div style="display: flex; gap: 8px;">
                             <input type="text" id="input-boleta-entregada" placeholder="N° Boleta" style="flex-grow: 1;">
-                            <button class="btn-mini btn-add" style="width: 50px !important;" onclick="registrarBoletaEntregada()">+</button>
+                            <button class="btn-mini btn-add" style="width: 50px !important;" onclick="registrarBoletaEntregada()"><i class="fa-solid fa-plus"></i></button>
                         </div>
                         <div id="lista-entregadas-tags" class="teams-flex-container" style="margin-top: 10px;"></div>
                     </div>
@@ -160,7 +161,7 @@
                         <p class="card-brand-footer">LOGISTICA & EVENTOS</p>
                     </div>
                     <div id="perfil-edit-form" class="form-group">
-                        <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;">⚠️ LOS DATOS SE GUARDAN UNA SOLA VEZ</p>
+                        <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;"><i class="fa-solid fa-triangle-exclamation"></i> LOS DATOS SE GUARDAN UNA SOLA VEZ</p>
                         <label class="label-hint">DOCUMENTO:</label>
                         <input type="text" id="edit-doc" placeholder="Número ID">
                         <label class="label-hint">WHATSAPP:</label>
@@ -182,7 +183,7 @@
                             <option value="Todos">Equipos</option>
                         </select>
                     </div>
-                    <button id="btn-rep-personal" class="btn-excel" style="background:#6366f1; display:none;" onclick="exportarPersonalExcel()">REPORTE PERSONAL (EXCEL)</button>
+                    <button id="btn-rep-personal" class="btn-excel" style="border-color:#6366f1; color:#6366f1; display:none;" onclick="exportarPersonalExcel()">REPORTE PERSONAL (EXCEL)</button>
                     <div class="table-container">
                         <table>
                             <thead>
@@ -237,7 +238,7 @@
                             <div id="admin-edit-panel-code" style="display:none;">
                                 <div style="display: flex; gap: 5px; margin-bottom: 8px;">
                                     <input type="text" id="new-invite-code" placeholder="Nuevo Código" class="mini-input" style="margin-bottom:0;">
-                                    <button class="btn-mini btn-add" style="width:35px !important;" onclick="agregarCodigoInvitacion()">+</button>
+                                    <button class="btn-mini btn-add" style="width:35px !important;" onclick="agregarCodigoInvitacion()"><i class="fa-solid fa-plus"></i></button>
                                 </div>
                             </div>
                             <div id="admin-invite-codes-list" class="teams-flex-container"></div>
@@ -248,7 +249,7 @@
                             <div id="admin-edit-panel-teams" style="display:none;">
                                 <div class="add-team-row">
                                     <input type="text" id="new-team-name" placeholder="Nombre equipo">
-                                    <button class="btn-mini btn-add" onclick="agregarEquipo()">+</button>
+                                    <button class="btn-mini btn-add" onclick="agregarEquipo()"><i class="fa-solid fa-plus"></i></button>
                                 </div>
                             </div>
                             <div id="admin-teams-list" class="teams-flex-container"></div>
