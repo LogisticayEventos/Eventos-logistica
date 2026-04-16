@@ -60,12 +60,12 @@
                 <div style="width: 50px;"></div>
             </header>
             <nav class="nav-menu">
-                <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados">INICIO</button>
-                <button onclick="showSection('boletas-ins')" class="nav-item" id="nav-boletas-ins">VENTA</button>
-                <button onclick="showSection('boletas-list')" class="nav-item" id="nav-boletas-list">LISTA</button>
-                <button onclick="showSection('perfil')" class="nav-item" id="nav-perfil">PERFIL</button>
-                <button onclick="showSection('usuarios-adm')" class="nav-item" id="nav-usuarios-adm" style="display:none;">PERSONAL</button>
-                <button onclick="showSection('administracion')" class="nav-item" id="nav-administracion" style="display:none;">ADMIN</button>
+                <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados"><i class="fa-solid fa-house"></i> INICIO</button>
+                <button onclick="showSection('boletas-ins')" class="nav-item" id="nav-boletas-ins"><i class="fa-solid fa-ticket"></i> VENTA</button>
+                <button onclick="showSection('boletas-list')" class="nav-item" id="nav-boletas-list"><i class="fa-solid fa-list-ul"></i> LISTA</button>
+                <button onclick="showSection('perfil')" class="nav-item" id="nav-perfil"><i class="fa-solid fa-user"></i> PERFIL</button>
+                <button onclick="showSection('usuarios-adm')" class="nav-item" id="nav-usuarios-adm" style="display:none;"><i class="fa-solid fa-users"></i> PERSONAL</button>
+                <button onclick="showSection('administracion')" class="nav-item" id="nav-administracion" style="display:none;"><i class="fa-solid fa-gear"></i> ADMIN</button>
             </nav>
             <div class="content-scroll">
                 <section id="sec-comunicados" class="section-content">
@@ -178,7 +178,7 @@
 
                 <section id="sec-usuarios-adm" class="section-content">
                     <div class="filter-bar">
-                        <input type="text" id="search-user" placeholder="Buscar..." oninput="loadAllUsers()" style="flex:2;">
+                        <input type="text" id="search-user" placeholder="Buscar..." oninput="debounceLoadAllUsers()" style="flex:2;">
                         <select id="filter-user-color" onchange="loadAllUsers()" class="dynamic-colors" style="flex:1;">
                             <option value="Todos">Equipos</option>
                         </select>

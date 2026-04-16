@@ -16,6 +16,9 @@ let currentUserData = null;
 let listadoCodigosInvitacion = [];
 let listadoEquipos = [];
 
+// AQUÍ SE AGREGÓ LA VARIABLE PARA EL RETRASO (DEBOUNCE)
+let timerBusquedaPersonal;
+
 auth.onAuthStateChanged(user => {
     if (user) {
         document.getElementById('view-auth').style.display = 'none';
@@ -29,6 +32,14 @@ auth.onAuthStateChanged(user => {
         listenEquipos();
     }
 });
+
+// ESTA ES LA FUNCIÓN NUEVA QUE EVITA EL CONGELAMIENTO
+function debounceLoadAllUsers() {
+    clearTimeout(timerBusquedaPersonal);
+    timerBusquedaPersonal = setTimeout(() => {
+        loadAllUsers();
+    }, 500); // Espera 500 milisegundos para buscar todo
+}
 
 function listenEquipos() {
     db.collection("configuracion").doc("equipos").onSnapshot(doc => {
@@ -292,8 +303,8 @@ function listenData() {
     db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
         const list = document.getElementById('comunicados-list'); list.innerHTML = "";
         const userColor = currentUserData ? currentUserData.color : "Gris";
-        snap.forEach(doc => { 
-            const c = doc.data(); 
+        snap.forEach(doc => {
+            const c = doc.data();
             if (!(esAdmin || esCGeneral)) {
                 const destinatarios = c.destinatarios || ["Todos"];
                 if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
@@ -313,369 +324,413 @@ function listenData() {
     });
 }
 
-async function buscarDuenioBoleta() {
-    const numero = document.getElementById('search-n-boleta').value.trim();
-    const resultDiv = document.getElementById('resultado-busqueda-boleta');
-    if(!numero) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa un número de boleta");
+function handleLogin() {
+    const e = document.getElementById('login-email').value, p = document.getElementById('login-pass').value;
+    auth.signInWithEmailAndPassword(e, p).catch(err => notify(err.message));
+}
 
-    resultDiv.style.display = 'block';
-    resultDiv.innerHTML = `<p style="font-size:0.6rem; color:var(--accent); font-weight:800;">Buscando...</p>`;
+function handleLogout() {
+    auth.signOut();
+}
 
-    const snapVentas = await db.collection("boletas").where("n", "==", numero).get();
-    if(!snapVentas.empty) {
-        const b = snapVentas.docs[0].data();
-        const uDoc = await db.collection("usuarios").doc(b.vendedor).get();
-        const u = uDoc.data() || { nombre: "Desconocido" };
-        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
-        const colorBg = b.estado === 'Activa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+function toggleAuth(view) {
+    document.getElementById('auth-login').style.display = view === 'login' ? 'flex' : 'none';
+    document.getElementById('auth-register').style.display = view === 'reg' ? 'flex' : 'none';
+}
+
+function notify(msg) {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = 'toast';
+    toast.innerHTML = msg;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
+}
+
+function publicarComunicado() {
+    const tit = document.getElementById('com-titulo').value, msg = document.getElementById('com-mensaje').value, fL = document.getElementById('com-fecha-ev').value, hL = document.getElementById('com-hora-ev').value, lug = document.getElementById('com-lugar-ev').value, link = document.getElementById('com-link-doc').value;
+    const dest = Array.from(document.querySelectorAll('input[name="dest-color"]:checked')).map(cb => cb.value);
+    if(!tit || !msg || dest.length === 0) return notify("Completa título, mensaje y destinatario");
+    db.collection("comunicados").add({ titulo: tit, mensaje: msg, destinatarios: dest, fechaEv: fL, horaEv: hL, lugarEv: lug, linkDoc: link, fecha: Date.now() }).then(() => {
+        document.getElementById('com-titulo').value = ""; document.getElementById('com-mensaje').value = ""; document.getElementById('com-fecha-ev').value = ""; document.getElementById('com-hora-ev').value = ""; document.getElementById('com-lugar-ev').value = ""; document.getElementById('com-link-doc').value = "";
+        notify("<i class='fa-solid fa-check'></i> Publicado");
+    });
+}
+
+function inscribirBoleta() {
+    const rec = document.getElementById('ins-rec-nom').value.trim(), num = document.getElementById('ins-n-boleta').value.trim(), com = document.getElementById('ins-com-nom').value.trim(), tel = document.getElementById('ins-com-tel').value.trim();
+    if(!rec || !num || !com || !tel) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Completa todos los campos");
+    if(isNaN(num)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> La boleta debe ser un número");
+    
+    db.collection("boletas").where("n", "==", num).get().then(snap => {
+        if(!snap.empty) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Esta boleta ya fue registrada");
         
-        resultDiv.innerHTML = `
-            <div style="background: ${colorBg}; border: 1px solid ${colorEstado}; padding: 10px; border-radius: 12px; text-align: left;">
-                <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${b.estado})</p>
-                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</p>
-                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${(u.color || "---").toUpperCase()}</p>
-                <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--accent);">Comprador: <b>${b.c}</b></p>
-            </div>`;
+        db.collection("boletas").add({
+            vendedor: auth.currentUser.email,
+            recreador: rec.toLowerCase(),
+            n: num, comprador: com, tel: tel,
+            estado: 'Activa', creado: Date.now()
+        }).then(() => {
+            document.getElementById('ins-n-boleta').value = ""; document.getElementById('ins-com-nom').value = ""; document.getElementById('ins-com-tel').value = "";
+            notify("<i class='fa-solid fa-check'></i> Boleta Registrada");
+        });
+    });
+}
+
+function buscarDuenioBoleta() {
+    const input = document.getElementById('search-n-boleta').value.trim();
+    const resDiv = document.getElementById('resultado-busqueda-boleta');
+    if(!input) {
+        resDiv.style.display = 'none';
+        return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa un número de boleta");
+    }
+
+    db.collection("boletas").where("n", "==", input).get().then(async snap => {
+        if(snap.empty) {
+            resDiv.style.display = 'block';
+            resDiv.innerHTML = `<div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 12px; color: #ef4444; font-weight: 800;"><i class="fa-solid fa-circle-xmark"></i> LA BOLETA N° ${input} NO EXISTE O NO HA SIDO VENDIDA</div>`;
+            return;
+        }
+
+        const b = snap.docs[0].data();
+        const uDoc = await db.collection("usuarios").doc(b.vendedor).get();
+        const uData = uDoc.exists ? uDoc.data() : { color: 'Desconocido', nombre: 'Desconocido', tel: '---' };
+        
+        let estadoHtml = b.estado === 'Activa' ? `<span class="status-Activa">ACTIVA</span>` : `<span class="status-Pendiente">PENDIENTE</span>`;
+
+        resDiv.style.display = 'block';
+        resDiv.innerHTML = `
+            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 15px; padding: 15px; text-align: left;">
+                <p style="text-align: center; color: #10b981; font-weight: 900; margin-top: 0; font-size: 0.9rem;"><i class="fa-solid fa-circle-check"></i> BOLETA ENCONTRADA</p>
+                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 0.75rem;">
+                    <div><span class="detail-label">NÚMERO DE BOLETA:</span> <b style="color:white; font-size: 1rem;">${b.n}</b></div>
+                    <div><span class="detail-label">ESTADO ACTUAL:</span> ${estadoHtml}</div>
+                    <hr style="border: 0; border-top: 1px dashed rgba(16, 185, 129, 0.3); width: 100%;">
+                    <div><span class="detail-label">NOMBRE DEL COMPRADOR:</span> <b style="color:white;">${b.comprador.toUpperCase()}</b></div>
+                    <div><span class="detail-label">WHATSAPP DEL COMPRADOR:</span> <b style="color:white;">${b.tel}</b></div>
+                    <hr style="border: 0; border-top: 1px dashed rgba(16, 185, 129, 0.3); width: 100%;">
+                    <div><span class="detail-label">RECREADOR QUE LA VENDIÓ:</span> <b style="color:var(--accent);">${b.recreador.toUpperCase()}</b></div>
+                    <div><span class="detail-label">EQUIPO DEL RECREADOR:</span> <b style="color:white;">${uData.color.toUpperCase()}</b></div>
+                    <div><span class="detail-label">USUARIO DE REGISTRO:</span> <b style="color:white;">${(uData.nombre + " " + (uData.apellido||"")).toUpperCase()}</b></div>
+                    <div><span class="detail-label">FECHA DE REGISTRO:</span> <b style="color:white;">${new Date(b.creado).toLocaleString()}</b></div>
+                </div>
+            </div>
+        `;
+    }).catch(err => {
+        notify("Error en la búsqueda");
+        console.error(err);
+    });
+}
+
+function registrarBoletaEntregada() {
+    const num = document.getElementById('input-boleta-entregada').value.trim();
+    if(!num) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa el número");
+    if(isNaN(num)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Debe ser un número válido");
+
+    const email = auth.currentUser.email;
+    const currentEntregadas = currentUserData.boletasEntregadas || [];
+    
+    if(currentEntregadas.includes(num)) {
+        return notify("<i class='fa-solid fa-triangle-exclamation'></i> Esta boleta ya la tienes asignada");
+    }
+
+    const nuevasEntregadas = [...currentEntregadas, num];
+    db.collection("usuarios").doc(email).update({
+        boletasEntregadas: nuevasEntregadas
+    }).then(() => {
+        document.getElementById('input-boleta-entregada').value = "";
+        notify("<i class='fa-solid fa-check'></i> Boleta física asignada");
+    });
+}
+
+function eliminarBoletaEntregada(numStr) {
+    if(!confirm(`¿Devolver/Eliminar la boleta física N° ${numStr} de tu responsabilidad?`)) return;
+    const email = auth.currentUser.email;
+    const currentEntregadas = currentUserData.boletasEntregadas || [];
+    const nuevasEntregadas = currentEntregadas.filter(n => n !== numStr);
+    
+    db.collection("usuarios").doc(email).update({
+        boletasEntregadas: nuevasEntregadas
+    }).then(() => {
+        notify("<i class='fa-solid fa-trash'></i> Boleta removida de tus entregadas");
+    });
+}
+
+function actualizarListaEntregadasVisual(setVendidasGlobal = new Set()) {
+    const listDiv = document.getElementById('lista-entregadas-tags');
+    if(!listDiv) return;
+    listDiv.innerHTML = "";
+    
+    if(!currentUserData || !currentUserData.boletasEntregadas || currentUserData.boletasEntregadas.length === 0) {
+        listDiv.innerHTML = "<p style='font-size:0.6rem; color:#64748b; width:100%; text-align:center;'>No has registrado boletas físicas entregadas.</p>";
         return;
     }
 
-    const snapUsers = await db.collection("usuarios").get();
-    let recreadorEncontrado = null;
-    snapUsers.forEach(doc => {
-        const u = doc.data();
-        if(u.boletasEntregadas && u.boletasEntregadas.includes(numero)) {
-            recreadorEncontrado = { ...u, email: doc.id };
-        }
-    });
-
-    if(recreadorEncontrado) {
-        resultDiv.innerHTML = `
-            <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; padding: 10px; border-radius: 12px; text-align: left;">
-                <p style="margin:0; font-size:0.5rem; font-weight:800; color:#ef4444;">ESTADO: FÍSICA (SIN VENTA REGISTRADA)</p>
-                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${(recreadorEncontrado.nombre + " " + (recreadorEncontrado.apellido || "")).toUpperCase()}</p>
-                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${(recreadorEncontrado.color || "---").toUpperCase()}</p>
-            </div>`;
-    } else {
-        resultDiv.innerHTML = `<p style="font-size:0.6rem; color:#ef4444; font-weight:800; background:rgba(239, 68, 68, 0.2); border:1px solid #ef4444; padding:10px; border-radius:10px;"><i class="fa-solid fa-xmark"></i> BOLETA NO REGISTRADA EN EL SISTEMA</p>`;
-    }
-}
-
-async function eliminarTodosRegistrosRecreador(nombreRecreador) {
-    if (!confirm(`¿Estás seguro de eliminar TODOS los registros de boletas para: ${nombreRecreador}?`)) return;
-    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
-    let batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
-    batch.commit().then(() => notify(`<i class="fa-solid fa-trash"></i> Registros de ${nombreRecreador} eliminados`));
-}
-
-async function abrirGestionBoletas(nombreRecreador) {
-    const email = auth.currentUser.email;
-    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (email === ADMIN_EMAIL);
-    const puedeEditar = (r === "Administrador" || r === "Coordinador General");
-    
-    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
-    
-    let entregadasHtml = "";
-    if (snap.docs.length > 0) {
-        const vEmail = snap.docs[0].data().vendedor;
-        const uDoc = await db.collection("usuarios").doc(vEmail).get();
-        const bEntregadas = uDoc.exists ? (uDoc.data().boletasEntregadas || []) : [];
-        const setVendidas = new Set(snap.docs.map(d => d.data().n.toString()));
+    let countVendidas = 0;
+    currentUserData.boletasEntregadas.forEach(num => {
+        const estaVendida = setVendidasGlobal.has(num.toString());
+        if(estaVendida) countVendidas++;
+        const colorBorder = estaVendida ? "#10b981" : "rgba(0,240,255,0.3)";
+        const bg = estaVendida ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.05)";
+        const iconoVendida = estaVendida ? `<i class="fa-solid fa-check" style="color:#10b981; font-size:0.5rem; margin-right:3px;"></i>` : '';
         
-        entregadasHtml = `<p class="label-hint" style="margin-top:10px;">FÍSICAS REGISTRADAS:</p><div class="teams-flex-container" style="margin-bottom:15px;">`;
-        bEntregadas.forEach(num => {
-            const isSold = setVendidas.has(num.toString());
-            const colB = isSold ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
-            const colS = isSold ? "#10b981" : "#ef4444";
-            
-            const delBtn = esAdmin ? `<span onclick="eliminarBoletaEntregadaDeOtro('${vEmail}', '${num}')" style="color:#ef4444; cursor:pointer; margin-left:4px;"><i class="fa-solid fa-xmark"></i></span>` : "";
-            entregadasHtml += `<div class="team-mini-badge" style="background:${colB}; border:1px solid ${colS}; color:white;">${num}${delBtn}</div>`;
-        });
-        entregadasHtml += `</div>`;
-    }
-
-    const render = document.getElementById('gestion-boletas-render');
-    render.innerHTML = `<h3 style="font-size:0.9rem; color:var(--accent); margin-bottom:5px; border-bottom:1px solid rgba(0,240,255,0.3); padding-bottom:5px;">GESTIÓN: ${nombreRecreador.toUpperCase()}</h3>`;
-    render.innerHTML += entregadasHtml;
-    
-    let htmlTable = `
-        <div class="table-container" style="min-width:100%;">
-            <table style="min-width:400px;">
-                <thead>
-                    <tr>
-                        <th>N°</th>
-                        <th>Comprador</th>
-                        <th>Estado</th>
-                        ${puedeEditar ? '<th>Acción</th>' : ''}
-                    </tr>
-                </thead>
-                <tbody>`;
-    
-    snap.forEach(doc => {
-        const b = doc.data();
-        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
-        let botones = "";
-        if(puedeEditar) {
-            const nuevoEstado = b.estado === 'Activa' ? 'Pendiente' : 'Activa';
-            const icon = b.estado === 'Activa' ? '<i class="fa-solid fa-hourglass-half"></i>' : '<i class="fa-solid fa-check-double"></i>';
-            botones = `
-                <td style="display:flex; gap:5px; justify-content:center;">
-                    <button class="btn-status" style="background:rgba(255,255,255,0.1); color:var(--text-main); border:1px solid rgba(255,255,255,0.2);" onclick="cambiarEstado('${doc.id}', '${nuevoEstado}'); cerrarModalGestion();"> ${icon} </button>
-                    <button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}'); cerrarModalGestion();"> <i class="fa-solid fa-trash"></i> </button>
-                </td>`;
-        }
-        htmlTable += `
-            <tr>
-                <td style="font-weight:800;">${b.n || '--'}</td>
-                <td style="font-size:0.6rem;">${b.c || '--'}<br><small>${b.t || ''}</small></td>
-                <td style="font-weight:800; color:${colorEstado}">${b.estado}</td>
-                ${botones}
-            </tr>`;
+        listDiv.innerHTML += `
+            <div class="team-mini-badge" style="border-color:${colorBorder}; background:${bg};">
+                ${iconoVendida}N° ${num} 
+                <span onclick="eliminarBoletaEntregada('${num}')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+        `;
     });
     
-    htmlTable += `</tbody></table></div>`;
-    render.innerHTML += htmlTable;
-    document.getElementById('modal-gestion-boletas').style.display = 'flex';
+    listDiv.innerHTML = `<div style="width: 100%; text-align: center; font-size: 0.6rem; color: var(--accent); margin-bottom: 5px; font-weight: 800;">TOTAL ASIGNADAS: ${currentUserData.boletasEntregadas.length} | YA VENDIDAS: ${countVendidas}</div>` + listDiv.innerHTML;
+}
+
+function eliminarTodosRegistrosRecreador(recreadorNombre) {
+    if(!confirm(`⚠️ ATENCIÓN: ¿Estás seguro de eliminar TODO EL REGISTRO DE VENTAS del recreador "${recreadorNombre.toUpperCase()}"? Esta acción no se puede deshacer.`)) return;
+
+    db.collection("boletas").where("recreador", "==", recreadorNombre).get().then(snap => {
+        const batch = db.batch();
+        snap.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        batch.commit().then(() => {
+            notify("<i class='fa-solid fa-trash'></i> Registros eliminados");
+        }).catch(err => notify("Error: " + err.message));
+    });
+}
+
+function calcularEdad(fecha) {
+    if (!fecha) return "---";
+    const hoy = new Date(), nac = new Date(fecha);
+    let e = hoy.getFullYear() - nac.getFullYear();
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) e--;
+    return e + " años";
+}
+
+function guardarPerfil() {
+    const docu = document.getElementById('edit-doc').value.trim(), tel = document.getElementById('edit-tel').value.trim(), nac = document.getElementById('edit-nacimiento').value, col = document.getElementById('edit-color').value;
+    if(!docu || !tel || !nac || !col) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Faltan datos");
+    if(confirm("¿Guardar datos permanentes? No podrás editarlos después.")) {
+        db.collection("usuarios").doc(auth.currentUser.email).update({ doc: docu, tel: tel, nacimiento: nac, color: col }).then(() => {
+            document.getElementById('perfil-edit-form').style.display = 'none';
+            notify("<i class='fa-solid fa-check'></i> Perfil actualizado");
+        });
+    }
+}
+
+function abrirGestionBoletas(recreadorNombre) {
+    const email = auth.currentUser.email;
+    const esAdmin = (email === ADMIN_EMAIL || currentUserData.rango === "Coordinador General" || currentUserData.rango === "Coordinador");
+
+    db.collection("boletas").where("recreador", "==", recreadorNombre).get().then(snap => {
+        let html = `<h3 style="margin-top:0; font-size:1rem;">VENTAS DE ${recreadorNombre.toUpperCase()}</h3>
+                    <div style="max-height: 50vh; overflow-y: auto; padding-right:5px; margin-top:15px; display:flex; flex-direction:column; gap:8px;">`;
+        let count = 0;
+        snap.forEach(doc => {
+            const b = doc.data();
+            const esMio = b.vendedor === email;
+            if(!esAdmin && !esMio) return;
+            count++;
+            
+            const btnEst = esAdmin ? `<button class="btn-status ${b.estado === 'Activa' ? 'btn-active' : 'btn-pending'}" onclick="toggleEstadoBoleta('${doc.id}', '${b.estado}')">${b.estado.toUpperCase()}</button>` : `<span class="status-${b.estado}">${b.estado.toUpperCase()}</span>`;
+            const btnDel = (esAdmin || esMio) ? `<button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+            
+            html += `
+                <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(0,240,255,0.2); border-radius: 12px; padding: 12px; text-align: left; font-size: 0.7rem; position: relative;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items:center;">
+                        <b style="color:var(--accent); font-size:0.9rem;">N° ${b.n}</b>
+                        <div style="display:flex; gap:5px;">${btnEst}${btnDel}</div>
+                    </div>
+                    <p style="margin: 2px 0;"><b>Comprador:</b> <span style="color:#f1f5f9;">${b.comprador}</span></p>
+                    <p style="margin: 2px 0;"><b>WhatsApp:</b> <span style="color:#f1f5f9;">${b.tel}</span></p>
+                    <p style="margin: 2px 0; font-size:0.55rem; color:#64748b;">${new Date(b.creado).toLocaleString()}</p>
+                </div>
+            `;
+        });
+        html += `</div>`;
+        if(count === 0) html = `<h3 style="margin-top:0; font-size:1rem;">VENTAS DE ${recreadorNombre.toUpperCase()}</h3><p>No tienes permiso o no hay registros.</p>`;
+        
+        document.getElementById('gestion-boletas-render').innerHTML = html;
+        document.getElementById('modal-gestion-boletas').style.display = 'flex';
+    });
 }
 
 function cerrarModalGestion() { document.getElementById('modal-gestion-boletas').style.display = 'none'; }
+function cerrarModal() { document.getElementById('modal-carnet').style.display = 'none'; }
 
-function registrarBoletaEntregada() {
-    const input = document.getElementById('input-boleta-entregada');
-    const valor = input.value.trim();
-    if(!valor) return;
-    const entregadas = currentUserData.boletasEntregadas || [];
-    if(entregadas.includes(valor)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Esta boleta ya está registrada");
-    entregadas.push(valor);
-    db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas }).then(() => {
-        input.value = "";
-        notify("<i class='fa-solid fa-check'></i> Boleta registrada");
-    });
+function toggleEstadoBoleta(id, actual) {
+    const nuevo = actual === 'Activa' ? 'Pendiente' : 'Activa';
+    db.collection("boletas").doc(id).update({ estado: nuevo }).then(() => { cerrarModalGestion(); notify("<i class='fa-solid fa-rotate'></i> Estado actualizado"); });
 }
 
-function eliminarBoletaEntregada(num) {
-    if(auth.currentUser.email !== ADMIN_EMAIL) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Solo el administrador puede borrar boletas físicas");
-    const entregadas = currentUserData.boletasEntregadas.filter(n => n !== num);
-    db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas }).then(() => notify("<i class='fa-solid fa-trash'></i> Eliminada"));
-}
-
-async function eliminarBoletaEntregadaDeOtro(vEmail, num) {
-    if(auth.currentUser.email !== ADMIN_EMAIL) return;
-    if(!confirm("¿Eliminar registro físico de esta boleta?")) return;
-    const uDoc = await db.collection("usuarios").doc(vEmail).get();
-    const list = uDoc.data().boletasEntregadas || [];
-    const nuevaLista = list.filter(n => n !== num);
-    db.collection("usuarios").doc(vEmail).update({ boletasEntregadas: nuevaLista }).then(() => {
-        notify("<i class='fa-solid fa-trash'></i> Registro físico eliminado");
-        cerrarModalGestion();
-    });
-}
-
-function actualizarListaEntregadasVisual(setVendidas = null) {
-    const container = document.getElementById('lista-entregadas-tags');
-    if(!container || !currentUserData) return;
-    container.innerHTML = "";
-    const entregadas = currentUserData.boletasEntregadas || [];
-    const esAdmin = (auth.currentUser.email === ADMIN_EMAIL);
-    
-    entregadas.forEach(num => {
-        let isSold = false;
-        if(setVendidas && setVendidas.has(num.toString())) isSold = true;
-        const colorBg = isSold ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
-        const colorBorder = isSold ? "#10b981" : "#ef4444";
-        
-        const delBtn = esAdmin ? `<span onclick="eliminarBoletaEntregada('${num}')"><i class="fa-solid fa-xmark"></i></span>` : "";
-        container.innerHTML += `<div class="team-mini-badge" style="background:${colorBg}; border: 1px solid ${colorBorder}; color:white;">${num} ${delBtn}</div>`;
-    });
+function eliminarBoleta(id) {
+    if(confirm("¿Eliminar boleta?")) { db.collection("boletas").doc(id).delete().then(() => { cerrarModalGestion(); notify("<i class='fa-solid fa-trash'></i> Boleta eliminada"); }); }
 }
 
 function loadAllUsers() {
-    const email = auth.currentUser.email;
-    const userRango = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData ? currentUserData.rango : "Recreador");
-    const esAdmin = (email === ADMIN_EMAIL);
-    const search = document.getElementById('search-user').value.toLowerCase(), filterColor = document.getElementById('filter-user-color').value;
-
+    const search = document.getElementById('search-user').value.toLowerCase();
+    const filterColor = document.getElementById('filter-user-color').value;
+    const tbody = document.getElementById('lista-usuarios-body');
+    const miRango = (auth.currentUser.email === ADMIN_EMAIL) ? "Administrador" : currentUserData.rango;
+    const esSuperAdmin = (auth.currentUser.email === ADMIN_EMAIL);
+    const esAdmin = (esSuperAdmin || miRango === "Coordinador General");
+    
     db.collection("usuarios").orderBy("creado", "desc").onSnapshot(snap => {
-        const body = document.getElementById('lista-usuarios-body'); body.innerHTML = "";
-        let personalPorEquipo = {};
-        let contadorVisual = 0;
-        let totalUsuariosSistema = 0;
+        tbody.innerHTML = "";
+        let count = 0;
+        let boletasMap = {};
+        
+        db.collection("boletas").get().then(bSnap => {
+            bSnap.forEach(b => {
+                const vendor = b.data().vendedor;
+                boletasMap[vendor] = (boletasMap[vendor] || 0) + 1;
+            });
 
-        snap.forEach(doc => {
-            const u = doc.data(); if(doc.id === ADMIN_EMAIL) return;
-            totalUsuariosSistema++;
-            const eq = u.color || "Gris";
-            const ins = u.inscripcion === "SI" ? "SI" : "NO";
-            
-            if(!personalPorEquipo[eq]) personalPorEquipo[eq] = { total: 0, si: 0, no: 0 };
-            personalPorEquipo[eq].total++;
-            if(ins === "SI") personalPorEquipo[eq].si++; else personalPorEquipo[eq].no++;
+            let resumenEquipos = {};
 
-            const nom = (u.nombre + " " + (u.apellido || "")).toLowerCase();
-            const rango = u.rango || "Recreador";
-            const esRangoAlto = (rango === "Administrador" || rango === "Coordinador General" || rango === "Coordinador");
-            if (!esAdmin && esRangoAlto) return;
-            if((nom.includes(search) || (u.doc && u.doc.includes(search))) && (filterColor === "Todos" || u.color === filterColor)) {
-                contadorVisual++;
-                let colPermisos = "";
-                const esCGeneral = (userRango === "Coordinador General"), esCoordinador = (userRango === "Coordinador");
-                if(esAdmin || esCGeneral || esCoordinador) {
-                    const statusIns = u.inscripcion === "SI" ? "SI" : "NO";
-                    const classIns = u.inscripcion === "SI" ? "btn-approve" : "btn-delete";
-                    const attrClick = (esAdmin || esCGeneral) ? `onclick="toggleInscripcion('${doc.id}', '${statusIns}')"` : `style="cursor:default; opacity:0.8;"`;
-                    colPermisos += `<td><button class="btn-status ${classIns}" ${attrClick}>${statusIns}</button></td>`;
-                }
-                let colAdminOnly = "";
+            snap.forEach(doc => {
+                const u = doc.data();
+                const nomCom = ((u.nombre || "") + " " + (u.apellido || "")).toLowerCase();
+                const col = u.color || "Gris";
+                const r = u.rango || "Recreador";
+                
+                if (filterColor !== "Todos" && col !== filterColor) return;
+                if (search && !nomCom.includes(search) && !(u.doc || "").includes(search)) return;
+
+                if(!resumenEquipos[col]) resumenEquipos[col] = 0;
+                resumenEquipos[col]++;
+
+                count++;
+                const isIns = u.inscripcion === "SI";
+                const insBtn = isIns ? `<button class="btn-status btn-active" onclick="toggleInscripcion('${doc.id}', 'NO')">SI</button>` : `<button class="btn-status btn-pending" onclick="toggleInscripcion('${doc.id}', 'SI')">NO</button>`;
+                
+                let rangoSelect = `<span>${r.toUpperCase()}</span>`;
                 if(esAdmin) {
-                    colAdminOnly = `<td><select class="select-rango" onchange="asignarRango('${doc.id}', this.value)"><option value="" disabled selected>Cambiar</option><option value="Administrador">Admin</option><option value="Coordinador General">C. Gral</option><option value="Coordinador">Coord</option><option value="Recreador">Rec</option></select></td><td><button class="btn-status btn-delete" onclick="eliminarUsuario('${doc.id}')"><i class="fa-solid fa-trash"></i></button></td>`;
+                    rangoSelect = `
+                    <select class="dynamic-colors" style="width:100px; padding:4px; font-size:0.55rem;" onchange="cambiarRango('${doc.id}', this.value)">
+                        <option value="Recreador" ${r==='Recreador'?'selected':''}>Recreador</option>
+                        <option value="Coordinador" ${r==='Coordinador'?'selected':''}>Coordinador</option>
+                        <option value="Coordinador General" ${r==='Coordinador General'?'selected':''}>Coord. General</option>
+                    </select>`;
                 }
-                let btnVer = `<td><button class="btn-status" style="background:rgba(255,255,255,0.1); color:var(--accent); border:1px solid rgba(0,240,255,0.3);" onclick="verCarnet('${doc.id}')"><i class="fa-solid fa-eye"></i></button></td>`;
-                body.innerHTML += `<tr><td style="font-weight:800;">${contadorVisual}</td><td style="font-weight:700; color:white;">${u.nombre}<br><small style="color:#cbd5e1;">${doc.id}</small></td><td><span class="badge-rango">${rango}</span></td><td>${calcularEdad(u.nacimiento)}</td><td>${u.doc || '---'}</td><td>${u.tel || '---'} ${u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" class="wa-quick-btn"><i class="fa-brands fa-whatsapp"></i></a>` : ""}</td><td>${u.color}</td><td style="font-size:0.6rem;">${u.creado ? new Date(u.creado).toLocaleDateString() : '---'}</td>${btnVer}${colPermisos}${colAdminOnly}</tr>`;
+
+                const delBtn = esSuperAdmin ? `<button class="btn-status btn-delete" style="padding: 4px 8px;" onclick="eliminarUsuario('${doc.id}')"><i class="fa-solid fa-trash"></i></button>` : '';
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td style="font-weight:800;">${count}</td>
+                        <td style="font-weight:800; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="verCarnet('${doc.id}')">${(u.nombre + " " + (u.apellido||"")).toUpperCase()}</td>
+                        <td style="font-size:0.55rem; color:#94a3b8;">${r.toUpperCase()}</td>
+                        <td>${calcularEdad(u.nacimiento)}</td>
+                        <td>${u.doc || "---"}</td>
+                        <td>${u.tel || "---"}</td>
+                        <td><span class="team-dot" style="background:${col.toLowerCase()}"></span> ${col}</td>
+                        <td style="font-size:0.55rem;">${new Date(u.creado).toLocaleDateString()}</td>
+                        <td><span class="badge-rango" style="background:rgba(255,255,255,0.05); font-size:0.5rem; border:1px solid rgba(0,240,255,0.2);">V:${boletasMap[doc.id]||0} | E:${(u.boletasEntregadas||[]).length}</span></td>
+                        <td class="col-rango-permiso" style="display:${esAdmin ? 'table-cell' : 'none'};">${insBtn}</td>
+                        <td class="col-rango-admin" style="display:${esAdmin ? 'table-cell' : 'none'};">${rangoSelect}</td>
+                        <td class="col-rango-admin" style="display:${esSuperAdmin ? 'table-cell' : 'none'};">${delBtn}</td>
+                    </tr>`;
+            });
+            document.getElementById('conteo-personal-total').innerText = "Total integrantes: " + count;
+            
+            if(esAdmin) {
+                document.getElementById('resumen-personal-total-admin').innerText = count;
+                let htmlPerE = "<p class='mini-title'>PERSONAL POR EQUIPO</p>";
+                for(let eq in resumenEquipos) {
+                    htmlPerE += `<div class='summary-row'><span>${eq}</span><b>${resumenEquipos[eq]} integrantes</b></div>`;
+                }
+                document.getElementById('resumen-personal-equipos').innerHTML = htmlPerE;
             }
         });
-
-        document.getElementById('conteo-personal-total').innerText = "Total integrantes: " + contadorVisual;
-        
-        if(userRango !== "Recreador") {
-            const resTotalAdmin = document.getElementById('resumen-personal-total-admin');
-            if(resTotalAdmin) resTotalAdmin.innerText = totalUsuariosSistema;
-
-            let htmlPersE = "<p class='mini-title'>EQUIPO (INSCRITOS)</p>";
-            for(let eq in personalPorEquipo) {
-                htmlPersE += `<div class='summary-row'><span>${eq}</span><b>${personalPorEquipo[eq].total} (SI:${personalPorEquipo[eq].si})</b></div>`;
-            }
-            document.getElementById('resumen-personal-equipos').innerHTML = htmlPersE;
-        }
     });
 }
 
-function calcularEdad(fecha) { if(!fecha) return "---"; const hoy = new Date(); const cumple = new Date(fecha); let edad = hoy.getFullYear() - cumple.getFullYear(); const m = hoy.getMonth() - cumple.getMonth(); if (m < 0 || (m === 0 && hoy.getDate() < cumple.getDate())) { edad--; } return edad + " años"; }
-function notify(m) { const c = document.getElementById('toast-container'); const t = document.createElement('div'); t.className = 'toast'; t.innerHTML = m; c.appendChild(t); setTimeout(() => t.remove(), 3000); }
-function toggleAuth(v) { document.getElementById('auth-login').style.display = v === 'reg' ? 'none' : 'flex'; document.getElementById('auth-register').style.display = v === 'reg' ? 'flex' : 'none'; }
-function handleLogin() { auth.signInWithEmailAndPassword(document.getElementById('login-email').value, document.getElementById('login-pass').value).catch(err => notify("<i class='fa-solid fa-circle-exclamation'></i> " + err.message)); }
-function handleLogout() { auth.signOut().then(() => location.reload()); }
-function guardarPerfil() { const d = document.getElementById('edit-doc').value, t = document.getElementById('edit-tel').value, c = document.getElementById('edit-color').value, n = document.getElementById('edit-nacimiento').value; if(!d || !t || !n) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Completa todos los campos"); db.collection("usuarios").doc(auth.currentUser.email).update({ doc: d, tel: t, color: c, nacimiento: n }).then(() => notify("<i class='fa-solid fa-check'></i> Datos guardados")); }
-function toggleInscripcion(email, estadoActual) { const nuevoEstado = estadoActual === "SI" ? "NO" : "SI"; db.collection("usuarios").doc(email).update({ inscripcion: nuevoEstado }).then(() => notify("<i class='fa-solid fa-pen-to-square'></i> Inscripción: " + nuevoEstado)); }
-function asignarRango(email, nuevoRango) { db.collection("usuarios").doc(email).update({ rango: nuevoRango }).then(() => notify("<i class='fa-solid fa-medal'></i> Rango actualizado")); }
-function cambiarEstado(id, nuevoEstado) { db.collection("boletas").doc(id).update({ estado: nuevoEstado }).then(() => notify("<i class='fa-solid fa-check'></i> Estado actualizado")); }
-function eliminarBoleta(id) { if(confirm("¿Eliminar boleta?")) db.collection("boletas").doc(id).delete().then(() => notify("<i class='fa-solid fa-trash'></i> Eliminada")); }
-function eliminarUsuario(email) { if(confirm("¿Eliminar usuario?")) db.collection("usuarios").doc(email).delete().then(() => notify("<i class='fa-solid fa-trash'></i> Usuario eliminado")); }
-function cerrarModal() { document.getElementById('modal-carnet').style.display = 'none'; }
-function inscribirBoleta() {
-    const r = document.getElementById('ins-rec-nom').value, n = document.getElementById('ins-n-boleta').value, c = document.getElementById('ins-com-nom').value, t = document.getElementById('ins-com-tel').value;
-    if(!n || !c) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Datos incompletos");
-    db.collection("boletas").add({ recreador: r, n: n, c: c, t: t, vendedor: auth.currentUser.email, estado: 'Pendiente', creado: Date.now() }).then(() => { notify("<i class='fa-solid fa-ticket'></i> Registrada"); ['ins-rec-nom','ins-n-boleta','ins-com-nom','ins-com-tel'].forEach(id => document.getElementById(id).value=""); });
-}
-function publicarComunicado() { 
-    const t = document.getElementById('com-titulo').value, m = document.getElementById('com-mensaje').value, f = document.getElementById('com-fecha-ev').value, h = document.getElementById('com-hora-ev').value, l = document.getElementById('com-lugar-ev').value, ld = document.getElementById('com-link-doc').value;
-    const checkboxes = document.querySelectorAll('input[name="dest-color"]:checked');
-    const coloresSeleccionados = Array.from(checkboxes).map(cb => cb.value);
-    if(!t || !m) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Título y mensaje obligatorios");
-    db.collection("comunicados").add({ titulo: t, mensaje: m, destinatarios: coloresSeleccionados, fechaEv: f || null, horaEv: h || null, lugarEv: l || null, linkDoc: ld || null, fecha: Date.now() }).then(() => { ['com-titulo','com-mensaje','com-fecha-ev','com-hora-ev','com-lugar-ev','com-link-doc'].forEach(id => document.getElementById(id).value=""); notify("<i class='fa-solid fa-bullhorn'></i> Publicado"); }); 
+function cambiarRango(email, nuevoRango) {
+    db.collection("usuarios").doc(email).update({ rango: nuevoRango }).then(() => notify("<i class='fa-solid fa-check'></i> Rango actualizado"));
 }
 
-async function verCarnet(email) {
-    const docUser = await db.collection("usuarios").doc(email).get();
-    const u = docUser.data();
-    const snapBoletas = await db.collection("boletas").where("vendedor", "==", email).get();
-    let activas = 0, pendientes = 0;
-    const setVendidas = new Set();
-    snapBoletas.forEach(b => { 
-        const bd = b.data();
-        if(bd.estado === 'Activa') activas++; else if(bd.estado === 'Pendiente') pendientes++; 
-        if(bd.n) setVendidas.add(bd.n.toString());
-    });
+function toggleInscripcion(email, estado) {
+    db.collection("usuarios").doc(email).update({ inscripcion: estado }).then(() => notify("<i class='fa-solid fa-check'></i> Inscripción actualizada"));
+}
 
-    const entregadas = u.boletasEntregadas || [];
-    const esAdmin = (auth.currentUser.email === ADMIN_EMAIL);
-    let tagsEntregadasHtml = "";
-    entregadas.forEach(num => {
-        const isSold = setVendidas.has(num.toString());
-        const colorBg = isSold ? "rgba(16, 185, 129, 0.2)" : "rgba(239, 68, 68, 0.2)";
-        const colorBorder = isSold ? "#10b981" : "#ef4444";
-        const delBtn = esAdmin ? `<span onclick="eliminarBoletaEntregadaDeOtro('${email}', '${num}')" style="margin-left:3px; cursor:pointer;"><i class="fa-solid fa-xmark"></i></span>` : "";
-        tagsEntregadasHtml += `<div class="team-mini-badge" style="background:${colorBg}; border: 1px solid ${colorBorder}; font-size: 0.45rem; color:white;">${num}${delBtn}</div>`;
-    });
+function eliminarUsuario(email) {
+    if(confirm("¿Eliminar usuario por completo? Esto no borra sus ventas, pero le quita el acceso.")) {
+        db.collection("usuarios").doc(email).delete().then(() => notify("<i class='fa-solid fa-trash'></i> Usuario eliminado de la BD"));
+    }
+}
 
-    const lastLoginStr = u.lastLogin ? new Date(u.lastLogin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "---";
-    const render = document.getElementById('carnet-detalle-render');
-    render.innerHTML = `
-        <div class="id-card-mini" style="margin-bottom:0;">
-            <div class="avatar-circle">${u.nombre ? u.nombre[0] : "S"}</div>
-            <h3>${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</h3>
-            <p class="badge-rango-perfil">${(u.rango || "Recreador").toUpperCase()}</p>
-            <div class="id-card-details">
-                <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color || "---").toUpperCase()}</span></div>
-                <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc || "---"}</span></div>
-                <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel || "---"}</span></div>
-                <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
-                <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">ÚLTIMA CONEXIÓN</span><span class="detail-value">${lastLoginStr}</span></div>
-                
-                <div class="id-detail-item" style="grid-column: span 2; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 15px; margin-top: 5px; border: 1px solid rgba(0,240,255,0.1);">
-                    <span class="detail-label" style="margin-bottom:5px;">BOLETAS ENTREGADAS</span>
-                    <div class="teams-flex-container" style="justify-content:center;">${tagsEntregadasHtml || '<span style="font-size:0.5rem; opacity:0.5;">NINGUNA</span>'}</div>
+function verCarnet(email) {
+    db.collection("usuarios").doc(email).get().then(doc => {
+        const u = doc.data();
+        document.getElementById('carnet-detalle-render').innerHTML = `
+            <div class="id-card-mini" style="margin-bottom:0; background:transparent; border:none; box-shadow:none;">
+                <div class="avatar-circle">${u.nombre ? u.nombre[0] : 'S'}</div>
+                <h3>${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</h3>
+                <p class="badge-rango-perfil">${(u.rango || 'RECREADOR').toUpperCase()}</p>
+                <div class="id-card-details">
+                    <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color||'---').toUpperCase()}</span></div>
+                    <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc||'---'}</span></div>
+                    <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel||'---'}</span></div>
+                    <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
                 </div>
-
-                <div class="id-detail-item" style="grid-column: span 2; background: rgba(255,255,255,0.05); padding: 10px; border-radius: 10px; margin-top: 10px; display: flex; flex-direction: row; justify-content: space-around; text-align: center; border: 1px solid rgba(0,240,255,0.1);">
-                    <div><span class="detail-label">ACTIVAS</span><br><span class="detail-value" style="color:#10b981; font-size:1.2rem; text-shadow:0 0 5px rgba(16,185,129,0.5);">${activas}</span></div>
-                    <div><span class="detail-label">PENDIENTES</span><br><span class="detail-value" style="color:#f59e0b; font-size:1.2rem; text-shadow:0 0 5px rgba(245,158,11,0.5);">${pendientes}</span></div>
-                </div>
+                <p class="card-brand-footer" style="margin-top:30px;">LOGISTICA & EVENTOS<br><span style="font-size:0.4rem; color:#64748b; font-weight:400; letter-spacing:0;">${email}</span></p>
             </div>
-            <p class="card-brand-footer">LOGISTICA & EVENTOS</p>
-        </div>`;
-    document.getElementById('modal-carnet').style.display = 'flex';
+        `;
+        document.getElementById('modal-carnet').style.display = 'flex';
+    });
 }
 
 function eliminarPersonalPorCodigoInvitacion() {
-    const codigo = document.getElementById('del-invite-code').value.trim();
-    if (!codigo) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa un código de invitación");
-    if (!confirm(`¿Seguro que deseas eliminar TODOS los usuarios registrados con el código "${codigo}"? Esta acción no se puede deshacer.`)) return;
-    
-    db.collection("usuarios").where("codigoUsado", "==", codigo).get().then(snap => {
-        if (snap.empty) return notify("No se encontraron usuarios con ese código");
-        let batch = db.batch();
-        let count = 0;
-        snap.forEach(doc => { 
-            if (doc.id !== ADMIN_EMAIL) { 
-                batch.delete(doc.ref); 
-                count++; 
-            } 
-        });
-        batch.commit().then(() => { 
-            notify(`<i class="fa-solid fa-trash"></i> Se eliminaron ${count} registros de personal`); 
-            document.getElementById('del-invite-code').value = ""; 
-        });
-    }).catch(err => notify("Error: " + err.message));
+    const cod = document.getElementById('del-invite-code').value.trim();
+    if(!cod) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa el código de invitación a eliminar");
+    if(!confirm(`⚠️ ATENCIÓN: Se eliminará todo el personal que se haya registrado utilizando el código "${cod}". ¿Proceder?`)) return;
+
+    db.collection("usuarios").where("codigoUsado", "==", cod).get().then(snap => {
+        if(snap.empty) return notify("No se encontró personal con este código.");
+        const batch = db.batch();
+        let cuenta = 0;
+        snap.forEach(doc => { batch.delete(doc.ref); cuenta++; });
+        batch.commit().then(() => {
+            document.getElementById('del-invite-code').value = "";
+            notify(`<i class='fa-solid fa-trash'></i> ${cuenta} usuarios eliminados`);
+        }).catch(err => notify("Error: " + err.message));
+    });
 }
 
 function eliminarBoletasPorRango() {
-    const inicio = document.getElementById('del-bol-inicio').value;
+    const ini = document.getElementById('del-bol-inicio').value;
     const fin = document.getElementById('del-bol-fin').value;
-    if (!inicio || !fin) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Selecciona ambas fechas");
-    const tsInicio = new Date(inicio + "T00:00:00").getTime();
-    const tsFin = new Date(fin + "T23:59:59").getTime();
-    if (!confirm(`¿Seguro que deseas eliminar TODAS las boletas registradas entre ${inicio} y ${fin}? Esta acción es permanente.`)) return;
-    db.collection("boletas").where("creado", ">=", tsInicio).where("creado", "<=", tsFin).get().then(snap => {
-        if (snap.empty) return notify("No se encontraron boletas en ese rango");
-        let batch = db.batch();
-        let count = 0;
-        snap.forEach(doc => { batch.delete(doc.ref); count++; });
-        batch.commit().then(() => { notify(`<i class="fa-solid fa-trash"></i> Se eliminaron ${count} registros de boletas`); document.getElementById('del-bol-inicio').value = ""; document.getElementById('del-bol-fin').value = ""; });
-    }).catch(err => notify("Error: " + err.message));
+    if(!ini || !fin) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Selecciona ambas fechas");
+    
+    const dIni = new Date(ini + "T00:00:00").getTime();
+    const dFin = new Date(fin + "T23:59:59").getTime();
+
+    if(dIni > dFin) return notify("<i class='fa-solid fa-triangle-exclamation'></i> La fecha inicial debe ser menor");
+    if(!confirm(`⚠️ ATENCIÓN: Eliminarás TODAS las boletas creadas entre ${ini} y ${fin}. Esto es irreversible. ¿Confirmar?`)) return;
+
+    db.collection("boletas").where("creado", ">=", dIni).where("creado", "<=", dFin).get().then(snap => {
+        if(snap.empty) return notify("No hay boletas en ese rango");
+        const batch = db.batch();
+        let cuenta = 0;
+        snap.forEach(doc => { batch.delete(doc.ref); cuenta++; });
+        batch.commit().then(() => {
+            document.getElementById('del-bol-inicio').value = ""; document.getElementById('del-bol-fin').value = "";
+            notify(`<i class='fa-solid fa-trash'></i> ${cuenta} boletas eliminadas`);
+        }).catch(err => notify("Error: " + err.message));
+    });
 }
 
 function exportarPersonalExcel() {
-    const search = document.getElementById('search-user').value.toLowerCase(), filterColor = document.getElementById('filter-user-color').value;
-    db.collection("usuarios").get().then(snap => {
-        const rows = [["N°", "NOMBRE", "APELLIDO", "RANGO", "EDAD", "CORREO", "DOC", "TEL", "EQUIPO", "INSCRIPCION"]];
-        let exportContador = 0;
-        snap.forEach(doc => { 
-            const u = doc.data(); if(doc.id === ADMIN_EMAIL) return; 
-            const nom = (u.nombre + " " + (u.apellido || "")).toLowerCase();
-            if((nom.includes(search) || (u.doc && u.doc.includes(search))) && (filterColor === "Todos" || u.color === filterColor)) {
-                exportContador++;
-                rows.push([exportContador, u.nombre, u.apellido || "", u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
+    db.collection("usuarios").orderBy("creado", "desc").get().then(snap => {
+        const rows = [["ITEM", "NOMBRES", "RANGO", "EDAD", "CORREO", "DOCUMENTO", "WHATSAPP", "EQUIPO", "INSCRITO"]];
+        let c = 0;
+        snap.forEach(doc => {
+            const u = doc.data();
+            const filterColor = document.getElementById('filter-user-color').value;
+            if(filterColor === "Todos" || u.color === filterColor) {
+                c++; rows.push([c, (u.nombre + " " + (u.apellido||"")).toUpperCase(), u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
             }
         });
         const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Personal"); XLSX.writeFile(wb, "Reporte_Personal.xlsx");
@@ -693,7 +748,7 @@ function exportarVentasExcel() {
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
             exportContador++;
-            rows.push([exportContador, b.n, col, b.recreador || '---', b.c || '---', b.t || '---', b.estado, new Date(b.creado).toLocaleString()]);
+            rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.comprador.toUpperCase(), b.tel, b.estado.toUpperCase(), new Date(b.creado).toLocaleDateString()]);
         });
         const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Ventas"); XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
     });
