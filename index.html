@@ -37,7 +37,7 @@
                 <input type="email" id="login-email" placeholder="Correo">
                 <input type="password" id="login-pass" placeholder="Contraseña">
                 <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
-                <p class="toggle-text" style="color:#94a3b8;">¿Nuevo? <a href="#" onclick="toggleAuth('reg')" style="color:var(--accent);">Crear cuenta</a></p>
+                <p class="toggle-text" style="color:#94a3b8; text-align: center; margin-top: 10px;">¿Nuevo? <a href="#" onclick="toggleAuth('reg')" style="color:var(--accent);">Crear cuenta</a></p>
             </div>
             <div id="auth-register" class="form-group" style="display:none;">
                 <input type="text" id="reg-nombre" placeholder="Nombre">
@@ -49,7 +49,7 @@
                 </select>
                 <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
                 <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
-                <p class="toggle-text" style="color:#94a3b8;"><a href="#" onclick="toggleAuth('login')" style="color:var(--accent);">Volver</a></p>
+                <p class="toggle-text" style="color:#94a3b8; text-align: center; margin-top: 10px;"><a href="#" onclick="toggleAuth('login')" style="color:var(--accent);">Volver</a></p>
             </div>
         </div>
 
@@ -99,18 +99,18 @@
                 <section id="sec-boletas-list" class="section-content">
                     <div id="container-buscador-global" class="form-group" style="display: none; margin-bottom: 20px; border: 1px solid var(--accent); padding: 15px; border-radius: 20px; background: rgba(0, 240, 255, 0.05);">
                         <p class="label-hint" style="text-align: center; color: var(--accent); font-weight: 900;">BUSCADOR GLOBAL DE BOLETA (PREMIOS)</p>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; justify-content: center;">
                             <input type="text" id="search-n-boleta" placeholder="Ingresa N° de Boleta" style="flex-grow: 1;">
-                            <button class="btn-mini" style="width: 80px !important;" onclick="buscarDuenioBoleta()">BUSCAR</button>
+                            <button class="btn-mini" style="width: max-content;" onclick="buscarDuenioBoleta()">BUSCAR</button>
                         </div>
                         <div id="resultado-busqueda-boleta" style="margin-top: 10px; display: none;"></div>
                     </div>
 
-                    <div class="form-group" style="margin-bottom: 20px; border: 1px solid rgba(0,240,255,0.2); padding: 15px; border-radius: 20px; background: rgba(30, 41, 59, 0.5);">
+                    <div id="panel-boletas-entregadas" class="form-group" style="margin-bottom: 20px; border: 1px solid rgba(0,240,255,0.2); padding: 15px; border-radius: 20px; background: rgba(30, 41, 59, 0.5);">
                         <p class="label-hint" style="text-align: center;">REGISTRAR BOLETAS ENTREGADAS (FÍSICAS)</p>
-                        <div style="display: flex; gap: 8px;">
+                        <div style="display: flex; gap: 8px; justify-content: center;">
                             <input type="text" id="input-boleta-entregada" placeholder="N° Boleta" style="flex-grow: 1;">
-                            <button class="btn-mini btn-add" style="width: 50px !important;" onclick="registrarBoletaEntregada()"><i class="fa-solid fa-plus"></i></button>
+                            <button class="btn-mini btn-add" style="width: max-content;" onclick="registrarBoletaEntregada()"><i class="fa-solid fa-plus"></i></button>
                         </div>
                         <div id="lista-entregadas-tags" class="teams-flex-container" style="margin-top: 10px;"></div>
                     </div>
@@ -125,7 +125,9 @@
                             <option value="Pendiente">Pendiente</option>
                         </select>
                     </div>
+
                     <button id="btn-rep-ventas" class="btn-excel" style="display:none;" onclick="exportarVentasExcel()">REPORTE VENTAS (EXCEL)</button>
+
                     <div class="table-container">
                         <table>
                             <thead>
@@ -158,126 +160,111 @@
                             <div class="id-detail-item"><span class="detail-label">EDAD</span><span id="p-edad-view" class="detail-value">---</span></div>
                             <div class="id-detail-item"><span class="detail-label">ÚLTIMA CONEXIÓN</span><span id="p-conexion-view" class="detail-value">---</span></div>
                         </div>
-                        <p class="card-brand-footer">LOGISTICA & EVENTOS</p>
+                        <div class="card-brand-footer">SENTINELS WEB ID</div>
                     </div>
-                    <div id="perfil-edit-form" class="form-group">
-                        <p style="font-size: 0.55rem; color: #ef4444; font-weight: 800; margin-bottom: 5px; text-align: center;"><i class="fa-solid fa-triangle-exclamation"></i> LOS DATOS SE GUARDAN UNA SOLA VEZ</p>
-                        <label class="label-hint">DOCUMENTO:</label>
-                        <input type="text" id="edit-doc" placeholder="Número ID">
-                        <label class="label-hint">WHATSAPP:</label>
-                        <input type="text" id="edit-tel" placeholder="Número personal">
-                        <label class="label-hint">COLOR DE EQUIPO:</label>
-                        <select id="edit-color" class="dynamic-colors">
-                            <option value="" disabled selected>Selecciona tu equipo</option>
-                        </select>
-                        <label class="label-hint">FECHA DE NACIMIENTO:</label>
+                    <div id="perfil-edit-form" class="form-group" style="display:none; margin-top:15px;">
+                        <input type="number" id="edit-doc" placeholder="Documento de Identidad">
+                        <input type="tel" id="edit-tel" placeholder="WhatsApp">
                         <input type="date" id="edit-nacimiento">
-                        <button id="btn-guardar-perfil" class="btn-primary" onclick="guardarPerfil()">GUARDAR DATOS PERMANENTES</button>
+                        <select id="edit-color" class="dynamic-colors">
+                            <option value="Verde">Verde</option>
+                            <option value="Naranja">Naranja</option>
+                            <option value="Morado">Morado</option>
+                            <option value="Azul">Azul</option>
+                        </select>
+                        <button class="btn-primary" onclick="guardarPerfil()">GUARDAR DATOS</button>
                     </div>
                 </section>
 
                 <section id="sec-usuarios-adm" class="section-content">
                     <div class="filter-bar">
-                        <input type="text" id="search-user" placeholder="Buscar..." oninput="debounceLoadAllUsers()" style="flex:2;">
-                        <select id="filter-user-color" onchange="loadAllUsers()" class="dynamic-colors" style="flex:1;">
-                            <option value="Todos">Equipos</option>
+                        <input type="text" id="search-user" placeholder="Buscar por Nombre/Cédula..." oninput="listenUsuariosAdm()">
+                        <select id="filter-user-color" class="dynamic-colors" onchange="listenUsuariosAdm()">
+                            <option value="Todos">Todos los Equipos</option>
                         </select>
                     </div>
-                    <button id="btn-rep-personal" class="btn-excel" style="border-color:#6366f1; color:#6366f1; display:none;" onclick="exportarPersonalExcel()">REPORTE PERSONAL (EXCEL)</button>
-                    <div class="table-container">
-                        <table>
+                    <button id="btn-rep-personal" class="btn-excel" style="display:none;" onclick="exportarPersonalExcel()">REPORTE PERSONAL (EXCEL)</button>
+                    <div class="table-container" style="overflow-x: auto;">
+                        <table style="min-width: 850px;">
                             <thead>
                                 <tr>
-                                    <th>N°</th>
-                                    <th>Integrante</th>
                                     <th>Rango</th>
+                                    <th>Nombre y Apellido</th>
                                     <th>Edad</th>
                                     <th>Documento</th>
-                                    <th>Celular</th>
+                                    <th>WhatsApp</th>
                                     <th>Equipo</th>
                                     <th>Registro</th>
-                                    <th>Acción</th>
-                                    <th class="col-rango-permiso" style="display:none;">Inscripción</th>
-                                    <th class="col-rango-admin" style="display:none;">Asignar</th>
-                                    <th class="col-rango-admin" style="display:none;">Acción</th>
+                                    <th class="col-rango-permiso">Inscripción</th>
+                                    <th class="col-rango-admin">Cambiar Rango</th>
+                                    <th class="col-rango-admin">Eliminar</th>
                                 </tr>
                             </thead>
                             <tbody id="lista-usuarios-body"></tbody>
                         </table>
                     </div>
-                    <div id="conteo-personal-total" class="total-count-display">Total integrantes: 0</div>
+                    <div id="conteo-personal-total" class="total-count-display">Total personal: 0</div>
                 </section>
 
                 <section id="sec-administracion" class="section-content">
-                    <div class="admin-grid-container">
-                        <div class="admin-card stats-main">
-                            <div class="stat-item">
-                                <span class="stat-val" id="resumen-personal-total-admin">0</span>
-                                <span class="stat-lab">PERSONAL</span>
-                            </div>
-                            <div class="stat-item">
-                                <span class="stat-val" id="resumen-boletas-total">0</span>
-                                <span class="stat-lab">BOLETAS</span>
-                            </div>
-                        </div>
-
-                        <div class="admin-card">
-                            <p class="admin-card-title">ESTADO DE VENTAS</p>
-                            <div class="status-pill-container">
-                                <div class="status-pill pill-active">
-                                    <span class="pill-dot"></span> Activas: <b id="resumen-boletas-activas">0</b>
+                    <div class="grid-admin">
+                        
+                        <div class="admin-card full-width" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
+                            <p class="admin-card-title" style="color: #10b981; text-align: center;"><i class="fa-solid fa-chart-pie"></i> RESUMEN GENERAL</p>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center;">
+                                <div style="background: rgba(0,0,0,0.3); padding: 15px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <p style="margin: 0; font-size: 0.55rem; color: #cbd5e1; font-weight: 800; letter-spacing: 1px;">PERSONAL REGISTRADO</p>
+                                    <h2 id="admin-tot-personal" style="margin: 5px 0 0 0; color: white; font-size: 1.8rem;">0</h2>
                                 </div>
-                                <div class="status-pill pill-pending">
-                                    <span class="pill-dot"></span> Pendientes: <b id="resumen-boletas-pendientes">0</b>
+                                <div style="background: rgba(0,0,0,0.3); padding: 15px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+                                    <p style="margin: 0; font-size: 0.55rem; color: #cbd5e1; font-weight: 800; letter-spacing: 1px;">BOLETAS VENDIDAS</p>
+                                    <h2 id="admin-tot-boletas" style="margin: 5px 0 0 0; color: white; font-size: 1.8rem;">0</h2>
+                                    <p style="margin: 5px 0 0 0; font-size: 0.55rem; color: #94a3b8; font-weight: 800;">
+                                        <span style="color:#10b981;" id="admin-tot-activas">0</span> Activas | 
+                                        <span style="color:#f59e0b;" id="admin-tot-pendientes">0</span> Pendientes
+                                    </p>
                                 </div>
                             </div>
                         </div>
 
-                        <div class="admin-card">
-                            <p class="admin-card-title">GESTIÓN DE CÓDIGOS</p>
-                            <div id="admin-edit-panel-code" style="display:none;">
-                                <div style="display: flex; gap: 5px; margin-bottom: 8px;">
-                                    <input type="text" id="new-invite-code" placeholder="Nuevo Código" class="mini-input" style="margin-bottom:0;">
-                                    <button class="btn-mini btn-add" style="width:35px !important;" onclick="agregarCodigoInvitacion()"><i class="fa-solid fa-plus"></i></button>
+                        <div id="admin-edit-panel-code" class="admin-card">
+                            <p class="admin-card-title">CÓDIGOS DE ACCESO (REGISTRO)</p>
+                            <div class="form-group">
+                                <div style="display: flex; gap: 5px; justify-content: center;">
+                                    <input type="text" id="new-invite-code" placeholder="Nuevo Código" style="flex-grow: 1;">
+                                    <button class="btn-mini btn-add" onclick="actualizarCodigoInvitacion()"><i class="fa-solid fa-plus"></i></button>
                                 </div>
+                                <div id="admin-invite-codes-list" class="teams-flex-container"></div>
                             </div>
-                            <div id="admin-invite-codes-list" class="teams-flex-container"></div>
+                        </div>
+                        
+                        <div id="admin-delete-staff-code-panel" class="admin-card" style="display: none;">
+                            <p class="admin-card-title" style="color: #ef4444;"><i class="fa-solid fa-users-slash"></i> ELIMINAR PERSONAL POR CÓDIGO</p>
+                            <div class="form-group">
+                                <select id="del-staff-code-select" style="background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: white;">
+                                    <option value="" disabled selected>Selecciona un código</option>
+                                </select>
+                                <button class="btn-mini btn-delete" onclick="eliminarPersonalPorCodigo()">ELIMINAR USUARIOS CON ESTE CÓDIGO</button>
+                                <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* ESTO BORRARÁ DEFINITIVAMENTE AL PERSONAL QUE SE INSCRIBIÓ USANDO EL CÓDIGO SELECCIONADO.</p>
+                            </div>
                         </div>
 
-                        <div class="admin-card">
-                            <p class="admin-card-title">GESTIÓN DE EQUIPOS</p>
-                            <div id="admin-edit-panel-teams" style="display:none;">
-                                <div class="add-team-row">
-                                    <input type="text" id="new-team-name" placeholder="Nombre equipo">
-                                    <button class="btn-mini btn-add" onclick="agregarEquipo()"><i class="fa-solid fa-plus"></i></button>
+                        <div id="admin-delete-range-panel" class="admin-card" style="display: none;">
+                            <p class="admin-card-title" style="color: #ef4444;"><i class="fa-solid fa-calendar-xmark"></i> LIMPIAR BOLETAS POR FECHA</p>
+                            <div class="form-group" style="display: flex; flex-direction: column; gap: 10px;">
+                                <div style="display: flex; gap: 5px;">
+                                    <div style="flex:1;">
+                                        <label class="label-hint">DESDE:</label>
+                                        <input type="date" id="del-bol-inicio" class="mini-input" style="width: 100%; box-sizing: border-box;">
+                                    </div>
+                                    <div style="flex:1;">
+                                        <label class="label-hint">HASTA:</label>
+                                        <input type="date" id="del-bol-fin" class="mini-input" style="width: 100%; box-sizing: border-box;">
+                                    </div>
                                 </div>
+                                <button class="btn-mini btn-delete" onclick="eliminarBoletasPorRango()">ELIMINAR BOLETAS EN ESTE RANGO</button>
+                                <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; text-align: center; margin: 0;">* LAS BOLETAS YA JUGADAS SE BORRARÁN PERMANENTEMENTE</p>
                             </div>
-                            <div id="admin-teams-list" class="teams-flex-container"></div>
-                        </div>
-
-                        <div class="admin-card full-width" id="admin-delete-range-panel" style="display:none;">
-                            <p class="admin-card-title">ELIMINAR PERSONAL POR CÓDIGO DE INVITACIÓN</p>
-                            <div style="display: flex; gap: 8px;">
-                                <input type="text" id="del-invite-code" placeholder="Ej: COO001" class="mini-input" style="flex-grow: 1; margin-bottom: 0;">
-                                <button class="btn-mini btn-delete" style="width: auto; padding: 0 15px;" onclick="eliminarPersonalPorCodigoInvitacion()">ELIMINAR</button>
-                            </div>
-                            <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* SE ELIMINARÁ EL PERSONAL REGISTRADO CON ESTE CÓDIGO</p>
-                        </div>
-
-                        <div class="admin-card full-width" id="admin-delete-boletas-panel" style="display:none;">
-                            <p class="admin-card-title">ELIMINAR BOLETAS POR RANGO DE FECHA</p>
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                                <div>
-                                    <label class="label-hint">DESDE:</label>
-                                    <input type="date" id="del-bol-inicio" class="mini-input">
-                                </div>
-                                <div>
-                                    <label class="label-hint">HASTA:</label>
-                                    <input type="date" id="del-bol-fin" class="mini-input">
-                                </div>
-                            </div>
-                            <button class="btn-mini btn-delete" style="margin-top:10px; padding:10px;" onclick="eliminarBoletasPorRango()">ELIMINAR BOLETAS EN ESTE RANGO</button>
-                            <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* LAS BOLETAS YA JUGADAS SE BORRARÁN PERMANENTEMENTE</p>
                         </div>
 
                         <div class="admin-card full-width">

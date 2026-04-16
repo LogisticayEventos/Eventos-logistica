@@ -13,10 +13,12 @@ const auth = firebase.auth();
 const ADMIN_EMAIL = "franboy1221@gmail.com";
 
 let currentUserData = null;
-let listadoCodigosInvitacion = [];
+let currentInviteCode = "CARGANDO...";
+let listadoCodigos = [];
 let listadoEquipos = [];
+let sesionIniciada = false;
 
-// AQUÍ SE AGREGÓ LA VARIABLE PARA EL RETRASO (DEBOUNCE)
+// Variable para el Debounce (Antirrebote) de búsqueda
 let timerBusquedaPersonal;
 
 auth.onAuthStateChanged(user => {
@@ -24,28 +26,20 @@ auth.onAuthStateChanged(user => {
         document.getElementById('view-auth').style.display = 'none';
         document.getElementById('view-home').style.display = 'flex';
         db.collection("usuarios").doc(user.email).update({ lastLogin: Date.now() }).catch(() => {});
+        sesionIniciada = false; 
         loadUser();
     } else {
         document.getElementById('view-auth').style.display = 'block';
         document.getElementById('view-home').style.display = 'none';
-        listenInviteCodes();
+        listenInviteCode();
         listenEquipos();
     }
 });
-
-// ESTA ES LA FUNCIÓN NUEVA QUE EVITA EL CONGELAMIENTO
-function debounceLoadAllUsers() {
-    clearTimeout(timerBusquedaPersonal);
-    timerBusquedaPersonal = setTimeout(() => {
-        loadAllUsers();
-    }, 500); // Espera 500 milisegundos para buscar todo
-}
 
 function listenEquipos() {
     db.collection("configuracion").doc("equipos").onSnapshot(doc => {
         listadoEquipos = doc.exists ? doc.data().lista : ["Verde", "Naranja", "Morado", "Azul"];
         actualizarDesplegablesEquipos();
-        actualizarPanelAdminEquipos();
     });
 }
 
@@ -72,70 +66,66 @@ function actualizarDesplegablesEquipos() {
     }
 }
 
-function actualizarPanelAdminEquipos() {
-    const listDiv = document.getElementById('admin-teams-list');
-    if(!listDiv) return;
-    listDiv.innerHTML = "";
-    listadoEquipos.forEach(col => {
-        listDiv.innerHTML += `<div class="team-mini-badge">${col} <span onclick="eliminarEquipo('${col}')"><i class="fa-solid fa-xmark"></i></span></div>`;
-    });
-}
-
-function agregarEquipo() {
-    const input = document.getElementById('new-team-name');
-    const valor = input.value.trim();
-    if(!valor) return;
-    if(listadoEquipos.includes(valor)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> El equipo ya existe");
-    const nuevaLista = [...listadoEquipos, valor];
-    db.collection("configuracion").doc("equipos").set({ lista: nuevaLista }).then(() => { input.value = ""; notify("<i class='fa-solid fa-check'></i> Equipo añadido"); });
-}
-
-function eliminarEquipo(col) {
-    if(!confirm(`¿Eliminar el equipo ${col}?`)) return;
-    const nuevaLista = listadoEquipos.filter(c => c !== col);
-    db.collection("configuracion").doc("equipos").set({ lista: nuevaLista }).then(() => notify("<i class='fa-solid fa-trash'></i> Equipo eliminado"));
-}
-
-function listenInviteCodes() {
+function listenInviteCode() {
     db.collection("configuracion").doc("seguridad").onSnapshot(doc => {
-        listadoCodigosInvitacion = (doc.exists && doc.data().listaCodigos) ? doc.data().listaCodigos : ["LOGISTICA001"];
-        actualizarPanelAdminCodigos();
+        if (doc.exists) {
+            const data = doc.data();
+            listadoCodigos = data.listaCodigos ? data.listaCodigos : (data.codigoInvitacion ? [data.codigoInvitacion] : ["LOGISTICA001"]);
+            currentInviteCode = listadoCodigos[listadoCodigos.length - 1]; 
+            actualizarPanelCodigosMultiples();
+        } else {
+            currentInviteCode = "LOGISTICA001";
+            listadoCodigos = ["LOGISTICA001"];
+        }
     });
 }
 
-function actualizarPanelAdminCodigos() {
+function actualizarPanelCodigosMultiples() {
     const listDiv = document.getElementById('admin-invite-codes-list');
-    if(!listDiv) return;
-    listDiv.innerHTML = "";
-    listadoCodigosInvitacion.forEach(cod => {
-        listDiv.innerHTML += `<div class="team-mini-badge" style="background:rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color:#fcd34d;">${cod} <span onclick="eliminarCodigoInvitacion('${cod}')"><i class="fa-solid fa-xmark"></i></span></div>`;
-    });
+    if(listDiv) {
+        listDiv.innerHTML = "";
+        listadoCodigos.forEach(cod => {
+            listDiv.innerHTML += `<div class="team-mini-badge" style="background:rgba(245, 158, 11, 0.2); border: 1px solid #f59e0b; color:#fcd34d;">${cod} <span onclick="eliminarCodigoInvitacion('${cod}')"><i class="fa-solid fa-xmark"></i></span></div>`;
+        });
+    }
+
+    const delSelect = document.getElementById('del-staff-code-select');
+    if (delSelect) {
+        delSelect.innerHTML = `<option value="" disabled selected>Selecciona un código</option>`;
+        listadoCodigos.forEach(cod => {
+            delSelect.innerHTML += `<option value="${cod}">${cod}</option>`;
+        });
+    }
 }
 
 function agregarCodigoInvitacion() {
     const input = document.getElementById('new-invite-code');
     const nuevoCodigo = input.value.trim();
-    if(nuevoCodigo.length < 4) return notify("<i class='fa-solid fa-triangle-exclamation'></i> El código debe ser más largo");
-    if(listadoCodigosInvitacion.includes(nuevoCodigo)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> El código ya existe");
+    if(nuevoCodigo.length < 4) return notify("⚠️ El código debe ser más largo");
+    if(listadoCodigos.includes(nuevoCodigo)) return notify("⚠️ El código ya existe");
     
-    const nuevaLista = [...listadoCodigosInvitacion, nuevoCodigo];
+    const nuevaLista = [...listadoCodigos, nuevoCodigo];
     db.collection("configuracion").doc("seguridad").set({
         listaCodigos: nuevaLista,
         actualizadoPor: auth.currentUser.email,
         fechaCambio: Date.now()
-    }).then(() => { 
-        notify("<i class='fa-solid fa-check'></i> Código añadido"); 
+    }, {merge: true}).then(() => { 
+        notify("✅ Código añadido"); 
         input.value = ""; 
     });
 }
 
+function actualizarCodigoInvitacion() {
+    agregarCodigoInvitacion();
+}
+
 function eliminarCodigoInvitacion(cod) {
-    if(listadoCodigosInvitacion.length <= 1) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Debe haber al menos un código");
+    if(listadoCodigos.length <= 1) return notify("⚠️ Debe haber al menos un código");
     if(!confirm(`¿Eliminar el código "${cod}"?`)) return;
-    const nuevaLista = listadoCodigosInvitacion.filter(c => c !== cod);
+    const nuevaLista = listadoCodigos.filter(c => c !== cod);
     db.collection("configuracion").doc("seguridad").update({
         listaCodigos: nuevaLista
-    }).then(() => notify("<i class='fa-solid fa-trash'></i> Código eliminado"));
+    }).then(() => notify("🗑️ Código eliminado"));
 }
 
 function loadUser() {
@@ -144,7 +134,7 @@ function loadUser() {
         const d = doc.data() || {};
         currentUserData = d;
         currentUserData.email = email;
-        listenInviteCodes();
+        listenInviteCode();
         listenEquipos();
         let rango = (email === ADMIN_EMAIL) ? "Administrador" : (d.rango || "Recreador");
         document.getElementById('p-full-name').innerText = (d.nombre + " " + (d.apellido || "")).toUpperCase();
@@ -158,20 +148,25 @@ function loadUser() {
         const lastLoginStr = d.lastLogin ? new Date(d.lastLogin).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "---";
         document.getElementById('p-conexion-view').innerText = lastLoginStr;
         document.getElementById('user-rank-badge').innerText = rango.toUpperCase();
-        const formEdit = document.getElementById('perfil-edit-form');
-        if (d.doc && d.tel && d.nacimiento) { formEdit.style.display = 'none'; } else { formEdit.style.display = 'flex'; }
-        const esAdmin = (email === ADMIN_EMAIL), esCGeneral = (rango === "Coordinador General"), esCoordinador = (rango === "Coordinador"), esRecreador = (rango === "Recreador");
         
-        document.getElementById('container-buscador-global').style.display = esAdmin ? 'block' : 'none';
+        const esAdmin = (rango === "Administrador"), esCGeneral = (rango === "Coordinador General"), esCoordinador = (rango === "Coordinador"), esRecreador = (rango === "Recreador");
+        const buscadorGlobal = document.getElementById('container-buscador-global');
+        if(buscadorGlobal) buscadorGlobal.style.display = esAdmin ? 'block' : 'none';
 
         document.getElementById('nav-usuarios-adm').style.display = (!esRecreador) ? 'block' : 'none';
+        
+        // OCULTAR REGISTRO DE BOLETAS ENTREGADAS SI NO ES RECREADOR
+        const panelEntregadas = document.getElementById('panel-boletas-entregadas');
+        if (panelEntregadas) {
+            panelEntregadas.style.display = esRecreador ? 'block' : 'none';
+        }
+
         const navAdmin = document.getElementById('nav-administracion');
         if (esAdmin || esCGeneral || esCoordinador) {
             navAdmin.style.display = 'block';
             document.getElementById('admin-edit-panel-code').style.display = esAdmin ? 'block' : 'none';
-            document.getElementById('admin-edit-panel-teams').style.display = esAdmin ? 'block' : 'none';
             document.getElementById('admin-delete-range-panel').style.display = esAdmin ? 'block' : 'none';
-            document.getElementById('admin-delete-boletas-panel').style.display = esAdmin ? 'block' : 'none';
+            document.getElementById('admin-delete-staff-code-panel').style.display = esAdmin ? 'block' : 'none';
         } else {
             navAdmin.style.display = 'none';
         }
@@ -180,12 +175,40 @@ function loadUser() {
         const canExport = (esAdmin || esCGeneral);
         document.getElementById('btn-rep-ventas').style.display = canExport ? 'block' : 'none';
         document.getElementById('btn-rep-personal').style.display = canExport ? 'block' : 'none';
-        document.querySelectorAll('.col-rango-admin').forEach(el => el.style.display = esAdmin ? 'table-cell' : 'none');
-        document.querySelectorAll('.col-rango-permiso').forEach(el => el.style.display = (!esRecreador) ? 'table-cell' : 'none');
-        listenData();
-        if(!esRecreador) loadAllUsers();
-        showSection('comunicados');
-        actualizarListaEntregadasVisual();
+
+        const formEdit = document.getElementById('perfil-edit-form');
+        const faltanDatos = !(d.doc && d.tel && d.nacimiento);
+
+        if (faltanDatos) {
+            formEdit.style.display = 'flex';
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                if (btn.id !== 'nav-perfil') {
+                    btn.style.pointerEvents = 'none';
+                    btn.style.opacity = '0.3';
+                }
+            });
+            showSection('perfil');
+            if (!sesionIniciada) notify("⚠️ Completa tu perfil para acceder al sistema");
+            sesionIniciada = true;
+        } else {
+            formEdit.style.display = 'none';
+            
+            const estabaBloqueado = document.getElementById('nav-comunicados').style.pointerEvents === 'none';
+            
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                btn.style.pointerEvents = 'auto';
+                btn.style.opacity = '1';
+            });
+            
+            listenData();
+            if(!esRecreador) loadAllUsers();
+            
+            if (!sesionIniciada || estabaBloqueado) {
+                showSection('comunicados');
+                if (estabaBloqueado) notify("✅ Perfil completado. Sistema desbloqueado.");
+            }
+            sesionIniciada = true;
+        }
     });
 }
 
@@ -200,18 +223,18 @@ function showSection(id) {
 
 function registrarConCodigo() {
     const n = document.getElementById('reg-nombre').value, a = document.getElementById('reg-apellido').value, e = document.getElementById('reg-email').value, p = document.getElementById('reg-pass').value, col = document.getElementById('reg-color').value, c = document.getElementById('reg-invite').value.trim();
-    if(!listadoCodigosInvitacion.includes(c)) return notify("<i class='fa-solid fa-xmark'></i> Código Incorrecto o Expirado");
-    auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador', inscripcion: 'NO', codigoUsado: c }).then(() => location.reload())).catch(err => notify(err.message));
+    if(!listadoCodigos.includes(c)) return notify("❌ Código Incorrecto o Expirado");
+    auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador', inscripcion: 'NO', codigoInvitacion: c }).then(() => location.reload())).catch(err => notify(err.message));
 }
 
 function listenData() {
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (email === ADMIN_EMAIL), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
+    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
+    const userColor = currentUserData.color || "Gris";
     const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
 
     db.collection("boletas").orderBy("creado", "desc").onSnapshot(async snap => {
-        const body = document.getElementById('lista-boletas-body'); body.innerHTML = ""; 
         const uSnap = await db.collection("usuarios").get();
         const mapaColor = {}; 
         const mapaEntregadas = {};
@@ -258,7 +281,10 @@ function listenData() {
             if(b.estado === 'Activa') boletasPorEquipo[col].activas++; else boletasPorEquipo[col].pendientes++;
         });
 
+        // OPTIMIZACIÓN: Construir el HTML en memoria antes de inyectarlo
         let index = 1;
+        let htmlBoletas = "";
+        
         for (let nombre in mapaRecreadores) {
             const data = mapaRecreadores[nombre];
             if(!(esAdmin || esCGeneral || esCoordinador) && data.emailVendedor !== email) continue;
@@ -271,7 +297,7 @@ function listenData() {
                 ? `<td><button class="btn-status btn-delete" style="padding: 4px 8px; font-size: 0.5rem;" onclick="eliminarTodosRegistrosRecreador('${nombre}')"><i class="fa-solid fa-trash"></i></button></td>`
                 : `<td><span class="badge-rango" style="background:rgba(255,255,255,0.05); font-size:0.5rem;">${data.emailVendedor === email ? 'MIS VENTAS' : 'REGISTRO'}</span></td>`;
 
-            body.innerHTML += `
+            htmlBoletas += `
                 <tr>
                     <td style="font-weight:800;">${index++}</td>
                     <td><span class="team-dot" style="background:${data.color.toLowerCase()}"></span> ${data.color}</td>
@@ -285,457 +311,449 @@ function listenData() {
                 </tr>`;
         }
 
-        document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
+        // Inyección de memoria a pantalla en 1 solo paso
+        document.getElementById('lista-boletas-body').innerHTML = htmlBoletas;
+
+        if(document.getElementById('conteo-boletas-total')) document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
         actualizarListaEntregadasVisual(setBoletasVendidasGlobal);
 
         if(esAdmin || esCGeneral || esCoordinador) {
-            document.getElementById('resumen-boletas-total').innerText = contadorTotal;
-            document.getElementById('resumen-boletas-activas').innerText = activas;
-            document.getElementById('resumen-boletas-pendientes').innerText = pendientes;
+            if(document.getElementById('admin-tot-boletas')) document.getElementById('admin-tot-boletas').innerText = contadorTotal;
+            if(document.getElementById('admin-tot-activas')) document.getElementById('admin-tot-activas').innerText = activas;
+            if(document.getElementById('admin-tot-pendientes')) document.getElementById('admin-tot-pendientes').innerText = pendientes;
+            
             let htmlBoletasE = "<p class='mini-title'>BOLETAS POR EQUIPO</p>";
             for(let eq in boletasPorEquipo) {
                 htmlBoletasE += `<div class='summary-row'><span>${eq}</span><b>${boletasPorEquipo[eq].total} (A:${boletasPorEquipo[eq].activas})</b></div>`;
             }
-            document.getElementById('resumen-boletas-equipos').innerHTML = htmlBoletasE;
+            if(document.getElementById('resumen-boletas-equipos')) document.getElementById('resumen-boletas-equipos').innerHTML = htmlBoletasE;
         }
     });
 
     db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
-        const list = document.getElementById('comunicados-list'); list.innerHTML = "";
-        const userColor = currentUserData ? currentUserData.color : "Gris";
-        snap.forEach(doc => {
-            const c = doc.data();
+        let htmlComunicados = "";
+        snap.forEach(doc => { 
+            const c = doc.data(); 
             if (!(esAdmin || esCGeneral)) {
                 const destinatarios = c.destinatarios || ["Todos"];
                 if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
             }
-            const del = esAdmin ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${doc.id}').delete()"><i class="fa-solid fa-xmark"></i></button>` : '';
+            const del = esAdmin ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${doc.id}').delete()">✕</button>` : '';
             let extraInfo = "", countdownHtml = "", docBtn = "";
-            if(c.linkDoc) docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link"><i class="fa-solid fa-folder-open"></i> DOCUMENTO</a>`;
+            if(c.linkDoc) docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 DOCUMENTO</a>`;
             if(c.fechaEv) {
                 const fEv = new Date(c.fechaEv + "T" + (c.horaEv || "00:00")), hoy = new Date();
                 const dias = Math.ceil((fEv - hoy) / (1000 * 60 * 60 * 24));
-                extraInfo = `<div class="com-meta-box"><span><i class="fa-solid fa-calendar-days"></i> ${c.fechaEv}</span>${c.horaEv ? `<span><i class="fa-solid fa-clock"></i> ${c.horaEv}</span>` : ''}${c.lugarEv ? `<span><i class="fa-solid fa-location-dot"></i> ${c.lugarEv}</span>` : ''}</div>`;
+                extraInfo = `<div class="com-meta-box"><span>📅 ${c.fechaEv}</span>${c.horaEv ? `<span>⏰ ${c.horaEv}</span>` : ''}${c.lugarEv ? `<span>📍 ${c.lugarEv}</span>` : ''}</div>`;
                 if(dias > 0) countdownHtml = `<div class="com-countdown">Faltan <b>${dias}</b> días</div>`;
                 else if (dias === 0) countdownHtml = `<div class="com-countdown today">¡Es Hoy!</div>`;
             }
-            list.innerHTML += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">INFO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
+            htmlComunicados += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">INFO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
         });
+        document.getElementById('comunicados-list').innerHTML = htmlComunicados;
     });
 }
 
-function handleLogin() {
-    const e = document.getElementById('login-email').value, p = document.getElementById('login-pass').value;
-    auth.signInWithEmailAndPassword(e, p).catch(err => notify(err.message));
-}
-
-function handleLogout() {
-    auth.signOut();
-}
-
-function toggleAuth(view) {
-    document.getElementById('auth-login').style.display = view === 'login' ? 'flex' : 'none';
-    document.getElementById('auth-register').style.display = view === 'reg' ? 'flex' : 'none';
-}
-
-function notify(msg) {
-    const container = document.getElementById('toast-container');
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.innerHTML = msg;
-    container.appendChild(toast);
-    setTimeout(() => { toast.style.opacity = '0'; setTimeout(() => toast.remove(), 300); }, 3000);
-}
-
-function publicarComunicado() {
-    const tit = document.getElementById('com-titulo').value, msg = document.getElementById('com-mensaje').value, fL = document.getElementById('com-fecha-ev').value, hL = document.getElementById('com-hora-ev').value, lug = document.getElementById('com-lugar-ev').value, link = document.getElementById('com-link-doc').value;
-    const dest = Array.from(document.querySelectorAll('input[name="dest-color"]:checked')).map(cb => cb.value);
-    if(!tit || !msg || dest.length === 0) return notify("Completa título, mensaje y destinatario");
-    db.collection("comunicados").add({ titulo: tit, mensaje: msg, destinatarios: dest, fechaEv: fL, horaEv: hL, lugarEv: lug, linkDoc: link, fecha: Date.now() }).then(() => {
-        document.getElementById('com-titulo').value = ""; document.getElementById('com-mensaje').value = ""; document.getElementById('com-fecha-ev').value = ""; document.getElementById('com-hora-ev').value = ""; document.getElementById('com-lugar-ev').value = ""; document.getElementById('com-link-doc').value = "";
-        notify("<i class='fa-solid fa-check'></i> Publicado");
-    });
-}
-
-function inscribirBoleta() {
-    const rec = document.getElementById('ins-rec-nom').value.trim(), num = document.getElementById('ins-n-boleta').value.trim(), com = document.getElementById('ins-com-nom').value.trim(), tel = document.getElementById('ins-com-tel').value.trim();
-    if(!rec || !num || !com || !tel) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Completa todos los campos");
-    if(isNaN(num)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> La boleta debe ser un número");
+function actualizarListaEntregadasVisual(setBoletasVendidasGlobal = new Set()) {
+    const container = document.getElementById('lista-entregadas-tags');
+    if(!container) return;
     
-    db.collection("boletas").where("n", "==", num).get().then(snap => {
-        if(!snap.empty) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Esta boleta ya fue registrada");
-        
-        db.collection("boletas").add({
-            vendedor: auth.currentUser.email,
-            recreador: rec.toLowerCase(),
-            n: num, comprador: com, tel: tel,
-            estado: 'Activa', creado: Date.now()
-        }).then(() => {
-            document.getElementById('ins-n-boleta').value = ""; document.getElementById('ins-com-nom').value = ""; document.getElementById('ins-com-tel').value = "";
-            notify("<i class='fa-solid fa-check'></i> Boleta Registrada");
-        });
+    const entregadas = currentUserData?.boletasEntregadas || [];
+    if(entregadas.length === 0) {
+        container.innerHTML = `<p style="font-size:0.6rem; color:#94a3b8; width:100%; text-align:center;">No hay boletas físicas registradas</p>`;
+        return;
+    }
+    
+    let htmlContent = "";
+    entregadas.forEach(num => {
+        const vendida = setBoletasVendidasGlobal.has(num.toString());
+        const bg = vendida ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+        const border = vendida ? '#10b981' : '#ef4444';
+        const icon = vendida ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-xmark"></i>';
+        htmlContent += `<div class="team-mini-badge" style="background:${bg}; border:1px solid ${border};">${num} ${icon} <span onclick="eliminarBoletaEntregada('${num}')"><i class="fa-solid fa-trash"></i></span></div>`;
     });
+    container.innerHTML = htmlContent;
 }
 
-function buscarDuenioBoleta() {
-    const input = document.getElementById('search-n-boleta').value.trim();
-    const resDiv = document.getElementById('resultado-busqueda-boleta');
-    if(!input) {
-        resDiv.style.display = 'none';
-        return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa un número de boleta");
-    }
+async function buscarDuenioBoleta() {
+    const numero = document.getElementById('search-n-boleta').value.trim();
+    const resultDiv = document.getElementById('resultado-busqueda-boleta');
+    if(!numero) return notify("⚠️ Ingresa un número de boleta");
 
-    db.collection("boletas").where("n", "==", input).get().then(async snap => {
-        if(snap.empty) {
-            resDiv.style.display = 'block';
-            resDiv.innerHTML = `<div style="padding: 15px; background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; border-radius: 12px; color: #ef4444; font-weight: 800;"><i class="fa-solid fa-circle-xmark"></i> LA BOLETA N° ${input} NO EXISTE O NO HA SIDO VENDIDA</div>`;
-            return;
-        }
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = `<p style="font-size:0.6rem; color:var(--accent); font-weight:800;">Buscando...</p>`;
 
-        const b = snap.docs[0].data();
+    const snapVentas = await db.collection("boletas").where("n", "==", numero).get();
+    if(!snapVentas.empty) {
+        const b = snapVentas.docs[0].data();
         const uDoc = await db.collection("usuarios").doc(b.vendedor).get();
-        const uData = uDoc.exists ? uDoc.data() : { color: 'Desconocido', nombre: 'Desconocido', tel: '---' };
+        const u = uDoc.data() || { nombre: "Desconocido" };
+        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        const colorBg = b.estado === 'Activa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
         
-        let estadoHtml = b.estado === 'Activa' ? `<span class="status-Activa">ACTIVA</span>` : `<span class="status-Pendiente">PENDIENTE</span>`;
-
-        resDiv.style.display = 'block';
-        resDiv.innerHTML = `
-            <div style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 15px; padding: 15px; text-align: left;">
-                <p style="text-align: center; color: #10b981; font-weight: 900; margin-top: 0; font-size: 0.9rem;"><i class="fa-solid fa-circle-check"></i> BOLETA ENCONTRADA</p>
-                <div style="display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 0.75rem;">
-                    <div><span class="detail-label">NÚMERO DE BOLETA:</span> <b style="color:white; font-size: 1rem;">${b.n}</b></div>
-                    <div><span class="detail-label">ESTADO ACTUAL:</span> ${estadoHtml}</div>
-                    <hr style="border: 0; border-top: 1px dashed rgba(16, 185, 129, 0.3); width: 100%;">
-                    <div><span class="detail-label">NOMBRE DEL COMPRADOR:</span> <b style="color:white;">${b.comprador.toUpperCase()}</b></div>
-                    <div><span class="detail-label">WHATSAPP DEL COMPRADOR:</span> <b style="color:white;">${b.tel}</b></div>
-                    <hr style="border: 0; border-top: 1px dashed rgba(16, 185, 129, 0.3); width: 100%;">
-                    <div><span class="detail-label">RECREADOR QUE LA VENDIÓ:</span> <b style="color:var(--accent);">${b.recreador.toUpperCase()}</b></div>
-                    <div><span class="detail-label">EQUIPO DEL RECREADOR:</span> <b style="color:white;">${uData.color.toUpperCase()}</b></div>
-                    <div><span class="detail-label">USUARIO DE REGISTRO:</span> <b style="color:white;">${(uData.nombre + " " + (uData.apellido||"")).toUpperCase()}</b></div>
-                    <div><span class="detail-label">FECHA DE REGISTRO:</span> <b style="color:white;">${new Date(b.creado).toLocaleString()}</b></div>
-                </div>
-            </div>
-        `;
-    }).catch(err => {
-        notify("Error en la búsqueda");
-        console.error(err);
-    });
-}
-
-function registrarBoletaEntregada() {
-    const num = document.getElementById('input-boleta-entregada').value.trim();
-    if(!num) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa el número");
-    if(isNaN(num)) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Debe ser un número válido");
-
-    const email = auth.currentUser.email;
-    const currentEntregadas = currentUserData.boletasEntregadas || [];
-    
-    if(currentEntregadas.includes(num)) {
-        return notify("<i class='fa-solid fa-triangle-exclamation'></i> Esta boleta ya la tienes asignada");
-    }
-
-    const nuevasEntregadas = [...currentEntregadas, num];
-    db.collection("usuarios").doc(email).update({
-        boletasEntregadas: nuevasEntregadas
-    }).then(() => {
-        document.getElementById('input-boleta-entregada').value = "";
-        notify("<i class='fa-solid fa-check'></i> Boleta física asignada");
-    });
-}
-
-function eliminarBoletaEntregada(numStr) {
-    if(!confirm(`¿Devolver/Eliminar la boleta física N° ${numStr} de tu responsabilidad?`)) return;
-    const email = auth.currentUser.email;
-    const currentEntregadas = currentUserData.boletasEntregadas || [];
-    const nuevasEntregadas = currentEntregadas.filter(n => n !== numStr);
-    
-    db.collection("usuarios").doc(email).update({
-        boletasEntregadas: nuevasEntregadas
-    }).then(() => {
-        notify("<i class='fa-solid fa-trash'></i> Boleta removida de tus entregadas");
-    });
-}
-
-function actualizarListaEntregadasVisual(setVendidasGlobal = new Set()) {
-    const listDiv = document.getElementById('lista-entregadas-tags');
-    if(!listDiv) return;
-    listDiv.innerHTML = "";
-    
-    if(!currentUserData || !currentUserData.boletasEntregadas || currentUserData.boletasEntregadas.length === 0) {
-        listDiv.innerHTML = "<p style='font-size:0.6rem; color:#64748b; width:100%; text-align:center;'>No has registrado boletas físicas entregadas.</p>";
+        resultDiv.innerHTML = `
+            <div style="background: ${colorBg}; border: 1px solid ${colorEstado}; padding: 10px; border-radius: 12px; text-align: left;">
+                <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${b.estado})</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</p>
+                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${(u.color || "---").toUpperCase()}</p>
+                <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--accent);">Comprador: <b>${b.c || b.comprador || '---'}</b></p>
+            </div>`;
         return;
     }
 
-    let countVendidas = 0;
-    currentUserData.boletasEntregadas.forEach(num => {
-        const estaVendida = setVendidasGlobal.has(num.toString());
-        if(estaVendida) countVendidas++;
-        const colorBorder = estaVendida ? "#10b981" : "rgba(0,240,255,0.3)";
-        const bg = estaVendida ? "rgba(16,185,129,0.1)" : "rgba(255,255,255,0.05)";
-        const iconoVendida = estaVendida ? `<i class="fa-solid fa-check" style="color:#10b981; font-size:0.5rem; margin-right:3px;"></i>` : '';
-        
-        listDiv.innerHTML += `
-            <div class="team-mini-badge" style="border-color:${colorBorder}; background:${bg};">
-                ${iconoVendida}N° ${num} 
-                <span onclick="eliminarBoletaEntregada('${num}')"><i class="fa-solid fa-xmark"></i></span>
-            </div>
-        `;
+    const snapUsuarios = await db.collection("usuarios").get();
+    let recreadorEncontrado = null;
+    snapUsuarios.forEach(doc => {
+        const u = doc.data();
+        if(u.boletasEntregadas && u.boletasEntregadas.includes(numero)) {
+            recreadorEncontrado = { ...u, email: doc.id };
+        }
     });
-    
-    listDiv.innerHTML = `<div style="width: 100%; text-align: center; font-size: 0.6rem; color: var(--accent); margin-bottom: 5px; font-weight: 800;">TOTAL ASIGNADAS: ${currentUserData.boletasEntregadas.length} | YA VENDIDAS: ${countVendidas}</div>` + listDiv.innerHTML;
-}
 
-function eliminarTodosRegistrosRecreador(recreadorNombre) {
-    if(!confirm(`⚠️ ATENCIÓN: ¿Estás seguro de eliminar TODO EL REGISTRO DE VENTAS del recreador "${recreadorNombre.toUpperCase()}"? Esta acción no se puede deshacer.`)) return;
-
-    db.collection("boletas").where("recreador", "==", recreadorNombre).get().then(snap => {
-        const batch = db.batch();
-        snap.forEach(doc => {
-            batch.delete(doc.ref);
-        });
-        batch.commit().then(() => {
-            notify("<i class='fa-solid fa-trash'></i> Registros eliminados");
-        }).catch(err => notify("Error: " + err.message));
-    });
-}
-
-function calcularEdad(fecha) {
-    if (!fecha) return "---";
-    const hoy = new Date(), nac = new Date(fecha);
-    let e = hoy.getFullYear() - nac.getFullYear();
-    const m = hoy.getMonth() - nac.getMonth();
-    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) e--;
-    return e + " años";
-}
-
-function guardarPerfil() {
-    const docu = document.getElementById('edit-doc').value.trim(), tel = document.getElementById('edit-tel').value.trim(), nac = document.getElementById('edit-nacimiento').value, col = document.getElementById('edit-color').value;
-    if(!docu || !tel || !nac || !col) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Faltan datos");
-    if(confirm("¿Guardar datos permanentes? No podrás editarlos después.")) {
-        db.collection("usuarios").doc(auth.currentUser.email).update({ doc: docu, tel: tel, nacimiento: nac, color: col }).then(() => {
-            document.getElementById('perfil-edit-form').style.display = 'none';
-            notify("<i class='fa-solid fa-check'></i> Perfil actualizado");
-        });
+    if(recreadorEncontrado) {
+        resultDiv.innerHTML = `
+            <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; padding: 10px; border-radius: 12px; text-align: left;">
+                <p style="margin:0; font-size:0.5rem; font-weight:800; color:#ef4444;">ESTADO: FÍSICA (SIN VENTA REGISTRADA)</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${(recreadorEncontrado.nombre + " " + (recreadorEncontrado.apellido || "")).toUpperCase()}</p>
+                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${(recreadorEncontrado.color || "---").toUpperCase()}</p>
+            </div>`;
+    } else {
+        resultDiv.innerHTML = `<p style="font-size:0.6rem; color:#ef4444; font-weight:800; background:rgba(239, 68, 68, 0.2); border:1px solid #ef4444; padding:10px; border-radius:10px;"><i class="fa-solid fa-xmark"></i> BOLETA NO REGISTRADA EN EL SISTEMA</p>`;
     }
 }
 
-function abrirGestionBoletas(recreadorNombre) {
-    const email = auth.currentUser.email;
-    const esAdmin = (email === ADMIN_EMAIL || currentUserData.rango === "Coordinador General" || currentUserData.rango === "Coordinador");
+async function eliminarTodosRegistrosRecreador(nombreRecreador) {
+    if (!confirm(`¿Estás seguro de eliminar TODOS los registros de boletas para: ${nombreRecreador}?`)) return;
+    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
+    let batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit().then(() => notify(`🗑️ Registros de ${nombreRecreador} eliminados`));
+}
 
-    db.collection("boletas").where("recreador", "==", recreadorNombre).get().then(snap => {
-        let html = `<h3 style="margin-top:0; font-size:1rem;">VENTAS DE ${recreadorNombre.toUpperCase()}</h3>
-                    <div style="max-height: 50vh; overflow-y: auto; padding-right:5px; margin-top:15px; display:flex; flex-direction:column; gap:8px;">`;
-        let count = 0;
-        snap.forEach(doc => {
-            const b = doc.data();
-            const esMio = b.vendedor === email;
-            if(!esAdmin && !esMio) return;
-            count++;
-            
-            const btnEst = esAdmin ? `<button class="btn-status ${b.estado === 'Activa' ? 'btn-active' : 'btn-pending'}" onclick="toggleEstadoBoleta('${doc.id}', '${b.estado}')">${b.estado.toUpperCase()}</button>` : `<span class="status-${b.estado}">${b.estado.toUpperCase()}</span>`;
-            const btnDel = (esAdmin || esMio) ? `<button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-            
-            html += `
-                <div style="background: rgba(0,0,0,0.3); border: 1px solid rgba(0,240,255,0.2); border-radius: 12px; padding: 12px; text-align: left; font-size: 0.7rem; position: relative;">
-                    <div style="display: flex; justify-content: space-between; margin-bottom: 5px; align-items:center;">
-                        <b style="color:var(--accent); font-size:0.9rem;">N° ${b.n}</b>
-                        <div style="display:flex; gap:5px;">${btnEst}${btnDel}</div>
-                    </div>
-                    <p style="margin: 2px 0;"><b>Comprador:</b> <span style="color:#f1f5f9;">${b.comprador}</span></p>
-                    <p style="margin: 2px 0;"><b>WhatsApp:</b> <span style="color:#f1f5f9;">${b.tel}</span></p>
-                    <p style="margin: 2px 0; font-size:0.55rem; color:#64748b;">${new Date(b.creado).toLocaleString()}</p>
-                </div>
-            `;
-        });
-        html += `</div>`;
-        if(count === 0) html = `<h3 style="margin-top:0; font-size:1rem;">VENTAS DE ${recreadorNombre.toUpperCase()}</h3><p>No tienes permiso o no hay registros.</p>`;
+async function abrirGestionBoletas(nombreRecreador) {
+    const email = auth.currentUser.email;
+    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
+    const esAdmin = (r === "Administrador" || r === "Coordinador General");
+    const render = document.getElementById('gestion-boletas-render');
+    render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreRecreador.toUpperCase()}</h3><p style="text-align:center; font-size:0.7rem;">Cargando...</p>`;
+    document.getElementById('modal-gestion-boletas').style.display = 'flex';
+
+    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
+    if(snap.empty) {
+        render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreRecreador.toUpperCase()}</h3><p style="text-align:center; font-size:0.7rem;">No hay boletas registradas.</p>`;
+        return;
+    }
+
+    let htmlTable = `<div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>N°</th>
+                                    <th>Comprador</th>
+                                    <th>WhatsApp</th>
+                                    <th>Estado</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>`;
+                            
+    snap.forEach(doc => {
+        const b = doc.data();
+        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        let botones = "<td>--</td>";
+        if (esAdmin) {
+            const nuevoEstado = b.estado === 'Activa' ? 'Pendiente' : 'Activa';
+            const icon = b.estado === 'Activa' ? '<i class="fa-solid fa-hourglass-half"></i>' : '<i class="fa-solid fa-check-double"></i>';
+            botones = `
+                <td style="display:flex; gap:5px; justify-content:center;">
+                    <button class="btn-status" style="background:rgba(255,255,255,0.1); color:var(--text-main); border:1px solid rgba(255,255,255,0.2);" onclick="cambiarEstado('${doc.id}', '${nuevoEstado}'); cerrarModalGestion();">
+                        ${icon}
+                    </button>
+                    <button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}'); cerrarModalGestion();">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </td>`;
+        }
         
-        document.getElementById('gestion-boletas-render').innerHTML = html;
-        document.getElementById('modal-gestion-boletas').style.display = 'flex';
+        const numBoleta = b.n || '--';
+        const nomComprador = b.c || b.comprador || '--';
+        const telComprador = b.t || b.whatsapp || '--';
+        
+        // Icono de enlace a WhatsApp
+        const btnWa = (telComprador !== '--') ? `<a href="https://wa.me/57${telComprador}" target="_blank" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';
+
+        htmlTable += `
+            <tr>
+                <td style="font-weight:800; color:white;">${numBoleta}</td>
+                <td style="font-size:0.6rem; font-weight:800; color:#cbd5e1;">${nomComprador}</td>
+                <td style="font-size:0.6rem; white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${telComprador} ${btnWa}</td>
+                <td style="font-weight:800; color:${colorEstado}">${b.estado}</td>
+                ${botones}
+            </tr>`;
+    });
+    
+    htmlTable += `</tbody></table></div>`;
+    render.innerHTML = htmlTable;
+}
+
+function cerrarModalGestion() {
+    document.getElementById('modal-gestion-boletas').style.display = 'none';
+}
+
+function registrarBoletaEntregada() {
+    const input = document.getElementById('input-boleta-entregada');
+    const valor = input.value.trim();
+    if(!valor) return;
+    const entregadas = currentUserData.boletasEntregadas || [];
+    if(entregadas.includes(valor)) return notify("⚠️ Esta boleta ya está registrada");
+    entregadas.push(valor);
+    db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas }).then(() => {
+        input.value = ""; notify("✅ Boleta registrada");
     });
 }
 
-function cerrarModalGestion() { document.getElementById('modal-gestion-boletas').style.display = 'none'; }
-function cerrarModal() { document.getElementById('modal-carnet').style.display = 'none'; }
-
-function toggleEstadoBoleta(id, actual) {
-    const nuevo = actual === 'Activa' ? 'Pendiente' : 'Activa';
-    db.collection("boletas").doc(id).update({ estado: nuevo }).then(() => { cerrarModalGestion(); notify("<i class='fa-solid fa-rotate'></i> Estado actualizado"); });
+function eliminarBoletaEntregada(num) {
+    if(auth.currentUser.email !== ADMIN_EMAIL) return notify("⚠️ Solo el administrador puede borrar boletas físicas");
+    const entregadas = currentUserData.boletasEntregadas.filter(n => n !== num);
+    db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas }).then(() => notify("🗑️ Eliminada de entregadas"));
 }
 
-function eliminarBoleta(id) {
-    if(confirm("¿Eliminar boleta?")) { db.collection("boletas").doc(id).delete().then(() => { cerrarModalGestion(); notify("<i class='fa-solid fa-trash'></i> Boleta eliminada"); }); }
+function publicarComunicado() {
+    const t = document.getElementById('com-titulo').value, m = document.getElementById('com-mensaje').value, fE = document.getElementById('com-fecha-ev').value, hE = document.getElementById('com-hora-ev').value, lE = document.getElementById('com-lugar-ev').value, linkD = document.getElementById('com-link-doc').value;
+    const destCheckboxes = document.querySelectorAll('input[name="dest-color"]:checked');
+    let destinatarios = Array.from(destCheckboxes).map(cb => cb.value);
+    if(destinatarios.length === 0) return notify("⚠️ Selecciona al menos un destinatario");
+    if(destinatarios.includes("Todos")) destinatarios = ["Todos"];
+    if(!t || !m) return notify("⚠️ Título y mensaje obligatorios");
+    db.collection("comunicados").add({ titulo: t, mensaje: m, destinatarios: destinatarios, fechaEv: fE, horaEv: hE, lugarEv: lE, linkDoc: linkD, fecha: Date.now() }).then(() => { document.getElementById('com-titulo').value = ""; document.getElementById('com-mensaje').value = ""; document.getElementById('com-fecha-ev').value = ""; document.getElementById('com-hora-ev').value = ""; document.getElementById('com-lugar-ev').value = ""; document.getElementById('com-link-doc').value = ""; document.querySelectorAll('input[name="dest-color"]').forEach(cb => cb.checked = (cb.value === "Todos")); notify("🚀 Publicado"); });
+}
+
+function inscribirBoleta() {
+    const r = document.getElementById('ins-rec-nom').value, n = document.getElementById('ins-n-boleta').value, c = document.getElementById('ins-com-nom').value, t = document.getElementById('ins-com-tel').value;
+    if(!n || !c) return notify("⚠️ Datos incompletos");
+    db.collection("boletas").add({ recreador: r, n: n, c: c, t: t, vendedor: auth.currentUser.email, estado: 'Pendiente', creado: Date.now() }).then(() => {
+        document.getElementById('ins-rec-nom').value = ""; document.getElementById('ins-n-boleta').value = ""; document.getElementById('ins-com-nom').value = ""; document.getElementById('ins-com-tel').value = "";
+        notify("✅ Registrada");
+    });
+}
+
+function cambiarEstado(id, est) { db.collection("boletas").doc(id).update({ estado: est }); }
+function eliminarBoleta(id) { if(confirm("¿Eliminar registro?")) db.collection("boletas").doc(id).delete().then(() => notify("🗑️ Eliminado")); }
+
+function guardarPerfil() {
+    const doc = document.getElementById('edit-doc').value, tel = document.getElementById('edit-tel').value, nac = document.getElementById('edit-nacimiento').value, col = document.getElementById('edit-color').value;
+    if(!doc || !tel || !nac) return notify("⚠️ Completa los datos");
+    db.collection("usuarios").doc(auth.currentUser.email).update({ doc: doc, tel: tel, nacimiento: nac, color: col }).then(() => notify("✅ Guardado"));
 }
 
 function loadAllUsers() {
-    const search = document.getElementById('search-user').value.toLowerCase();
-    const filterColor = document.getElementById('filter-user-color').value;
-    const tbody = document.getElementById('lista-usuarios-body');
-    const miRango = (auth.currentUser.email === ADMIN_EMAIL) ? "Administrador" : currentUserData.rango;
-    const esSuperAdmin = (auth.currentUser.email === ADMIN_EMAIL);
-    const esAdmin = (esSuperAdmin || miRango === "Coordinador General");
+    const email = auth.currentUser.email;
+    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
+    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
     
     db.collection("usuarios").orderBy("creado", "desc").onSnapshot(snap => {
-        tbody.innerHTML = "";
-        let count = 0;
-        let boletasMap = {};
+        let equipoCounts = {}, totalP = 0;
         
-        db.collection("boletas").get().then(bSnap => {
-            bSnap.forEach(b => {
-                const vendor = b.data().vendedor;
-                boletasMap[vendor] = (boletasMap[vendor] || 0) + 1;
-            });
+        // OPTIMIZACIÓN: Construir el HTML en memoria antes de inyectarlo
+        let htmlUsuarios = "";
 
-            let resumenEquipos = {};
+        snap.forEach(doc => {
+            const u = doc.data(); 
+            totalP++;
+            const col = u.color || 'Gris';
+            if(!equipoCounts[col]) equipoCounts[col] = 0;
+            equipoCounts[col]++;
 
-            snap.forEach(doc => {
-                const u = doc.data();
-                const nomCom = ((u.nombre || "") + " " + (u.apellido || "")).toLowerCase();
-                const col = u.color || "Gris";
-                const r = u.rango || "Recreador";
+            const rangoTxt = (u.rango || 'Recreador').toUpperCase();
+            const nombreCompleto = (u.nombre + " " + (u.apellido || "")).toUpperCase();
+            const edadTxt = calcularEdad(u.nacimiento);
+            const docTxt = u.doc || '---';
+            const telTxt = u.tel || '---';
+            
+            const btnWa = u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';
+            const fechaReg = u.creado ? new Date(u.creado).toLocaleDateString('es-CO') : '---';
+
+            let btnValidar = u.inscripcion === 'SI' 
+                ? `<button class="btn-status btn-approve" onclick="cambiarInscripcion('${doc.id}', 'NO')">✓ SI</button>` 
+                : `<button class="btn-status btn-pending" onclick="cambiarInscripcion('${doc.id}', 'SI')">⏳ NO</button>`;
                 
-                if (filterColor !== "Todos" && col !== filterColor) return;
-                if (search && !nomCom.includes(search) && !(u.doc || "").includes(search)) return;
-
-                if(!resumenEquipos[col]) resumenEquipos[col] = 0;
-                resumenEquipos[col]++;
-
-                count++;
-                const isIns = u.inscripcion === "SI";
-                const insBtn = isIns ? `<button class="btn-status btn-active" onclick="toggleInscripcion('${doc.id}', 'NO')">SI</button>` : `<button class="btn-status btn-pending" onclick="toggleInscripcion('${doc.id}', 'SI')">NO</button>`;
-                
-                let rangoSelect = `<span>${r.toUpperCase()}</span>`;
-                if(esAdmin) {
-                    rangoSelect = `
-                    <select class="dynamic-colors" style="width:100px; padding:4px; font-size:0.55rem;" onchange="cambiarRango('${doc.id}', this.value)">
-                        <option value="Recreador" ${r==='Recreador'?'selected':''}>Recreador</option>
-                        <option value="Coordinador" ${r==='Coordinador'?'selected':''}>Coordinador</option>
-                        <option value="Coordinador General" ${r==='Coordinador General'?'selected':''}>Coord. General</option>
-                    </select>`;
-                }
-
-                const delBtn = esSuperAdmin ? `<button class="btn-status btn-delete" style="padding: 4px 8px;" onclick="eliminarUsuario('${doc.id}')"><i class="fa-solid fa-trash"></i></button>` : '';
-
-                tbody.innerHTML += `
-                    <tr>
-                        <td style="font-weight:800;">${count}</td>
-                        <td style="font-weight:800; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="verCarnet('${doc.id}')">${(u.nombre + " " + (u.apellido||"")).toUpperCase()}</td>
-                        <td style="font-size:0.55rem; color:#94a3b8;">${r.toUpperCase()}</td>
-                        <td>${calcularEdad(u.nacimiento)}</td>
-                        <td>${u.doc || "---"}</td>
-                        <td>${u.tel || "---"}</td>
-                        <td><span class="team-dot" style="background:${col.toLowerCase()}"></span> ${col}</td>
-                        <td style="font-size:0.55rem;">${new Date(u.creado).toLocaleDateString()}</td>
-                        <td><span class="badge-rango" style="background:rgba(255,255,255,0.05); font-size:0.5rem; border:1px solid rgba(0,240,255,0.2);">V:${boletasMap[doc.id]||0} | E:${(u.boletasEntregadas||[]).length}</span></td>
-                        <td class="col-rango-permiso" style="display:${esAdmin ? 'table-cell' : 'none'};">${insBtn}</td>
-                        <td class="col-rango-admin" style="display:${esAdmin ? 'table-cell' : 'none'};">${rangoSelect}</td>
-                        <td class="col-rango-admin" style="display:${esSuperAdmin ? 'table-cell' : 'none'};">${delBtn}</td>
-                    </tr>`;
-            });
-            document.getElementById('conteo-personal-total').innerText = "Total integrantes: " + count;
+            let btnAdminHTML = "", btnRolHTML = "";
             
             if(esAdmin) {
-                document.getElementById('resumen-personal-total-admin').innerText = count;
-                let htmlPerE = "<p class='mini-title'>PERSONAL POR EQUIPO</p>";
-                for(let eq in resumenEquipos) {
-                    htmlPerE += `<div class='summary-row'><span>${eq}</span><b>${resumenEquipos[eq]} integrantes</b></div>`;
-                }
-                document.getElementById('resumen-personal-equipos').innerHTML = htmlPerE;
+                btnRolHTML = `<td class="col-rango-admin"><select onchange="cambiarRol('${doc.id}', this.value)" style="padding:4px; font-size:0.55rem; background:rgba(0,0,0,0.5); border:1px solid rgba(0,240,255,0.3); color:white; border-radius:4px;"><option value="Recreador" ${u.rango==='Recreador'?'selected':''}>Recreador</option><option value="Coordinador" ${u.rango==='Coordinador'?'selected':''}>Coordinador</option><option value="Coordinador General" ${u.rango==='Coordinador General'?'selected':''}>C. General</option><option value="Administrador" ${u.rango==='Administrador'?'selected':''}>Administrador</option></select></td>`;
+                btnAdminHTML = `<td class="col-rango-admin"><button class="btn-status btn-delete" style="padding:6px 10px;" onclick="eliminarUsuario('${doc.id}')"><i class="fa-solid fa-trash"></i></button></td>`;
             }
+            
+            let validacionCol = (esAdmin || esCGeneral || esCoordinador) ? `<td class="col-rango-permiso">${btnValidar}</td>` : '';
+            
+            htmlUsuarios += `
+            <tr class="user-row" data-name="${nombreCompleto.toLowerCase()}" data-doc="${docTxt}" data-color="${col}">
+                <td><span class="badge-rango" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">${rangoTxt}</span></td>
+                <td style="font-weight:800; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirCarnet('${doc.id}')" title="Ver Carnet de Datos">${nombreCompleto}</td>
+                <td>${edadTxt}</td>
+                <td>${docTxt}</td>
+                <td style="white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${telTxt} ${btnWa}</td>
+                <td style="white-space: nowrap;"><span class="team-dot" style="background:${col.toLowerCase()}; border: 1px solid rgba(255,255,255,0.3);"></span> ${col.toUpperCase()}</td>
+                <td style="font-size:0.6rem;">${fechaReg}</td>
+                ${validacionCol}
+                ${btnRolHTML}
+                ${btnAdminHTML}
+            </tr>`;
         });
+        
+        // Inyección en un solo paso
+        document.getElementById('lista-usuarios-body').innerHTML = htmlUsuarios;
+
+        if(document.getElementById('conteo-personal-total')) document.getElementById('conteo-personal-total').innerText = "Total personal: " + totalP;
+        
+        if(esAdmin || esCGeneral || esCoordinador) {
+            if(document.getElementById('admin-tot-personal')) document.getElementById('admin-tot-personal').innerText = totalP;
+            
+            let htmlPersonalE = "<p class='mini-title'>PERSONAL POR EQUIPO</p>";
+            for(let eq in equipoCounts) htmlPersonalE += `<div class='summary-row'><span>${eq}</span><b>${equipoCounts[eq]}</b></div>`;
+            if(document.getElementById('resumen-personal-equipos')) document.getElementById('resumen-personal-equipos').innerHTML = htmlPersonalE;
+        }
+        
+        // Aplicar el filtro visual Inmediatamente sin debounce para el renderizado inicial
+        aplicarFiltrosUsuarios();
     });
 }
 
-function cambiarRango(email, nuevoRango) {
-    db.collection("usuarios").doc(email).update({ rango: nuevoRango }).then(() => notify("<i class='fa-solid fa-check'></i> Rango actualizado"));
+// OPTIMIZACIÓN: Función envolvente de Debounce para el input de búsqueda
+function listenUsuariosAdm() {
+    clearTimeout(timerBusquedaPersonal);
+    timerBusquedaPersonal = setTimeout(() => {
+        aplicarFiltrosUsuarios();
+    }, 250); // Espera 250 milisegundos tras teclear la última letra
 }
 
-function toggleInscripcion(email, estado) {
-    db.collection("usuarios").doc(email).update({ inscripcion: estado }).then(() => notify("<i class='fa-solid fa-check'></i> Inscripción actualizada"));
+function aplicarFiltrosUsuarios() {
+    const s = document.getElementById('search-user').value.toLowerCase();
+    const c = document.getElementById('filter-user-color').value;
+    document.querySelectorAll('.user-row').forEach(row => {
+        const n = row.getAttribute('data-name'), d = row.getAttribute('data-doc'), col = row.getAttribute('data-color');
+        const matchT = n.includes(s) || d.includes(s);
+        const matchC = (c === "Todos" || col === c);
+        row.style.display = (matchT && matchC) ? '' : 'none';
+    });
 }
 
-function eliminarUsuario(email) {
-    if(confirm("¿Eliminar usuario por completo? Esto no borra sus ventas, pero le quita el acceso.")) {
-        db.collection("usuarios").doc(email).delete().then(() => notify("<i class='fa-solid fa-trash'></i> Usuario eliminado de la BD"));
-    }
-}
-
-function verCarnet(email) {
-    db.collection("usuarios").doc(email).get().then(doc => {
+function abrirCarnet(id) {
+    db.collection("usuarios").doc(id).get().then(doc => {
         const u = doc.data();
-        document.getElementById('carnet-detalle-render').innerHTML = `
-            <div class="id-card-mini" style="margin-bottom:0; background:transparent; border:none; box-shadow:none;">
-                <div class="avatar-circle">${u.nombre ? u.nombre[0] : 'S'}</div>
-                <h3>${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</h3>
-                <p class="badge-rango-perfil">${(u.rango || 'RECREADOR').toUpperCase()}</p>
-                <div class="id-card-details">
-                    <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color||'---').toUpperCase()}</span></div>
-                    <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc||'---'}</span></div>
-                    <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel||'---'}</span></div>
-                    <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
+        let foto = "S"; if(u.nombre) foto = u.nombre[0];
+        
+        let boletasHtml = '';
+        if (u.boletasEntregadas && u.boletasEntregadas.length > 0) {
+            boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
+                <span class="detail-label" style="display:block; margin-bottom:8px;">BOLETAS FÍSICAS ENTREGADAS (${u.boletasEntregadas.length})</span>
+                <div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;">
+                    ${u.boletasEntregadas.map(b => `<span style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:white; font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${b}</span>`).join('')}
                 </div>
-                <p class="card-brand-footer" style="margin-top:30px;">LOGISTICA & EVENTOS<br><span style="font-size:0.4rem; color:#64748b; font-weight:400; letter-spacing:0;">${email}</span></p>
+            </div>`;
+        } else {
+            boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
+                <span class="detail-label" style="display:block; margin-bottom:5px;">BOLETAS FÍSICAS ENTREGADAS (0)</span>
+                <span style="font-size:0.55rem; color:#94a3b8;">Ninguna boleta registrada</span>
+            </div>`;
+        }
+
+        document.getElementById('carnet-detalle-render').innerHTML = `
+        <div class="id-card-mini" style="margin:0;">
+            <div class="avatar-circle" style="width:70px; height:70px; font-size:2rem;">${foto}</div>
+            <h3 style="font-size:1.2rem;">${(u.nombre+" "+(u.apellido||"")).toUpperCase()}</h3>
+            <p class="badge-rango-perfil" style="margin-bottom:15px;">${u.rango||'RECREADOR'}</p>
+            <div class="id-card-details">
+                <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color||'---').toUpperCase()}</span></div>
+                <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc||'---'}</span></div>
+                <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel||'---'}</span></div>
+                <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
+                <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">INSCRITO</span><span class="detail-value" style="color:${u.inscripcion==='SI'?'#10b981':'#ef4444'};">${u.inscripcion||'NO'}</span></div>
             </div>
-        `;
+            ${boletasHtml}
+            <div class="card-brand-footer" style="margin-top:25px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">LOGISTICA & EVENTOS</div>
+        </div>`;
+        
         document.getElementById('modal-carnet').style.display = 'flex';
     });
 }
 
-function eliminarPersonalPorCodigoInvitacion() {
-    const cod = document.getElementById('del-invite-code').value.trim();
-    if(!cod) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Ingresa el código de invitación a eliminar");
-    if(!confirm(`⚠️ ATENCIÓN: Se eliminará todo el personal que se haya registrado utilizando el código "${cod}". ¿Proceder?`)) return;
+function cerrarModal() { document.getElementById('modal-carnet').style.display = 'none'; }
+function cambiarInscripcion(id, est) { db.collection("usuarios").doc(id).update({ inscripcion: est }); }
+function cambiarRol(id, rol) { db.collection("usuarios").doc(id).update({ rango: rol }).then(() => notify("✅ Rango actualizado")); }
+function eliminarUsuario(id) { if(confirm("¿Eliminar usuario permanentemente?")) db.collection("usuarios").doc(id).delete().then(() => notify("🗑️ Usuario eliminado")); }
 
-    db.collection("usuarios").where("codigoUsado", "==", cod).get().then(snap => {
-        if(snap.empty) return notify("No se encontró personal con este código.");
-        const batch = db.batch();
-        let cuenta = 0;
-        snap.forEach(doc => { batch.delete(doc.ref); cuenta++; });
-        batch.commit().then(() => {
-            document.getElementById('del-invite-code').value = "";
-            notify(`<i class='fa-solid fa-trash'></i> ${cuenta} usuarios eliminados`);
-        }).catch(err => notify("Error: " + err.message));
+async function eliminarPersonalPorCodigo() {
+    const code = document.getElementById('del-staff-code-select').value;
+    if(!code) return notify("⚠️ Selecciona un código de invitación primero");
+    if(!confirm(`⚠️ PELIGRO: ¿Estás seguro de eliminar a TODO el personal que se registró usando el código "${code}"?`)) return;
+
+    const snap = await db.collection("usuarios").where("codigoInvitacion", "==", code).get();
+    if(snap.empty) return notify(`ℹ️ No hay usuarios registrados con el código ${code}`);
+
+    let batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit().then(() => {
+        document.getElementById('del-staff-code-select').value = "";
+        notify(`🗑️ ${snap.size} usuarios eliminados`);
+    }).catch(err => notify("❌ Error al eliminar: " + err.message));
+}
+
+async function eliminarBoletasPorRango() {
+    const fInicio = document.getElementById('del-bol-inicio').value;
+    const fFin = document.getElementById('del-bol-fin').value;
+    
+    if(!fInicio || !fFin) return notify("⚠️ Ingresa el rango de fechas");
+    if(!confirm(`⚠️ ¿Eliminar todas las boletas registradas entre ${fInicio} y ${fFin}?`)) return;
+
+    const tInicio = new Date(fInicio + "T00:00:00").getTime();
+    const tFin = new Date(fFin + "T23:59:59").getTime();
+
+    const snap = await db.collection("boletas").where("creado", ">=", tInicio).where("creado", "<=", tFin).get();
+    
+    if(snap.empty) return notify("ℹ️ No se encontraron boletas en ese rango");
+
+    let batch = db.batch();
+    snap.forEach(doc => batch.delete(doc.ref));
+    batch.commit().then(() => {
+        document.getElementById('del-bol-inicio').value = "";
+        document.getElementById('del-bol-fin').value = "";
+        notify(`🗑️ ${snap.size} boletas eliminadas`);
     });
 }
 
-function eliminarBoletasPorRango() {
-    const ini = document.getElementById('del-bol-inicio').value;
-    const fin = document.getElementById('del-bol-fin').value;
-    if(!ini || !fin) return notify("<i class='fa-solid fa-triangle-exclamation'></i> Selecciona ambas fechas");
-    
-    const dIni = new Date(ini + "T00:00:00").getTime();
-    const dFin = new Date(fin + "T23:59:59").getTime();
+function handleLogin() { const e = document.getElementById('login-email').value, p = document.getElementById('login-pass').value; auth.signInWithEmailAndPassword(e, p).catch(err => notify("❌ Error: " + err.message)); }
+function handleLogout() { auth.signOut(); location.reload(); }
+function toggleAuth(view) { if(view === 'reg') { document.getElementById('auth-login').style.display = 'none'; document.getElementById('auth-register').style.display = 'flex'; } else { document.getElementById('auth-register').style.display = 'none'; document.getElementById('auth-login').style.display = 'flex'; } }
 
-    if(dIni > dFin) return notify("<i class='fa-solid fa-triangle-exclamation'></i> La fecha inicial debe ser menor");
-    if(!confirm(`⚠️ ATENCIÓN: Eliminarás TODAS las boletas creadas entre ${ini} y ${fin}. Esto es irreversible. ¿Confirmar?`)) return;
+function calcularEdad(fecha) {
+    if(!fecha) return "---";
+    const fNac = new Date(fecha), fHoy = new Date();
+    let e = fHoy.getFullYear() - fNac.getFullYear();
+    if(fHoy.getMonth() < fNac.getMonth() || (fHoy.getMonth() === fNac.getMonth() && fHoy.getDate() < fNac.getDate())) e--;
+    return e + " Años";
+}
 
-    db.collection("boletas").where("creado", ">=", dIni).where("creado", "<=", dFin).get().then(snap => {
-        if(snap.empty) return notify("No hay boletas en ese rango");
-        const batch = db.batch();
-        let cuenta = 0;
-        snap.forEach(doc => { batch.delete(doc.ref); cuenta++; });
-        batch.commit().then(() => {
-            document.getElementById('del-bol-inicio').value = ""; document.getElementById('del-bol-fin').value = "";
-            notify(`<i class='fa-solid fa-trash'></i> ${cuenta} boletas eliminadas`);
-        }).catch(err => notify("Error: " + err.message));
-    });
+function notify(msg) {
+    const c = document.getElementById('toast-container');
+    const d = document.createElement('div'); d.className = 'toast'; d.innerHTML = msg;
+    c.appendChild(d); setTimeout(() => d.remove(), 3000);
 }
 
 function exportarPersonalExcel() {
+    const c = document.getElementById('filter-user-color').value;
     db.collection("usuarios").orderBy("creado", "desc").get().then(snap => {
-        const rows = [["ITEM", "NOMBRES", "RANGO", "EDAD", "CORREO", "DOCUMENTO", "WHATSAPP", "EQUIPO", "INSCRITO"]];
-        let c = 0;
+        const rows = [["NOMBRE", "RANGO", "EDAD", "CORREO", "DOCUMENTO", "WHATSAPP", "EQUIPO", "INSCRITO"]];
         snap.forEach(doc => {
-            const u = doc.data();
-            const filterColor = document.getElementById('filter-user-color').value;
-            if(filterColor === "Todos" || u.color === filterColor) {
-                c++; rows.push([c, (u.nombre + " " + (u.apellido||"")).toUpperCase(), u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
+            const u = doc.data(); 
+            if(c === "Todos" || u.color === c) {
+                rows.push([(u.nombre+" "+(u.apellido||"")).toUpperCase(), u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
             }
         });
         const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Personal"); XLSX.writeFile(wb, "Reporte_Personal.xlsx");
     });
 }
+
 function exportarVentasExcel() {
     const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
     db.collection("boletas").orderBy("creado", "desc").get().then(async snap => {
@@ -748,7 +766,7 @@ function exportarVentasExcel() {
             if(filterCol !== "Todos" && col !== filterCol) return;
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
             exportContador++;
-            rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.comprador.toUpperCase(), b.tel, b.estado.toUpperCase(), new Date(b.creado).toLocaleDateString()]);
+            rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado, new Date(b.creado).toLocaleDateString()]);
         });
         const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Ventas"); XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
     });
