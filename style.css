@@ -37,8 +37,33 @@ body {
 .section-content { display: none; animation: fadeIn 0.3s ease; }
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; gap: 5px; }
 .badge-rank { background: rgba(0, 240, 255, 0.1); color: var(--accent); font-size: 0.5rem; font-weight: 800; padding: 4px 10px; border-radius: 20px; text-transform: uppercase; border: 1px solid var(--accent); text-shadow: 0 0 5px var(--accent-glow); }
+
+.dynamic-codes-filter {
+    background: rgba(0, 240, 255, 0.1);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 4px 8px;
+    font-size: 0.5rem;
+    font-weight: 800;
+    outline: none;
+    cursor: pointer;
+    text-transform: uppercase;
+    box-shadow: 0 0 5px var(--accent-glow);
+    transition: 0.3s ease;
+    max-width: 100px;
+    text-overflow: ellipsis;
+}
+.dynamic-codes-filter:hover {
+    background: var(--accent);
+    color: var(--primary);
+}
+.dynamic-codes-filter option { 
+    background: var(--primary); 
+    color: var(--text-main); 
+}
 
 h2, h3, .com-header h3, .admin-card-title {
     color: var(--accent);
@@ -102,7 +127,6 @@ input:focus, select:focus, textarea:focus { border-color: var(--accent); box-sha
 input:disabled { background-color: rgba(255,255,255,0.05); color: #64748b; cursor: not-allowed; border: 1px dashed rgba(0, 240, 255, 0.2); }
 .label-hint { font-size: 0.55rem; color: var(--accent); font-weight: 800; text-align: left; margin-left: 5px; text-shadow: 0 0 3px var(--accent-glow); }
 
-/* --- BOTONES MINIMALISTAS Y CENTRADOS --- */
 .btn-primary { 
     background: var(--accent); 
     color: var(--primary); 
@@ -119,104 +143,25 @@ input:disabled { background-color: rgba(255,255,255,0.05); color: #64748b; curso
     align-self: center; 
     width: max-content; 
 }
-.btn-primary:hover { 
-    box-shadow: 0 6px 20px var(--accent-glow); 
-    transform: translateY(-2px); 
-    background: #ffffff; 
-}
+.btn-primary:hover { box-shadow: 0 6px 20px var(--accent-glow); transform: translateY(-2px); background: #ffffff; }
 
-.btn-logout { 
-    background: transparent; 
-    color: #ef4444; 
-    border: 1px solid rgba(239, 68, 68, 0.4); 
-    padding: 10px 32px; 
-    border-radius: 30px; 
-    font-weight: 800; 
-    font-size: 0.7rem; 
-    cursor: pointer; 
-    margin: 15px auto 0 auto; 
-    display: block; 
-    transition: all 0.3s ease; 
-    width: max-content; 
-}
-.btn-logout:hover { 
-    background: rgba(239, 68, 68, 0.1); 
-    border-color: #ef4444; 
-    transform: translateY(-2px); 
-}
+.btn-logout { background: transparent; color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.4); padding: 10px 32px; border-radius: 30px; font-weight: 800; font-size: 0.7rem; cursor: pointer; margin: 15px auto 0 auto; display: block; transition: all 0.3s ease; width: max-content; }
+.btn-logout:hover { background: rgba(239, 68, 68, 0.1); border-color: #ef4444; transform: translateY(-2px); }
 
-.btn-excel { 
-    background: transparent; 
-    color: #10b981; 
-    border: 1px solid rgba(16, 185, 129, 0.4); 
-    padding: 8px 28px; 
-    border-radius: 30px; 
-    font-weight: 800; 
-    font-size: 0.65rem; 
-    cursor: pointer; 
-    margin: 0 auto 15px auto; 
-    display: block; 
-    transition: all 0.3s ease; 
-    width: max-content; 
-    letter-spacing: 1px;
-}
-.btn-excel:hover { 
-    background: rgba(16, 185, 129, 0.1); 
-    border-color: #10b981; 
-    transform: translateY(-2px); 
-}
+.btn-excel { background: transparent; color: #10b981; border: 1px solid rgba(16, 185, 129, 0.4); padding: 8px 28px; border-radius: 30px; font-weight: 800; font-size: 0.65rem; cursor: pointer; margin: 0 auto 15px auto; display: block; transition: all 0.3s ease; width: max-content; letter-spacing: 1px; }
+.btn-excel:hover { background: rgba(16, 185, 129, 0.1); border-color: #10b981; transform: translateY(-2px); }
 
-.btn-mini { 
-    background: transparent; 
-    color: var(--accent); 
-    border: 1px solid rgba(0, 240, 255, 0.4); 
-    padding: 10px 24px !important; 
-    border-radius: 30px; 
-    font-size: 0.6rem; 
-    font-weight: 800; 
-    cursor: pointer; 
-    width: max-content !important; 
-    text-transform: uppercase; 
-    display: flex; 
-    align-items: center; 
-    justify-content: center; 
-    transition: all 0.3s ease; 
-    align-self: center;
-}
-.btn-mini:hover { 
-    background: rgba(0, 240, 255, 0.1); 
-    border-color: var(--accent); 
-    transform: translateY(-2px); 
-}
+.btn-mini { background: transparent; color: var(--accent); border: 1px solid rgba(0, 240, 255, 0.4); padding: 10px 24px !important; border-radius: 30px; font-size: 0.6rem; font-weight: 800; cursor: pointer; width: max-content !important; text-transform: uppercase; display: flex; align-items: center; justify-content: center; transition: all 0.3s ease; align-self: center; }
+.btn-mini:hover { background: rgba(0, 240, 255, 0.1); border-color: var(--accent); transform: translateY(-2px); }
 
-.btn-add { 
-    padding: 10px 18px !important; 
-    border-radius: 12px; 
-    color: #10b981; 
-    border-color: rgba(16, 185, 129, 0.4); 
-}
-.btn-add:hover { 
-    background: rgba(16, 185, 129, 0.1); 
-    border-color: #10b981; 
-}
+.btn-add { padding: 10px 18px !important; border-radius: 12px; color: #10b981; border-color: rgba(16, 185, 129, 0.4); }
+.btn-add:hover { background: rgba(16, 185, 129, 0.1); border-color: #10b981; }
 
-.btn-status { 
-    background: none; 
-    border: none; 
-    padding: 6px 12px; 
-    font-size: 0.55rem; 
-    font-weight: 800; 
-    border-radius: 20px; 
-    cursor: pointer; 
-    border: 1px solid transparent; 
-    transition: 0.3s; 
-}
+.btn-status { background: none; border: none; padding: 6px 12px; font-size: 0.55rem; font-weight: 800; border-radius: 20px; cursor: pointer; border: 1px solid transparent; transition: 0.3s; }
 .btn-approve { background: rgba(16, 185, 129, 0.1); color: #10b981; border-color: rgba(16, 185, 129, 0.3); }
 .btn-pending { background: rgba(245, 158, 11, 0.1); color: #f59e0b; border-color: rgba(245, 158, 11, 0.3); }
 .btn-delete { background: rgba(239, 68, 68, 0.1); color: #ef4444; border-color: rgba(239, 68, 68, 0.3); }
 .btn-status:hover { filter: brightness(1.2); transform: scale(1.05); }
-
-/* --- FIN BOTONES --- */
 
 .table-container { background: rgba(30, 41, 59, 0.5); border-radius: 12px; border: 1px solid rgba(0, 240, 255, 0.2); overflow: hidden; }
 table { width: 100%; border-collapse: collapse; text-align: center; }
@@ -246,3 +191,65 @@ td { padding: 12px 6px; font-size: 0.7rem; border-bottom: 1px solid rgba(255,255
 .teams-flex-container { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; justify-content: center; }
 .team-mini-badge { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: var(--text-main); font-size: 0.5rem; font-weight: 800; padding: 6px 12px; border-radius: 8px; display: flex; align-items: center; gap: 8px; }
 .team-mini-badge span { color: #ef4444; cursor: pointer; padding: 2px; }
+
+/* ESTILOS DEL BOTÓN DE PAGO */
+.btn-flotante-pago {
+    background: linear-gradient(135deg, #ff007a, #ff6a00);
+    color: #ffffff;
+    padding: 12px 24px;
+    border-radius: 30px;
+    font-weight: 800;
+    font-size: 0.75rem;
+    text-decoration: none;
+    box-shadow: 0 4px 15px rgba(255, 0, 122, 0.5);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border: none;
+    cursor: pointer;
+    animation: pulse-vibrant 2s infinite alternate;
+}
+.btn-flotante-pago:hover {
+    transform: scale(1.05) translateY(-2px);
+    box-shadow: 0 8px 25px rgba(255, 106, 0, 0.7);
+    color: #ffffff;
+}
+@keyframes pulse-vibrant {
+    0% { filter: drop-shadow(0 0 5px rgba(255, 0, 122, 0.5)); }
+    100% { filter: drop-shadow(0 0 15px rgba(255, 106, 0, 0.8)); }
+}
+
+/* =======================================
+   ESTILOS NUEVOS: ANUNCIO FLOTANTE (PRIORI)
+   ======================================= */
+#floating-announcement {
+    position: fixed;
+    top: 25px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000; /* Prioridad extrema, por encima de todo */
+    padding: 12px 28px;
+    border-radius: 50px;
+    font-size: 0.8rem;
+    font-weight: 900;
+    color: #fff;
+    text-align: center;
+    box-shadow: 0 15px 35px rgba(0,0,0,0.7);
+    animation: slideDownFadeOut var(--anim-duration) ease forwards;
+    pointer-events: none; /* Para que no bloquee clics debajo */
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    max-width: 90%;
+    word-wrap: break-word;
+    border: 2px solid rgba(255,255,255,0.4);
+}
+@keyframes slideDownFadeOut {
+    0% { transform: translate(-50%, -150%); opacity: 0; }
+    5% { transform: translate(-50%, 0); opacity: 1; filter: drop-shadow(0 0 20px currentColor); }
+    90% { transform: translate(-50%, 0); opacity: 1; filter: drop-shadow(0 0 20px currentColor); }
+    100% { transform: translate(-50%, -150%); opacity: 0; }
+}

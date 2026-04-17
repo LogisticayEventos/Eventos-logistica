@@ -12,14 +12,20 @@ const db = firebase.firestore();
 const auth = firebase.auth();
 const ADMIN_EMAIL = "franboy1221@gmail.com";
 
+// Variables de Estado (Manejo en Memoria RAM Local)
 let currentUserData = null;
+let allUsers = [];
+let allBoletas = [];
+let allComunicados = [];
+
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
 let listadoEquipos = [];
 let sesionIniciada = false;
+let listenersActivos = false;
 
-// Variable para el Debounce (Antirrebote) de búsqueda
 let timerBusquedaPersonal;
+let filtroCodigoGlobal = "Todos";
 
 auth.onAuthStateChanged(user => {
     if (user) {
@@ -73,11 +79,32 @@ function listenInviteCode() {
             listadoCodigos = data.listaCodigos ? data.listaCodigos : (data.codigoInvitacion ? [data.codigoInvitacion] : ["LOGISTICA001"]);
             currentInviteCode = listadoCodigos[listadoCodigos.length - 1]; 
             actualizarPanelCodigosMultiples();
+            actualizarFiltroGlobalCodigos();
         } else {
             currentInviteCode = "LOGISTICA001";
             listadoCodigos = ["LOGISTICA001"];
+            actualizarFiltroGlobalCodigos();
         }
     });
+}
+
+function actualizarFiltroGlobalCodigos() {
+    const sel = document.getElementById('global-code-filter');
+    if(!sel) return;
+    const prev = sel.value;
+    sel.innerHTML = `<option value="Todos">★ TODOS LOS GRUPOS</option>`;
+    listadoCodigos.forEach(cod => {
+        sel.innerHTML += `<option value="${cod}">GRUPO: ${cod}</option>`;
+    });
+    if(prev && (listadoCodigos.includes(prev) || prev === "Todos")) {
+        sel.value = prev;
+    }
+}
+
+function aplicarFiltroCodigoGlobal() {
+    filtroCodigoGlobal = document.getElementById('global-code-filter').value;
+    renderUsuarios();
+    renderBoletas();
 }
 
 function actualizarPanelCodigosMultiples() {
@@ -155,11 +182,8 @@ function loadUser() {
 
         document.getElementById('nav-usuarios-adm').style.display = (!esRecreador) ? 'block' : 'none';
         
-        // OCULTAR REGISTRO DE BOLETAS ENTREGADAS SI NO ES RECREADOR
         const panelEntregadas = document.getElementById('panel-boletas-entregadas');
-        if (panelEntregadas) {
-            panelEntregadas.style.display = esRecreador ? 'block' : 'none';
-        }
+        if (panelEntregadas) panelEntregadas.style.display = esRecreador ? 'block' : 'none';
 
         const navAdmin = document.getElementById('nav-administracion');
         if (esAdmin || esCGeneral || esCoordinador) {
@@ -167,8 +191,10 @@ function loadUser() {
             document.getElementById('admin-edit-panel-code').style.display = esAdmin ? 'block' : 'none';
             document.getElementById('admin-delete-range-panel').style.display = esAdmin ? 'block' : 'none';
             document.getElementById('admin-delete-staff-code-panel').style.display = esAdmin ? 'block' : 'none';
+            document.getElementById('global-code-filter').style.display = 'block';
         } else {
             navAdmin.style.display = 'none';
+            document.getElementById('global-code-filter').style.display = 'none';
         }
         document.getElementById('admin-com-form').style.display = (esAdmin || esCGeneral) ? 'flex' : 'none';
         document.getElementById('filter-color').style.display = (esRecreador) ? 'none' : 'block';
@@ -200,8 +226,14 @@ function loadUser() {
                 btn.style.opacity = '1';
             });
             
-            listenData();
-            if(!esRecreador) loadAllUsers();
+            if (!listenersActivos) {
+                initDataListeners();
+                listenersActivos = true;
+            } else {
+                renderBoletas();
+                renderUsuarios();
+                renderComunicados();
+            }
             
             if (!sesionIniciada || estabaBloqueado) {
                 showSection('comunicados');
@@ -209,6 +241,27 @@ function loadUser() {
             }
             sesionIniciada = true;
         }
+    });
+}
+
+function initDataListeners() {
+    db.collection("usuarios").orderBy("creado", "desc").onSnapshot(snap => {
+        allUsers = [];
+        snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
+        renderUsuarios();
+        renderBoletas(); 
+    });
+
+    db.collection("boletas").orderBy("creado", "desc").onSnapshot(snap => {
+        allBoletas = [];
+        snap.forEach(doc => allBoletas.push({ id: doc.id, ...doc.data() }));
+        renderBoletas();
+    });
+
+    db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
+        allComunicados = [];
+        snap.forEach(doc => allComunicados.push({ id: doc.id, ...doc.data() }));
+        renderComunicados();
     });
 }
 
@@ -227,130 +280,227 @@ function registrarConCodigo() {
     auth.createUserWithEmailAndPassword(e, p).then(() => db.collection("usuarios").doc(e).set({ nombre: n, apellido: a, color: col, creado: Date.now(), rango: 'Recreador', inscripcion: 'NO', codigoInvitacion: c }).then(() => location.reload())).catch(err => notify(err.message));
 }
 
-function listenData() {
+function renderBoletas() {
+    if(!currentUserData) return;
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
     const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
-    const userColor = currentUserData.color || "Gris";
-    const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
+    
+    const filterCol = document.getElementById('filter-color').value;
+    const filterEst = document.getElementById('filter-estado').value;
 
-    db.collection("boletas").orderBy("creado", "desc").onSnapshot(async snap => {
-        const uSnap = await db.collection("usuarios").get();
-        const mapaColor = {}; 
-        const mapaEntregadas = {};
-        const mapaRecreadores = {}; 
+    const mapaColor = {}; 
+    const mapaEntregadas = {};
+    const mapaRecreadores = {}; 
+    const mapaCodigos = {};
 
-        uSnap.forEach(u => {
-            const data = u.data();
-            mapaColor[u.id] = data.color || 'Gris';
-            mapaEntregadas[u.id] = data.boletasEntregadas || [];
-        });
+    allUsers.forEach(u => {
+        mapaColor[u.id] = u.color || 'Gris';
+        mapaEntregadas[u.id] = u.boletasEntregadas || [];
+        mapaCodigos[u.id] = u.codigoInvitacion || '---';
+    });
+    
+    let contadorTotal = 0, activas = 0, pendientes = 0;
+    let boletasPorEquipo = {};
+    let setBoletasVendidasGlobal = new Set();
+
+    allBoletas.forEach(b => {
+        const codigoVendedor = mapaCodigos[b.vendedor] || '---';
         
-        let contadorTotal = 0, activas = 0, pendientes = 0;
-        let boletasPorEquipo = {};
-        let setBoletasVendidasGlobal = new Set();
+        if (filtroCodigoGlobal !== "Todos" && codigoVendedor !== filtroCodigoGlobal) return;
 
-        snap.forEach(doc => {
-            const b = doc.data(); 
-            const col = mapaColor[b.vendedor] || 'Gris';
-            if(b.n) setBoletasVendidasGlobal.add(b.n.toString());
+        const col = mapaColor[b.vendedor] || 'Gris';
+        if(b.n) setBoletasVendidasGlobal.add(b.n.toString());
 
-            const recKey = b.recreador || 'Sin Nombre';
-            if(!mapaRecreadores[recKey]) {
-                mapaRecreadores[recKey] = { 
-                    color: col, 
-                    total: 0, 
-                    activas: 0, 
-                    pendientes: 0, 
-                    ids: [], 
-                    emailVendedor: b.vendedor,
-                    entregadas: mapaEntregadas[b.vendedor] ? mapaEntregadas[b.vendedor].length : 0,
-                    fechaVenta: b.creado ? new Date(b.creado).toLocaleDateString() : '---'
-                };
-            }
-
-            contadorTotal++;
-            if(b.estado === 'Activa') { activas++; mapaRecreadores[recKey].activas++; } 
-            else { pendientes++; mapaRecreadores[recKey].pendientes++; }
-            
-            mapaRecreadores[recKey].total++;
-            mapaRecreadores[recKey].ids.push({ id: doc.id, ...b });
-
-            if(!boletasPorEquipo[col]) boletasPorEquipo[col] = { total: 0, activas: 0, pendientes: 0 };
-            boletasPorEquipo[col].total++;
-            if(b.estado === 'Activa') boletasPorEquipo[col].activas++; else boletasPorEquipo[col].pendientes++;
-        });
-
-        // OPTIMIZACIÓN: Construir el HTML en memoria antes de inyectarlo
-        let index = 1;
-        let htmlBoletas = "";
-        
-        for (let nombre in mapaRecreadores) {
-            const data = mapaRecreadores[nombre];
-            if(!(esAdmin || esCGeneral || esCoordinador) && data.emailVendedor !== email) continue;
-            if(filterCol !== "Todos" && data.color !== filterCol) continue;
-            
-            if(filterEst === "Activa" && data.activas === 0) continue;
-            if(filterEst === "Pendiente" && data.pendientes === 0) continue;
-
-            const accionHtml = (esAdmin) 
-                ? `<td><button class="btn-status btn-delete" style="padding: 4px 8px; font-size: 0.5rem;" onclick="eliminarTodosRegistrosRecreador('${nombre}')"><i class="fa-solid fa-trash"></i></button></td>`
-                : `<td><span class="badge-rango" style="background:rgba(255,255,255,0.05); font-size:0.5rem;">${data.emailVendedor === email ? 'MIS VENTAS' : 'REGISTRO'}</span></td>`;
-
-            htmlBoletas += `
-                <tr>
-                    <td style="font-weight:800;">${index++}</td>
-                    <td><span class="team-dot" style="background:${data.color.toLowerCase()}"></span> ${data.color}</td>
-                    <td style="font-weight:800; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirGestionBoletas('${nombre}')">
-                        ${nombre.toUpperCase()}
-                    </td>
-                    <td style="font-weight:800; color:#6366f1;">${data.entregadas}</td>
-                    <td><b>${data.total}</b> (A:${data.activas} | P:${data.pendientes})</td>
-                    <td style="font-size:0.55rem;">${data.fechaVenta}</td>
-                    ${accionHtml}
-                </tr>`;
+        const recKey = b.recreador || 'Sin Nombre';
+        if(!mapaRecreadores[recKey]) {
+            mapaRecreadores[recKey] = { 
+                color: col, 
+                total: 0, 
+                activas: 0, 
+                pendientes: 0, 
+                ids: [], 
+                emailVendedor: b.vendedor,
+                entregadas: mapaEntregadas[b.vendedor] ? mapaEntregadas[b.vendedor].length : 0,
+                fechaVenta: b.creado ? new Date(b.creado).toLocaleDateString() : '---'
+            };
         }
 
-        // Inyección de memoria a pantalla en 1 solo paso
-        document.getElementById('lista-boletas-body').innerHTML = htmlBoletas;
+        contadorTotal++;
+        if(b.estado === 'Activa') { activas++; mapaRecreadores[recKey].activas++; } 
+        else { pendientes++; mapaRecreadores[recKey].pendientes++; }
+        
+        mapaRecreadores[recKey].total++;
+        mapaRecreadores[recKey].ids.push(b);
 
-        if(document.getElementById('conteo-boletas-total')) document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
-        actualizarListaEntregadasVisual(setBoletasVendidasGlobal);
-
-        if(esAdmin || esCGeneral || esCoordinador) {
-            if(document.getElementById('admin-tot-boletas')) document.getElementById('admin-tot-boletas').innerText = contadorTotal;
-            if(document.getElementById('admin-tot-activas')) document.getElementById('admin-tot-activas').innerText = activas;
-            if(document.getElementById('admin-tot-pendientes')) document.getElementById('admin-tot-pendientes').innerText = pendientes;
-            
-            let htmlBoletasE = "<p class='mini-title'>BOLETAS POR EQUIPO</p>";
-            for(let eq in boletasPorEquipo) {
-                htmlBoletasE += `<div class='summary-row'><span>${eq}</span><b>${boletasPorEquipo[eq].total} (A:${boletasPorEquipo[eq].activas})</b></div>`;
-            }
-            if(document.getElementById('resumen-boletas-equipos')) document.getElementById('resumen-boletas-equipos').innerHTML = htmlBoletasE;
-        }
+        if(!boletasPorEquipo[col]) boletasPorEquipo[col] = { total: 0, activas: 0, pendientes: 0 };
+        boletasPorEquipo[col].total++;
+        if(b.estado === 'Activa') boletasPorEquipo[col].activas++; else boletasPorEquipo[col].pendientes++;
     });
 
-    db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
-        let htmlComunicados = "";
-        snap.forEach(doc => { 
-            const c = doc.data(); 
-            if (!(esAdmin || esCGeneral)) {
-                const destinatarios = c.destinatarios || ["Todos"];
-                if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
-            }
-            const del = esAdmin ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${doc.id}').delete()">✕</button>` : '';
-            let extraInfo = "", countdownHtml = "", docBtn = "";
-            if(c.linkDoc) docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 DOCUMENTO</a>`;
-            if(c.fechaEv) {
-                const fEv = new Date(c.fechaEv + "T" + (c.horaEv || "00:00")), hoy = new Date();
-                const dias = Math.ceil((fEv - hoy) / (1000 * 60 * 60 * 24));
-                extraInfo = `<div class="com-meta-box"><span>📅 ${c.fechaEv}</span>${c.horaEv ? `<span>⏰ ${c.horaEv}</span>` : ''}${c.lugarEv ? `<span>📍 ${c.lugarEv}</span>` : ''}</div>`;
-                if(dias > 0) countdownHtml = `<div class="com-countdown">Faltan <b>${dias}</b> días</div>`;
-                else if (dias === 0) countdownHtml = `<div class="com-countdown today">¡Es Hoy!</div>`;
-            }
-            htmlComunicados += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">INFO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
-        });
-        document.getElementById('comunicados-list').innerHTML = htmlComunicados;
+    let index = 1;
+    let htmlBoletas = "";
+    
+    for (let nombre in mapaRecreadores) {
+        const data = mapaRecreadores[nombre];
+        if(!(esAdmin || esCGeneral || esCoordinador) && data.emailVendedor !== email) continue;
+        if(filterCol !== "Todos" && data.color !== filterCol) continue;
+        
+        if(filterEst === "Activa" && data.activas === 0) continue;
+        if(filterEst === "Pendiente" && data.pendientes === 0) continue;
+
+        const accionHtml = (esAdmin) 
+            ? `<td><button class="btn-status btn-delete" style="padding: 4px 8px; font-size: 0.5rem;" onclick="eliminarTodosRegistrosRecreador('${nombre}')"><i class="fa-solid fa-trash"></i></button></td>`
+            : `<td><span class="badge-rango" style="background:rgba(255,255,255,0.05); font-size:0.5rem;">${data.emailVendedor === email ? 'MIS VENTAS' : 'REGISTRO'}</span></td>`;
+
+        htmlBoletas += `
+            <tr>
+                <td style="font-weight:800;">${index++}</td>
+                <td><span class="team-dot" style="background:${data.color.toLowerCase()}"></span> ${data.color}</td>
+                <td style="font-weight:800; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirGestionBoletas('${nombre}')">
+                    ${nombre.toUpperCase()}
+                </td>
+                <td style="font-weight:800; color:#6366f1;">${data.entregadas}</td>
+                <td><b>${data.total}</b> (A:${data.activas} | P:${data.pendientes})</td>
+                <td style="font-size:0.55rem;">${data.fechaVenta}</td>
+                ${accionHtml}
+            </tr>`;
+    }
+
+    document.getElementById('lista-boletas-body').innerHTML = htmlBoletas;
+
+    if(document.getElementById('conteo-boletas-total')) document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
+    actualizarListaEntregadasVisual(setBoletasVendidasGlobal);
+
+    if(esAdmin || esCGeneral || esCoordinador) {
+        if(document.getElementById('admin-tot-boletas')) document.getElementById('admin-tot-boletas').innerText = contadorTotal;
+        if(document.getElementById('admin-tot-activas')) document.getElementById('admin-tot-activas').innerText = activas;
+        if(document.getElementById('admin-tot-pendientes')) document.getElementById('admin-tot-pendientes').innerText = pendientes;
+        
+        let htmlBoletasE = "<p class='mini-title'>BOLETAS POR EQUIPO</p>";
+        for(let eq in boletasPorEquipo) {
+            htmlBoletasE += `<div class='summary-row'><span>${eq}</span><b>${boletasPorEquipo[eq].total} (A:${boletasPorEquipo[eq].activas})</b></div>`;
+        }
+        if(document.getElementById('resumen-boletas-equipos')) document.getElementById('resumen-boletas-equipos').innerHTML = htmlBoletasE;
+    }
+}
+
+function renderComunicados() {
+    if(!currentUserData) return;
+    const email = auth.currentUser.email;
+    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
+    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General");
+    const userColor = currentUserData.color || "Gris";
+
+    let htmlComunicados = "";
+    allComunicados.forEach(c => { 
+        if (!(esAdmin || esCGeneral)) {
+            const destinatarios = c.destinatarios || ["Todos"];
+            if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
+        }
+        const del = esAdmin ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${c.id}').delete()">✕</button>` : '';
+        let extraInfo = "", countdownHtml = "", docBtn = "";
+        if(c.linkDoc) docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 DOCUMENTO</a>`;
+        if(c.fechaEv) {
+            const fEv = new Date(c.fechaEv + "T" + (c.horaEv || "00:00")), hoy = new Date();
+            const dias = Math.ceil((fEv - hoy) / (1000 * 60 * 60 * 24));
+            extraInfo = `<div class="com-meta-box"><span>📅 ${c.fechaEv}</span>${c.horaEv ? `<span>⏰ ${c.horaEv}</span>` : ''}${c.lugarEv ? `<span>📍 ${c.lugarEv}</span>` : ''}</div>`;
+            if(dias > 0) countdownHtml = `<div class="com-countdown">Faltan <b>${dias}</b> días</div>`;
+            else if (dias === 0) countdownHtml = `<div class="com-countdown today">¡Es Hoy!</div>`;
+        }
+        htmlComunicados += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">INFO</span><h3>${c.titulo}</h3></div><p class="com-body">${c.mensaje}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${new Date(c.fecha).toLocaleDateString()}</div></div>`;
+    });
+    document.getElementById('comunicados-list').innerHTML = htmlComunicados;
+}
+
+function renderUsuarios() {
+    if(!currentUserData) return;
+    const email = auth.currentUser.email;
+    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
+    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
+    
+    if(r === "Recreador") return;
+
+    let equipoCounts = {}, totalP = 0;
+    let htmlUsuarios = "";
+
+    allUsers.forEach(u => {
+        const codigoUsuario = u.codigoInvitacion || '---';
+
+        if (filtroCodigoGlobal !== "Todos" && codigoUsuario !== filtroCodigoGlobal) return;
+
+        totalP++;
+        const col = u.color || 'Gris';
+        if(!equipoCounts[col]) equipoCounts[col] = 0;
+        equipoCounts[col]++;
+
+        const rangoTxt = (u.rango || 'Recreador').toUpperCase();
+        const nombreCompleto = (u.nombre + " " + (u.apellido || "")).toUpperCase();
+        const edadTxt = calcularEdad(u.nacimiento);
+        const docTxt = u.doc || '---';
+        const telTxt = u.tel || '---';
+        
+        const btnWa = u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';
+        const fechaReg = u.creado ? new Date(u.creado).toLocaleDateString('es-CO') : '---';
+
+        let btnValidar = u.inscripcion === 'SI' 
+            ? `<button class="btn-status btn-approve" onclick="cambiarInscripcion('${u.id}', 'NO')">✓ SI</button>` 
+            : `<button class="btn-status btn-pending" onclick="cambiarInscripcion('${u.id}', 'SI')">⏳ NO</button>`;
+            
+        let btnAdminHTML = "", btnRolHTML = "";
+        
+        if(esAdmin) {
+            btnRolHTML = `<td class="col-rango-admin"><select onchange="cambiarRol('${u.id}', this.value)" style="padding:4px; font-size:0.55rem; background:rgba(0,0,0,0.5); border:1px solid rgba(0,240,255,0.3); color:white; border-radius:4px;"><option value="Recreador" ${u.rango==='Recreador'?'selected':''}>Recreador</option><option value="Coordinador" ${u.rango==='Coordinador'?'selected':''}>Coordinador</option><option value="Coordinador General" ${u.rango==='Coordinador General'?'selected':''}>C. General</option><option value="Administrador" ${u.rango==='Administrador'?'selected':''}>Administrador</option></select></td>`;
+            btnAdminHTML = `<td class="col-rango-admin"><button class="btn-status btn-delete" style="padding:6px 10px;" onclick="eliminarUsuario('${u.id}')"><i class="fa-solid fa-trash"></i></button></td>`;
+        }
+        
+        let validacionCol = (esAdmin || esCGeneral || esCoordinador) ? `<td class="col-rango-permiso">${btnValidar}</td>` : '';
+        
+        htmlUsuarios += `
+        <tr class="user-row" data-name="${nombreCompleto.toLowerCase()}" data-doc="${docTxt}" data-color="${col}">
+            <td><span class="badge-rango" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">${rangoTxt}</span></td>
+            <td style="font-weight:800; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirCarnet('${u.id}')" title="Ver Carnet de Datos">${nombreCompleto}</td>
+            <td>${edadTxt}</td>
+            <td>${docTxt}</td>
+            <td style="white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${telTxt} ${btnWa}</td>
+            <td style="white-space: nowrap;"><span class="team-dot" style="background:${col.toLowerCase()}; border: 1px solid rgba(255,255,255,0.3);"></span> ${col.toUpperCase()}</td>
+            <td style="font-size:0.6rem;">${fechaReg}</td>
+            ${validacionCol}
+            ${btnRolHTML}
+            ${btnAdminHTML}
+        </tr>`;
+    });
+    
+    document.getElementById('lista-usuarios-body').innerHTML = htmlUsuarios;
+
+    if(document.getElementById('conteo-personal-total')) document.getElementById('conteo-personal-total').innerText = "Total personal: " + totalP;
+    
+    if(esAdmin || esCGeneral || esCoordinador) {
+        if(document.getElementById('admin-tot-personal')) document.getElementById('admin-tot-personal').innerText = totalP;
+        
+        let htmlPersonalE = "<p class='mini-title'>PERSONAL POR EQUIPO</p>";
+        for(let eq in equipoCounts) htmlPersonalE += `<div class='summary-row'><span>${eq}</span><b>${equipoCounts[eq]}</b></div>`;
+        if(document.getElementById('resumen-personal-equipos')) document.getElementById('resumen-personal-equipos').innerHTML = htmlPersonalE;
+    }
+    
+    aplicarFiltrosUsuarios();
+}
+
+function listenUsuariosAdm() {
+    clearTimeout(timerBusquedaPersonal);
+    timerBusquedaPersonal = setTimeout(() => {
+        aplicarFiltrosUsuarios();
+    }, 250); 
+}
+
+function aplicarFiltrosUsuarios() {
+    const s = document.getElementById('search-user').value.toLowerCase();
+    const c = document.getElementById('filter-user-color').value;
+    document.querySelectorAll('.user-row').forEach(row => {
+        const n = row.getAttribute('data-name'), d = row.getAttribute('data-doc'), col = row.getAttribute('data-color');
+        const matchT = n.includes(s) || d.includes(s);
+        const matchC = (c === "Todos" || col === c);
+        row.style.display = (matchT && matchC) ? '' : 'none';
     });
 }
 
@@ -375,38 +525,33 @@ function actualizarListaEntregadasVisual(setBoletasVendidasGlobal = new Set()) {
     container.innerHTML = htmlContent;
 }
 
-async function buscarDuenioBoleta() {
+function buscarDuenioBoleta() {
     const numero = document.getElementById('search-n-boleta').value.trim();
     const resultDiv = document.getElementById('resultado-busqueda-boleta');
     if(!numero) return notify("⚠️ Ingresa un número de boleta");
 
     resultDiv.style.display = 'block';
-    resultDiv.innerHTML = `<p style="font-size:0.6rem; color:var(--accent); font-weight:800;">Buscando...</p>`;
-
-    const snapVentas = await db.collection("boletas").where("n", "==", numero).get();
-    if(!snapVentas.empty) {
-        const b = snapVentas.docs[0].data();
-        const uDoc = await db.collection("usuarios").doc(b.vendedor).get();
-        const u = uDoc.data() || { nombre: "Desconocido" };
-        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
-        const colorBg = b.estado === 'Activa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
+    
+    const boletaEncontrada = allBoletas.find(b => b.n == numero);
+    if(boletaEncontrada) {
+        const u = allUsers.find(user => user.id === boletaEncontrada.vendedor) || { nombre: "Desconocido" };
+        const colorEstado = boletaEncontrada.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        const colorBg = boletaEncontrada.estado === 'Activa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
         
         resultDiv.innerHTML = `
             <div style="background: ${colorBg}; border: 1px solid ${colorEstado}; padding: 10px; border-radius: 12px; text-align: left;">
-                <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${b.estado})</p>
+                <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${boletaEncontrada.estado})</p>
                 <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${(u.nombre + " " + (u.apellido || "")).toUpperCase()}</p>
                 <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${(u.color || "---").toUpperCase()}</p>
-                <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--accent);">Comprador: <b>${b.c || b.comprador || '---'}</b></p>
+                <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--accent);">Comprador: <b>${boletaEncontrada.c || boletaEncontrada.comprador || '---'}</b></p>
             </div>`;
         return;
     }
 
-    const snapUsuarios = await db.collection("usuarios").get();
     let recreadorEncontrado = null;
-    snapUsuarios.forEach(doc => {
-        const u = doc.data();
+    allUsers.forEach(u => {
         if(u.boletasEntregadas && u.boletasEntregadas.includes(numero)) {
-            recreadorEncontrado = { ...u, email: doc.id };
+            recreadorEncontrado = u;
         }
     });
 
@@ -424,26 +569,32 @@ async function buscarDuenioBoleta() {
 
 async function eliminarTodosRegistrosRecreador(nombreRecreador) {
     if (!confirm(`¿Estás seguro de eliminar TODOS los registros de boletas para: ${nombreRecreador}?`)) return;
-    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
+    
+    const boletasABorrar = allBoletas.filter(b => b.recreador === nombreRecreador);
+    if(boletasABorrar.length === 0) return notify("No hay registros para este recreador");
+
     let batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
+    boletasABorrar.forEach(b => {
+        batch.delete(db.collection("boletas").doc(b.id));
+    });
     batch.commit().then(() => notify(`🗑️ Registros de ${nombreRecreador} eliminados`));
 }
 
-async function abrirGestionBoletas(nombreRecreador) {
+function abrirGestionBoletas(nombreRecreador) {
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
     const esAdmin = (r === "Administrador" || r === "Coordinador General");
     const render = document.getElementById('gestion-boletas-render');
-    render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreRecreador.toUpperCase()}</h3><p style="text-align:center; font-size:0.7rem;">Cargando...</p>`;
     document.getElementById('modal-gestion-boletas').style.display = 'flex';
 
-    const snap = await db.collection("boletas").where("recreador", "==", nombreRecreador).get();
-    if(snap.empty) {
+    const boletasRecreador = allBoletas.filter(b => b.recreador === nombreRecreador);
+    
+    if(boletasRecreador.length === 0) {
         render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreRecreador.toUpperCase()}</h3><p style="text-align:center; font-size:0.7rem;">No hay boletas registradas.</p>`;
         return;
     }
 
+    render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreRecreador.toUpperCase()}</h3>`;
     let htmlTable = `<div class="table-container" style="max-height: 400px; overflow-y: auto;">
                         <table>
                             <thead>
@@ -457,8 +608,7 @@ async function abrirGestionBoletas(nombreRecreador) {
                             </thead>
                             <tbody>`;
                             
-    snap.forEach(doc => {
-        const b = doc.data();
+    boletasRecreador.forEach(b => {
         const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
         let botones = "<td>--</td>";
         if (esAdmin) {
@@ -466,10 +616,10 @@ async function abrirGestionBoletas(nombreRecreador) {
             const icon = b.estado === 'Activa' ? '<i class="fa-solid fa-hourglass-half"></i>' : '<i class="fa-solid fa-check-double"></i>';
             botones = `
                 <td style="display:flex; gap:5px; justify-content:center;">
-                    <button class="btn-status" style="background:rgba(255,255,255,0.1); color:var(--text-main); border:1px solid rgba(255,255,255,0.2);" onclick="cambiarEstado('${doc.id}', '${nuevoEstado}'); cerrarModalGestion();">
+                    <button class="btn-status" style="background:rgba(255,255,255,0.1); color:var(--text-main); border:1px solid rgba(255,255,255,0.2);" onclick="cambiarEstado('${b.id}', '${nuevoEstado}'); cerrarModalGestion();">
                         ${icon}
                     </button>
-                    <button class="btn-status btn-delete" onclick="eliminarBoleta('${doc.id}'); cerrarModalGestion();">
+                    <button class="btn-status btn-delete" onclick="eliminarBoleta('${b.id}'); cerrarModalGestion();">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </td>`;
@@ -479,7 +629,6 @@ async function abrirGestionBoletas(nombreRecreador) {
         const nomComprador = b.c || b.comprador || '--';
         const telComprador = b.t || b.whatsapp || '--';
         
-        // Icono de enlace a WhatsApp
         const btnWa = (telComprador !== '--') ? `<a href="https://wa.me/57${telComprador}" target="_blank" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';
 
         htmlTable += `
@@ -493,7 +642,7 @@ async function abrirGestionBoletas(nombreRecreador) {
     });
     
     htmlTable += `</tbody></table></div>`;
-    render.innerHTML = htmlTable;
+    render.innerHTML += htmlTable;
 }
 
 function cerrarModalGestion() {
@@ -546,136 +695,44 @@ function guardarPerfil() {
     db.collection("usuarios").doc(auth.currentUser.email).update({ doc: doc, tel: tel, nacimiento: nac, color: col }).then(() => notify("✅ Guardado"));
 }
 
-function loadAllUsers() {
-    const email = auth.currentUser.email;
-    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
-    
-    db.collection("usuarios").orderBy("creado", "desc").onSnapshot(snap => {
-        let equipoCounts = {}, totalP = 0;
-        
-        // OPTIMIZACIÓN: Construir el HTML en memoria antes de inyectarlo
-        let htmlUsuarios = "";
-
-        snap.forEach(doc => {
-            const u = doc.data(); 
-            totalP++;
-            const col = u.color || 'Gris';
-            if(!equipoCounts[col]) equipoCounts[col] = 0;
-            equipoCounts[col]++;
-
-            const rangoTxt = (u.rango || 'Recreador').toUpperCase();
-            const nombreCompleto = (u.nombre + " " + (u.apellido || "")).toUpperCase();
-            const edadTxt = calcularEdad(u.nacimiento);
-            const docTxt = u.doc || '---';
-            const telTxt = u.tel || '---';
-            
-            const btnWa = u.tel ? `<a href="https://wa.me/57${u.tel}" target="_blank" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';
-            const fechaReg = u.creado ? new Date(u.creado).toLocaleDateString('es-CO') : '---';
-
-            let btnValidar = u.inscripcion === 'SI' 
-                ? `<button class="btn-status btn-approve" onclick="cambiarInscripcion('${doc.id}', 'NO')">✓ SI</button>` 
-                : `<button class="btn-status btn-pending" onclick="cambiarInscripcion('${doc.id}', 'SI')">⏳ NO</button>`;
-                
-            let btnAdminHTML = "", btnRolHTML = "";
-            
-            if(esAdmin) {
-                btnRolHTML = `<td class="col-rango-admin"><select onchange="cambiarRol('${doc.id}', this.value)" style="padding:4px; font-size:0.55rem; background:rgba(0,0,0,0.5); border:1px solid rgba(0,240,255,0.3); color:white; border-radius:4px;"><option value="Recreador" ${u.rango==='Recreador'?'selected':''}>Recreador</option><option value="Coordinador" ${u.rango==='Coordinador'?'selected':''}>Coordinador</option><option value="Coordinador General" ${u.rango==='Coordinador General'?'selected':''}>C. General</option><option value="Administrador" ${u.rango==='Administrador'?'selected':''}>Administrador</option></select></td>`;
-                btnAdminHTML = `<td class="col-rango-admin"><button class="btn-status btn-delete" style="padding:6px 10px;" onclick="eliminarUsuario('${doc.id}')"><i class="fa-solid fa-trash"></i></button></td>`;
-            }
-            
-            let validacionCol = (esAdmin || esCGeneral || esCoordinador) ? `<td class="col-rango-permiso">${btnValidar}</td>` : '';
-            
-            htmlUsuarios += `
-            <tr class="user-row" data-name="${nombreCompleto.toLowerCase()}" data-doc="${docTxt}" data-color="${col}">
-                <td><span class="badge-rango" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">${rangoTxt}</span></td>
-                <td style="font-weight:800; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirCarnet('${doc.id}')" title="Ver Carnet de Datos">${nombreCompleto}</td>
-                <td>${edadTxt}</td>
-                <td>${docTxt}</td>
-                <td style="white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${telTxt} ${btnWa}</td>
-                <td style="white-space: nowrap;"><span class="team-dot" style="background:${col.toLowerCase()}; border: 1px solid rgba(255,255,255,0.3);"></span> ${col.toUpperCase()}</td>
-                <td style="font-size:0.6rem;">${fechaReg}</td>
-                ${validacionCol}
-                ${btnRolHTML}
-                ${btnAdminHTML}
-            </tr>`;
-        });
-        
-        // Inyección en un solo paso
-        document.getElementById('lista-usuarios-body').innerHTML = htmlUsuarios;
-
-        if(document.getElementById('conteo-personal-total')) document.getElementById('conteo-personal-total').innerText = "Total personal: " + totalP;
-        
-        if(esAdmin || esCGeneral || esCoordinador) {
-            if(document.getElementById('admin-tot-personal')) document.getElementById('admin-tot-personal').innerText = totalP;
-            
-            let htmlPersonalE = "<p class='mini-title'>PERSONAL POR EQUIPO</p>";
-            for(let eq in equipoCounts) htmlPersonalE += `<div class='summary-row'><span>${eq}</span><b>${equipoCounts[eq]}</b></div>`;
-            if(document.getElementById('resumen-personal-equipos')) document.getElementById('resumen-personal-equipos').innerHTML = htmlPersonalE;
-        }
-        
-        // Aplicar el filtro visual Inmediatamente sin debounce para el renderizado inicial
-        aplicarFiltrosUsuarios();
-    });
-}
-
-// OPTIMIZACIÓN: Función envolvente de Debounce para el input de búsqueda
-function listenUsuariosAdm() {
-    clearTimeout(timerBusquedaPersonal);
-    timerBusquedaPersonal = setTimeout(() => {
-        aplicarFiltrosUsuarios();
-    }, 250); // Espera 250 milisegundos tras teclear la última letra
-}
-
-function aplicarFiltrosUsuarios() {
-    const s = document.getElementById('search-user').value.toLowerCase();
-    const c = document.getElementById('filter-user-color').value;
-    document.querySelectorAll('.user-row').forEach(row => {
-        const n = row.getAttribute('data-name'), d = row.getAttribute('data-doc'), col = row.getAttribute('data-color');
-        const matchT = n.includes(s) || d.includes(s);
-        const matchC = (c === "Todos" || col === c);
-        row.style.display = (matchT && matchC) ? '' : 'none';
-    });
-}
-
 function abrirCarnet(id) {
-    db.collection("usuarios").doc(id).get().then(doc => {
-        const u = doc.data();
-        let foto = "S"; if(u.nombre) foto = u.nombre[0];
-        
-        let boletasHtml = '';
-        if (u.boletasEntregadas && u.boletasEntregadas.length > 0) {
-            boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
-                <span class="detail-label" style="display:block; margin-bottom:8px;">BOLETAS FÍSICAS ENTREGADAS (${u.boletasEntregadas.length})</span>
-                <div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;">
-                    ${u.boletasEntregadas.map(b => `<span style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:white; font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${b}</span>`).join('')}
-                </div>
-            </div>`;
-        } else {
-            boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
-                <span class="detail-label" style="display:block; margin-bottom:5px;">BOLETAS FÍSICAS ENTREGADAS (0)</span>
-                <span style="font-size:0.55rem; color:#94a3b8;">Ninguna boleta registrada</span>
-            </div>`;
-        }
-
-        document.getElementById('carnet-detalle-render').innerHTML = `
-        <div class="id-card-mini" style="margin:0;">
-            <div class="avatar-circle" style="width:70px; height:70px; font-size:2rem;">${foto}</div>
-            <h3 style="font-size:1.2rem;">${(u.nombre+" "+(u.apellido||"")).toUpperCase()}</h3>
-            <p class="badge-rango-perfil" style="margin-bottom:15px;">${u.rango||'RECREADOR'}</p>
-            <div class="id-card-details">
-                <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color||'---').toUpperCase()}</span></div>
-                <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc||'---'}</span></div>
-                <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel||'---'}</span></div>
-                <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
-                <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">INSCRITO</span><span class="detail-value" style="color:${u.inscripcion==='SI'?'#10b981':'#ef4444'};">${u.inscripcion||'NO'}</span></div>
+    const u = allUsers.find(user => user.id === id);
+    if (!u) return;
+    
+    let foto = "S"; if(u.nombre) foto = u.nombre[0];
+    
+    let boletasHtml = '';
+    if (u.boletasEntregadas && u.boletasEntregadas.length > 0) {
+        boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
+            <span class="detail-label" style="display:block; margin-bottom:8px;">BOLETAS FÍSICAS ENTREGADAS (${u.boletasEntregadas.length})</span>
+            <div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;">
+                ${u.boletasEntregadas.map(b => `<span style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:white; font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${b}</span>`).join('')}
             </div>
-            ${boletasHtml}
-            <div class="card-brand-footer" style="margin-top:25px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">LOGISTICA & EVENTOS</div>
         </div>`;
-        
-        document.getElementById('modal-carnet').style.display = 'flex';
-    });
+    } else {
+        boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
+            <span class="detail-label" style="display:block; margin-bottom:5px;">BOLETAS FÍSICAS ENTREGADAS (0)</span>
+            <span style="font-size:0.55rem; color:#94a3b8;">Ninguna boleta registrada</span>
+        </div>`;
+    }
+
+    document.getElementById('carnet-detalle-render').innerHTML = `
+    <div class="id-card-mini" style="margin:0;">
+        <div class="avatar-circle" style="width:70px; height:70px; font-size:2rem;">${foto}</div>
+        <h3 style="font-size:1.2rem;">${(u.nombre+" "+(u.apellido||"")).toUpperCase()}</h3>
+        <p class="badge-rango-perfil" style="margin-bottom:15px;">${u.rango||'RECREADOR'}</p>
+        <div class="id-card-details">
+            <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${(u.color||'---').toUpperCase()}</span></div>
+            <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${u.doc||'---'}</span></div>
+            <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${u.tel||'---'}</span></div>
+            <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
+            <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">INSCRITO</span><span class="detail-value" style="color:${u.inscripcion==='SI'?'#10b981':'#ef4444'};">${u.inscripcion||'NO'}</span></div>
+        </div>
+        ${boletasHtml}
+        <div class="card-brand-footer" style="margin-top:25px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">LOGISTICA & EVENTOS</div>
+    </div>`;
+    
+    document.getElementById('modal-carnet').style.display = 'flex';
 }
 
 function cerrarModal() { document.getElementById('modal-carnet').style.display = 'none'; }
@@ -688,14 +745,16 @@ async function eliminarPersonalPorCodigo() {
     if(!code) return notify("⚠️ Selecciona un código de invitación primero");
     if(!confirm(`⚠️ PELIGRO: ¿Estás seguro de eliminar a TODO el personal que se registró usando el código "${code}"?`)) return;
 
-    const snap = await db.collection("usuarios").where("codigoInvitacion", "==", code).get();
-    if(snap.empty) return notify(`ℹ️ No hay usuarios registrados con el código ${code}`);
+    const usuariosABorrar = allUsers.filter(u => u.codigoInvitacion === code);
+    if(usuariosABorrar.length === 0) return notify(`ℹ️ No hay usuarios registrados con el código ${code}`);
 
     let batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
+    usuariosABorrar.forEach(u => {
+        batch.delete(db.collection("usuarios").doc(u.id));
+    });
     batch.commit().then(() => {
         document.getElementById('del-staff-code-select').value = "";
-        notify(`🗑️ ${snap.size} usuarios eliminados`);
+        notify(`🗑️ ${usuariosABorrar.length} usuarios eliminados`);
     }).catch(err => notify("❌ Error al eliminar: " + err.message));
 }
 
@@ -709,16 +768,18 @@ async function eliminarBoletasPorRango() {
     const tInicio = new Date(fInicio + "T00:00:00").getTime();
     const tFin = new Date(fFin + "T23:59:59").getTime();
 
-    const snap = await db.collection("boletas").where("creado", ">=", tInicio).where("creado", "<=", tFin).get();
+    const boletasABorrar = allBoletas.filter(b => b.creado >= tInicio && b.creado <= tFin);
     
-    if(snap.empty) return notify("ℹ️ No se encontraron boletas en ese rango");
+    if(boletasABorrar.length === 0) return notify("ℹ️ No se encontraron boletas en ese rango");
 
     let batch = db.batch();
-    snap.forEach(doc => batch.delete(doc.ref));
+    boletasABorrar.forEach(b => {
+        batch.delete(db.collection("boletas").doc(b.id));
+    });
     batch.commit().then(() => {
         document.getElementById('del-bol-inicio').value = "";
         document.getElementById('del-bol-fin').value = "";
-        notify(`🗑️ ${snap.size} boletas eliminadas`);
+        notify(`🗑️ ${boletasABorrar.length} boletas eliminadas`);
     });
 }
 
@@ -742,32 +803,169 @@ function notify(msg) {
 
 function exportarPersonalExcel() {
     const c = document.getElementById('filter-user-color').value;
-    db.collection("usuarios").orderBy("creado", "desc").get().then(snap => {
-        const rows = [["NOMBRE", "RANGO", "EDAD", "CORREO", "DOCUMENTO", "WHATSAPP", "EQUIPO", "INSCRITO"]];
-        snap.forEach(doc => {
-            const u = doc.data(); 
-            if(c === "Todos" || u.color === c) {
-                rows.push([(u.nombre+" "+(u.apellido||"")).toUpperCase(), u.rango || "Recreador", calcularEdad(u.nacimiento), doc.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
-            }
-        });
-        const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Personal"); XLSX.writeFile(wb, "Reporte_Personal.xlsx");
+    const rows = [["NOMBRE", "RANGO", "EDAD", "CORREO", "DOCUMENTO", "WHATSAPP", "EQUIPO", "INSCRITO"]];
+    allUsers.forEach(u => {
+        const codigoUsuario = u.codigoInvitacion || '---';
+        if (filtroCodigoGlobal !== "Todos" && codigoUsuario !== filtroCodigoGlobal) return;
+        
+        if(c === "Todos" || u.color === c) {
+            rows.push([(u.nombre+" "+(u.apellido||"")).toUpperCase(), u.rango || "Recreador", calcularEdad(u.nacimiento), u.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
+        }
     });
+    const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Personal"); XLSX.writeFile(wb, "Reporte_Personal.xlsx");
 }
 
 function exportarVentasExcel() {
     const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
-    db.collection("boletas").orderBy("creado", "desc").get().then(async snap => {
-        const rows = [["ITEM", "BOLETA", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
-        const uSnap = await db.collection("usuarios").get();
-        const mapaColores = {}; uSnap.forEach(u => mapaColores[u.id] = u.data().color || 'Gris');
-        let exportContador = 0;
-        snap.forEach(doc => {
-            const b = doc.data(); const col = mapaColores[b.vendedor] || 'Gris';
-            if(filterCol !== "Todos" && col !== filterCol) return;
-            if(filterEst !== "Todos" && b.estado !== filterEst) return;
-            exportContador++;
-            rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado, new Date(b.creado).toLocaleDateString()]);
-        });
-        const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Ventas"); XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
+    const rows = [["ITEM", "BOLETA", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
+    
+    const mapaColores = {}; 
+    const mapaCodigos = {};
+    allUsers.forEach(u => { 
+        mapaColores[u.id] = u.color || 'Gris'; 
+        mapaCodigos[u.id] = u.codigoInvitacion || '---'; 
     });
+    
+    let exportContador = 0;
+    allBoletas.forEach(b => {
+        const codigoVendedor = mapaCodigos[b.vendedor] || '---';
+        if (filtroCodigoGlobal !== "Todos" && codigoVendedor !== filtroCodigoGlobal) return;
+        
+        const col = mapaColores[b.vendedor] || 'Gris';
+        if(filterCol !== "Todos" && col !== filterCol) return;
+        if(filterEst !== "Todos" && b.estado !== filterEst) return;
+        
+        exportContador++;
+        rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado, new Date(b.creado).toLocaleDateString()]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Ventas"); XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
+}
+
+// ==========================================
+// NUEVO CÓDIGO - SISTEMA DE ANUNCIO FLOTANTE (ACTUALIZADO PRIORI)
+// ==========================================
+
+let anuncioFlotanteData = null;
+let anuncioTimer = null;
+
+// Escuchador en tiempo real para todos los usuarios
+db.collection("configuracion").doc("anuncio_flotante").onSnapshot(doc => {
+    if (doc.exists) {
+        anuncioFlotanteData = doc.data();
+        evaluarAnuncioCiclo(); // Evaluamos de inmediato al recibir los datos
+    } else {
+        anuncioFlotanteData = null;
+        if(anuncioTimer) clearTimeout(anuncioTimer);
+    }
+});
+
+// Lógica inteligente para evaluar si corresponde mostrar el anuncio
+function evaluarAnuncioCiclo() {
+    if (anuncioTimer) clearTimeout(anuncioTimer);
+    if (!anuncioFlotanteData) return;
+
+    const data = anuncioFlotanteData;
+    
+    // 1. Verificamos si ya pasó la fecha y hora límite general
+    if (data.fechaLimite && Date.now() > data.fechaLimite) return;
+
+    // 2. Usamos LocalStorage para saber cuántas veces ha visto ESTE anuncio el usuario actual
+    let stats = JSON.parse(localStorage.getItem('anuncio_stats_' + data.timestamp)) || { count: 0, lastShow: 0 };
+
+    // 3. Verificamos si ya vio el anuncio la cantidad máxima de veces indicada por el admin
+    if (data.cantidad && stats.count >= data.cantidad) return;
+
+    const now = Date.now();
+    const timeSinceLast = now - stats.lastShow;
+    const intervalMs = (data.intervaloMin || 1) * 60 * 1000;
+
+    // 4. Verificamos si ya pasó el intervalo de tiempo necesario o si es la primera vez (count 0)
+    if (timeSinceLast >= intervalMs || stats.count === 0) {
+        // Mostramos el anuncio
+        mostrarAnuncioFlotante(data.texto, data.color, data.duracion);
+        
+        // Actualizamos los contadores locales del usuario
+        stats.count++;
+        stats.lastShow = Date.now();
+        localStorage.setItem('anuncio_stats_' + data.timestamp, JSON.stringify(stats));
+
+        // 5. Programar el siguiente anuncio automáticamente si aún faltan reproducciones
+        if (stats.count < data.cantidad) {
+            anuncioTimer = setTimeout(evaluarAnuncioCiclo, intervalMs);
+        }
+    } else {
+        // Aún no pasa el intervalo de espera, lo programamos para el tiempo que falte
+        const timeLeft = intervalMs - timeSinceLast;
+        anuncioTimer = setTimeout(evaluarAnuncioCiclo, timeLeft);
+    }
+}
+
+// Función que el administrador usa para enviar y programar el anuncio
+function publicarAnuncioFlotante() {
+    const texto = document.getElementById('admin-anuncio-texto').value.trim();
+    const color = document.getElementById('admin-anuncio-color').value;
+    
+    let duracion = parseInt(document.getElementById('admin-anuncio-duracion').value);
+    let intervalo = parseInt(document.getElementById('admin-anuncio-intervalo').value);
+    let cantidad = parseInt(document.getElementById('admin-anuncio-cantidad').value);
+    let fechaInput = document.getElementById('admin-anuncio-fecha').value;
+    
+    if (!texto) {
+        if(typeof notify === "function") return notify("⚠️ Escribe un texto corto para el anuncio");
+        else return alert("⚠️ Escribe un texto corto para el anuncio");
+    }
+    
+    // Valores por defecto seguros si el admin deja espacios en blanco
+    if (isNaN(duracion) || duracion < 1) duracion = 10; // 10 segundos 
+    if (isNaN(intervalo) || intervalo < 1) intervalo = 1; // 1 minuto
+    if (isNaN(cantidad) || cantidad < 1) cantidad = 1; // 1 vez
+    
+    let fechaLimite = 0;
+    if (fechaInput) {
+        fechaLimite = new Date(fechaInput).getTime();
+    } else {
+        // Si no se pone fecha, por defecto se destruirá en 24 horas exactas
+        fechaLimite = Date.now() + (24 * 60 * 60 * 1000); 
+    }
+
+    db.collection("configuracion").doc("anuncio_flotante").set({
+        texto: texto,
+        color: color,
+        duracion: duracion,
+        intervaloMin: intervalo,
+        cantidad: cantidad,
+        fechaLimite: fechaLimite,
+        timestamp: Date.now(),
+        lanzadoPor: auth.currentUser.email
+    }).then(() => {
+        if(typeof notify === "function") notify("🚀 Anuncio programado con éxito");
+        document.getElementById('admin-anuncio-texto').value = ""; 
+    }).catch(err => {
+        if(typeof notify === "function") notify("❌ Error: " + err.message);
+    });
+}
+
+// Función visual (Render)
+function mostrarAnuncioFlotante(texto, color, duracionSecs) {
+    let el = document.getElementById('floating-announcement');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'floating-announcement';
+        document.body.appendChild(el);
+    }
+    
+    const newEl = el.cloneNode(true);
+    el.parentNode.replaceChild(newEl, el);
+    el = newEl;
+
+    el.style.display = 'block';
+    el.style.backgroundColor = color;
+    el.style.color = (color === '#00f0ff' || color === '#10b981') ? '#000000' : '#ffffff';
+    
+    el.innerHTML = `<i class="fa-solid fa-bolt"></i> &nbsp; ${texto}`;
+    el.style.setProperty('--anim-duration', `${duracionSecs}s`);
+    
+    setTimeout(() => {
+        el.style.display = 'none';
+    }, (duracionSecs * 1000) + 500);
 }

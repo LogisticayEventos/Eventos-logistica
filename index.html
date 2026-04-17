@@ -15,6 +15,8 @@
 <body>
     <div id="toast-container"></div>
     
+    <div id="floating-announcement" style="display: none;"></div>
+    
     <div id="modal-carnet" class="modal">
         <div class="modal-content">
             <button class="close-modal" onclick="cerrarModal()"><i class="fa-solid fa-xmark"></i></button>
@@ -26,6 +28,18 @@
         <div class="modal-content" style="max-width: 450px;">
             <button class="close-modal" onclick="cerrarModalGestion()"><i class="fa-solid fa-xmark"></i></button>
             <div id="gestion-boletas-render"></div>
+        </div>
+    </div>
+
+    <div id="modal-pago" class="modal">
+        <div class="modal-content" style="max-width: 350px;">
+            <button class="close-modal" onclick="document.getElementById('modal-pago').style.display='none'"><i class="fa-solid fa-xmark"></i></button>
+            <h3 style="color: var(--accent); margin-top: 0; text-align: center;">ENLACE DE PAGO</h3>
+            <div id="pago-admin-options" style="display: none; flex-direction: column; gap: 10px; margin-bottom: 15px;">
+                <input type="url" id="input-nuevo-enlace" placeholder="Ingresa el nuevo enlace (https://...)" style="width: 100%; box-sizing: border-box; text-align: center;">
+                <button class="btn-mini btn-add" onclick="guardarEnlacePago()" style="width: 100%; justify-content: center;">GUARDAR NUEVO ENLACE</button>
+            </div>
+            <button class="btn-primary" onclick="irEnlacePago()" style="width: 100%;">IR AL ENLACE DE PAGO</button>
         </div>
     </div>
 
@@ -57,7 +71,11 @@
             <header>
                 <div id="user-rank-badge" class="badge-rank">---</div>
                 <h2 style="margin:0; font-size:0.9rem; letter-spacing: 1px; flex-grow: 1; text-align: center;">LOGISTICA & EVENTOS</h2>
-                <div style="width: 50px;"></div>
+                <div style="width: auto;">
+                    <select id="global-code-filter" class="dynamic-codes-filter" onchange="aplicarFiltroCodigoGlobal()" style="display:none;">
+                        <option value="Todos">★ TODOS LOS GRUPOS</option>
+                    </select>
+                </div>
             </header>
             <nav class="nav-menu">
                 <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados"><i class="fa-solid fa-house"></i> INICIO</button>
@@ -116,10 +134,10 @@
                     </div>
 
                     <div class="filter-bar">
-                        <select id="filter-color" onchange="listenData()" class="dynamic-colors" style="display:none;">
+                        <select id="filter-color" onchange="renderBoletas()" class="dynamic-colors" style="display:none;">
                             <option value="Todos">Todos los Equipos</option>
                         </select>
-                        <select id="filter-estado" onchange="listenData()">
+                        <select id="filter-estado" onchange="renderBoletas()">
                             <option value="Todos">Todos los Estados</option>
                             <option value="Activa">Activa</option>
                             <option value="Pendiente">Pendiente</option>
@@ -144,7 +162,13 @@
                             <tbody id="lista-boletas-body"></tbody>
                         </table>
                     </div>
-                    <div id="conteo-boletas-total" class="total-count-display">Total registros: 0</div>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-bottom: 5px;">
+                        <div id="conteo-boletas-total" class="total-count-display" style="margin-top: 0; padding-right: 0;">Total registros: 0</div>
+                        <button id="btn-flotante-pago" class="btn-flotante-pago" onclick="gestionarEnlacePago()">
+                            <i class="fa-solid fa-money-check-dollar"></i> PAGAR BOLETAS
+                        </button>
+                    </div>
                 </section>
 
                 <section id="sec-perfil" class="section-content">
@@ -224,6 +248,34 @@
                                         <span style="color:#f59e0b;" id="admin-tot-pendientes">0</span> Pendientes
                                     </p>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div id="admin-floating-announcement" class="admin-card full-width" style="border-color: rgba(245, 158, 11, 0.5);">
+                            <p class="admin-card-title" style="color: #f59e0b; text-align: center;"><i class="fa-solid fa-bullhorn"></i> LANZAR ANUNCIO FLOTANTE</p>
+                            <div class="form-group">
+                                <input type="text" id="admin-anuncio-texto" placeholder="Escribe el mensaje corto del anuncio aquí..." style="border-color: #f59e0b;">
+                                <div style="display: flex; gap: 10px;">
+                                    <select id="admin-anuncio-color" style="flex: 2; border-color: #f59e0b;">
+                                        <option value="#ff007a">Magenta Impacto</option>
+                                        <option value="#00f0ff">Cyan Neón</option>
+                                        <option value="#10b981">Esmeralda Positivo</option>
+                                        <option value="#f59e0b">Ámbar Alerta</option>
+                                        <option value="#ef4444">Rojo Peligro</option>
+                                    </select>
+                                    <input type="number" id="admin-anuncio-duracion" placeholder="Segundos" value="10" style="flex: 1; border-color: #f59e0b;" min="1">
+                                </div>
+                                
+                                <div style="display: flex; gap: 10px;">
+                                    <input type="number" id="admin-anuncio-intervalo" placeholder="Intervalo (Minutos)" style="flex: 1; border-color: #f59e0b;" min="1">
+                                    <input type="number" id="admin-anuncio-cantidad" placeholder="Cantidad de veces" style="flex: 1; border-color: #f59e0b;" min="1">
+                                </div>
+                                <div style="display: flex; flex-direction: column; gap: 5px;">
+                                    <label class="label-hint" style="color: #f59e0b;">MOSTRAR HASTA LA FECHA/HORA:</label>
+                                    <input type="datetime-local" id="admin-anuncio-fecha" style="border-color: #f59e0b; width: 100%; box-sizing: border-box;">
+                                </div>
+
+                                <button class="btn-primary" onclick="publicarAnuncioFlotante()" style="background: linear-gradient(135deg, #f59e0b, #ea580c); color: #fff; width: 100%;"><i class="fa-solid fa-paper-plane"></i> LANZAR EN PANTALLA</button>
                             </div>
                         </div>
 
