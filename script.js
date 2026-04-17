@@ -969,3 +969,305 @@ function mostrarAnuncioFlotante(texto, color, duracionSecs) {
         el.style.display = 'none';
     }, (duracionSecs * 1000) + 500);
 }
+// ==========================================
+// NUEVO CÓDIGO - SISTEMA DE VERIFICACIÓN DE PAGOS E HISTORIAL (SOLO OPCIÓN 2 - PRIORI)
+// ==========================================
+
+let comprobantesTemp = {};
+let listenerHistorialPagos = null;
+
+// 1. Modificada: Abrir el modal de pago directamente sin lógica del enlace viejo
+function gestionarEnlacePago() {
+    const modal = document.getElementById('modal-pago');
+    renderBoletasParaPagar();
+    modal.style.display = 'flex';
+}
+
+function renderBoletasParaPagar() {
+    const email = auth.currentUser.email;
+    const container = document.getElementById('lista-boletas-pendientes-pago');
+    container.innerHTML = '';
+    
+    let misPendientes = allBoletas.filter(b => b.vendedor === email && b.estado === 'Pendiente');
+    
+    if(misPendientes.length === 0) {
+        container.innerHTML = '<p style="font-size:0.65rem; color:#94a3b8; text-align:center;">No tienes boletas pendientes de pago.</p>';
+        return;
+    }
+    
+    let html = '<div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center; max-height:120px; overflow-y:auto; padding:5px; background:rgba(0,0,0,0.3); border-radius:8px; border:1px solid rgba(0,240,255,0.2);">';
+    misPendientes.forEach(b => {
+        html += `<label style="font-size:0.6rem; background:rgba(255,255,255,0.05); padding:6px 10px; border-radius:6px; cursor:pointer; display:flex; align-items:center; gap:5px; border:1px solid rgba(255,255,255,0.1);"><input type="checkbox" class="chk-boleta-pago" value="${b.id}" data-n="${b.n}"> N° ${b.n}</label>`;
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// 2. Lógica para capturar y subir todos los datos
+function enviarComprobantePago() {
+    const checkboxes = document.querySelectorAll('.chk-boleta-pago:checked');
+    if(checkboxes.length === 0) {
+        if(typeof notify === "function") return notify("⚠️ Selecciona al menos una boleta para pagar");
+        else return alert("⚠️ Selecciona al menos una boleta para pagar");
+    }
+    
+    const monto = document.getElementById('pago-monto').value;
+    const metodo = document.getElementById('pago-metodo').value;
+    const receptor = document.getElementById('pago-receptor').value.trim();
+    const capacitacion = document.getElementById('pago-capacitacion').value;
+    
+    if(!monto || !metodo || !receptor || !capacitacion) {
+        if(typeof notify === "function") return notify("⚠️ Completa todos los datos de la entrega");
+        else return alert("⚠️ Completa todos los datos de la entrega");
+    }
+
+    const fileInput = document.getElementById('input-comprobante-pago');
+    const file = fileInput.files[0];
+    if(!file) {
+        if(typeof notify === "function") return notify("⚠️ Sube la foto del comprobante");
+        else return alert("⚠️ Sube la foto del comprobante");
+    }
+    
+    const btn = document.getElementById('btn-enviar-pago');
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> PROCESANDO...';
+    btn.disabled = true;
+    
+    let boletasSeleccionadas = [];
+    checkboxes.forEach(chk => boletasSeleccionadas.push({ id: chk.value, n: chk.getAttribute('data-n') }));
+    
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = function(event) {
+        const img = new Image();
+        img.src = event.target.result;
+        img.onload = async function() {
+            const canvas = document.createElement('canvas');
+            const MAX_WIDTH = 600; 
+            let width = img.width;
+            let height = img.height;
+            
+            if (width > MAX_WIDTH) {
+                height *= MAX_WIDTH / width;
+                width = MAX_WIDTH;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            const base64Url = canvas.toDataURL('image/jpeg', 0.5); 
+            
+            try {
+                await db.collection("solicitudes_pago").add({
+                    recreadorEmail: auth.currentUser.email,
+                    recreadorNombre: currentUserData.nombre + " " + (currentUserData.apellido || ""),
+                    equipo: currentUserData.color || "Gris",
+                    boletas: boletasSeleccionadas,
+                    monto: monto,
+                    metodo: metodo,
+                    receptor: receptor,
+                    capacitacion: capacitacion,
+                    comprobanteUrl: base64Url,
+                    estado: 'Pendiente',
+                    creado: Date.now()
+                });
+                
+                if(typeof notify === "function") notify("✅ Solicitud enviada a administración");
+                else alert("✅ Solicitud enviada a administración");
+                
+                document.getElementById('modal-pago').style.display = 'none';
+                fileInput.value = "";
+                document.getElementById('pago-monto').value = "";
+                document.getElementById('pago-metodo').value = "";
+                document.getElementById('pago-receptor').value = "";
+                document.getElementById('pago-capacitacion').value = "";
+
+            } catch (err) {
+                if(typeof notify === "function") notify("❌ Error: " + err.message);
+                else alert("❌ Error: " + err.message);
+            } finally {
+                btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD';
+                btn.disabled = false;
+            }
+        };
+        img.onerror = function() {
+            alert("Error procesando imagen. Intenta con otra foto.");
+            btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD';
+            btn.disabled = false;
+        };
+    };
+    reader.onerror = function() {
+        alert("Error leyendo archivo de tu dispositivo.");
+        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD';
+        btn.disabled = false;
+    };
+}
+
+// 3. Escuchador para Administradores con los pagos PENDIENTES
+db.collection("solicitudes_pago").where("estado", "==", "Pendiente").onSnapshot(snap => {
+    const container = document.getElementById('admin-pagos-list');
+    if(!container) return; 
+    container.innerHTML = '';
+    
+    if(snap.empty) {
+        container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;">No hay pagos pendientes por verificar en este momento.</p>';
+        return;
+    }
+    
+    snap.forEach(doc => {
+        const d = doc.data();
+        const bolStr = d.boletas.map(b => b.n).join(', ');
+        comprobantesTemp[doc.id] = d.comprobanteUrl; 
+        
+        container.innerHTML += `
+            <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(16,185,129,0.3); padding:15px; border-radius:12px;">
+                <p style="margin:0 0 5px 0; font-size:0.65rem; color:#10b981; font-weight:800;">${d.recreadorNombre.toUpperCase()} <span style="color:#94a3b8; font-weight:400;">(${d.equipo})</span></p>
+                <p style="margin:0 0 10px 0; font-size:0.65rem;">Boletas solicitadas: <b style="color:white;">${bolStr}</b></p>
+                
+                <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.6rem; color: #cbd5e1;">
+                    <div style="margin-bottom: 3px;"><span style="color:var(--accent); font-weight:800;">Entrega:</span> $${d.monto} (${d.metodo})</div>
+                    <div style="margin-bottom: 3px;"><span style="color:var(--accent); font-weight:800;">Entregado a:</span> ${d.receptor}</div>
+                    <div><span style="color:var(--accent); font-weight:800;">¿Asiste capacitación?:</span> ${d.capacitacion}</div>
+                </div>
+
+                <div style="display:flex; gap:5px; flex-wrap:wrap;">
+                    <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(0,240,255,0.1); border-color:var(--accent); color:var(--accent);" onclick="verFotoComprobante('${doc.id}')"><i class="fa-solid fa-image"></i> VER FOTO</button>
+                    <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(16,185,129,0.2); color:#10b981; border-color:#10b981;" onclick="verificarPago('${doc.id}', true)"><i class="fa-solid fa-check"></i> VERIFICADO</button>
+                    <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(239,68,68,0.2); color:#ef4444; border-color:#ef4444;" onclick="verificarPago('${doc.id}', false)"><i class="fa-solid fa-xmark"></i> NO</button>
+                </div>
+            </div>
+        `;
+    });
+});
+
+function verFotoComprobante(id) {
+    const base64 = comprobantesTemp[id];
+    if(!base64) return;
+    const w = window.open("");
+    w.document.write(`<body style="margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh;"><img src="${base64}" style="max-width:100%; max-height:100%; border-radius:8px;"></body>`);
+}
+
+async function verificarPago(solicitudId, aprobado) {
+    if(!confirm(aprobado ? '¿Aprobar comprobante y ACTIVAR estas boletas seleccionadas?' : '¿Rechazar este pago? Las boletas seguirán en estado Pendiente.')) return;
+    
+    try {
+        if(aprobado) {
+            const solDoc = await db.collection("solicitudes_pago").doc(solicitudId).get();
+            const d = solDoc.data();
+            
+            const batch = db.batch();
+            d.boletas.forEach(b => {
+                const bRef = db.collection("boletas").doc(b.id);
+                batch.update(bRef, { estado: 'Activa' });
+            });
+            await batch.commit();
+            
+            await db.collection("solicitudes_pago").doc(solicitudId).update({ estado: 'Aprobado', verificadoPor: auth.currentUser.email, fechaVerificacion: Date.now() });
+            if(typeof notify === "function") notify("✅ Pago aprobado y boletas activadas exitosamente");
+        } else {
+            await db.collection("solicitudes_pago").doc(solicitudId).update({ estado: 'Rechazado', verificadoPor: auth.currentUser.email, fechaVerificacion: Date.now() });
+            if(typeof notify === "function") notify("❌ Pago rechazado");
+        }
+    } catch (err) {
+        if(typeof notify === "function") notify("❌ Error en el servidor: " + err.message);
+    }
+}
+
+// 4. LÓGICA DE HISTORIAL DE PAGOS (CON BOTONES DE BORRADO)
+function toggleHistorialPagos() {
+    const histDiv = document.getElementById('admin-pagos-historial-wrapper');
+    if(histDiv.style.display === 'none') {
+        histDiv.style.display = 'flex';
+        cargarHistorialPagos();
+    } else {
+        histDiv.style.display = 'none';
+        if(listenerHistorialPagos) {
+            listenerHistorialPagos(); 
+            listenerHistorialPagos = null;
+        }
+    }
+}
+
+function cargarHistorialPagos() {
+    const container = document.getElementById('admin-pagos-historial');
+    container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando historial...</p>';
+    
+    listenerHistorialPagos = db.collection("solicitudes_pago")
+        .where("estado", "==", "Aprobado")
+        .onSnapshot(snap => {
+            container.innerHTML = '';
+            if(snap.empty) {
+                container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;">No hay pagos verificados en el historial.</p>';
+                return;
+            }
+            
+            let historial = [];
+            snap.forEach(doc => {
+                historial.push({ id: doc.id, ...doc.data() });
+            });
+            
+            historial.sort((a, b) => (b.fechaVerificacion || 0) - (a.fechaVerificacion || 0));
+            
+            historial.forEach(d => {
+                const bolStr = d.boletas.map(b => b.n).join(', ');
+                comprobantesTemp[d.id] = d.comprobanteUrl;
+                const fechaStr = new Date(d.fechaVerificacion || d.creado).toLocaleString();
+
+                container.innerHTML += `
+                    <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); padding:15px; border-radius:12px; opacity: 0.85;">
+                        <div style="display:flex; justify-content:space-between; align-items: flex-start; margin-bottom: 5px;">
+                            <p style="margin:0; font-size:0.65rem; color:#e2e8f0; font-weight:800;">${d.recreadorNombre.toUpperCase()} <span style="color:#94a3b8; font-weight:400;">(${d.equipo})</span></p>
+                            <span style="font-size: 0.45rem; color: #10b981; border: 1px solid #10b981; border-radius: 4px; padding: 3px 5px; font-weight: 800;">VERIFICADO</span>
+                        </div>
+                        <p style="margin:0 0 5px 0; font-size:0.5rem; color:#94a3b8;"><i class="fa-regular fa-clock"></i> ${fechaStr}</p>
+                        <p style="margin:0 0 10px 0; font-size:0.65rem;">Boletas: <b style="color:white;">${bolStr}</b></p>
+                        
+                        <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.6rem; color: #cbd5e1;">
+                            <div style="margin-bottom: 3px;"><span style="color:var(--accent); font-weight:800;">Entrega:</span> $${d.monto} (${d.metodo})</div>
+                            <div style="margin-bottom: 3px;"><span style="color:var(--accent); font-weight:800;">Entregado a:</span> ${d.receptor}</div>
+                            <div><span style="color:var(--accent); font-weight:800;">¿Asiste capacitación?:</span> ${d.capacitacion}</div>
+                        </div>
+                        
+                        <div style="display: flex; gap: 5px;">
+                            <button class="btn-mini" style="flex:3; justify-content:center; background:rgba(0,240,255,0.1); border-color:var(--accent); color:var(--accent);" onclick="verFotoComprobante('${d.id}')"><i class="fa-solid fa-image"></i> VER FOTO</button>
+                            <button class="btn-mini" style="flex:1; justify-content:center; background:rgba(239,68,68,0.1); border-color:#ef4444; color:#ef4444;" onclick="borrarPagoHistorial('${d.id}')"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `;
+            });
+        });
+}
+
+// 5. FUNCIONES PARA ELIMINAR REGISTROS
+async function borrarPagoHistorial(id) {
+    if(!confirm("¿Seguro que deseas eliminar este registro del historial? (Las boletas seguirán activas). Esta acción no se puede deshacer.")) return;
+    try {
+        await db.collection("solicitudes_pago").doc(id).delete();
+        if(typeof notify === "function") notify("✅ Registro eliminado exitosamente");
+    } catch(err) {
+        if(typeof notify === "function") notify("❌ Error al eliminar: " + err.message);
+    }
+}
+
+async function borrarTodoHistorialPagos() {
+    if(!confirm("⚠️ ¿ESTÁS SEGURO DE VACIAR TODO EL HISTORIAL DE PAGOS? Esto borrará todos los comprobantes aprobados definitivamente.")) return;
+    
+    try {
+        const snapshot = await db.collection("solicitudes_pago").where("estado", "==", "Aprobado").get();
+        if (snapshot.empty) {
+            if(typeof notify === "function") notify("⚠️ El historial ya está vacío");
+            return;
+        }
+        
+        const batch = db.batch();
+        snapshot.forEach(doc => {
+            batch.delete(doc.ref);
+        });
+        
+        await batch.commit();
+        if(typeof notify === "function") notify("✅ Historial vaciado exitosamente");
+    } catch(err) {
+        if(typeof notify === "function") notify("❌ Error al vaciar historial: " + err.message);
+    }
+}

@@ -223,15 +223,12 @@ td { padding: 12px 6px; font-size: 0.7rem; border-bottom: 1px solid rgba(255,255
     100% { filter: drop-shadow(0 0 15px rgba(255, 106, 0, 0.8)); }
 }
 
-/* =======================================
-   ESTILOS NUEVOS: ANUNCIO FLOTANTE (PRIORI)
-   ======================================= */
 #floating-announcement {
     position: fixed;
     top: 25px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 10000; /* Prioridad extrema, por encima de todo */
+    z-index: 10000;
     padding: 12px 28px;
     border-radius: 50px;
     font-size: 0.8rem;
@@ -240,7 +237,7 @@ td { padding: 12px 6px; font-size: 0.7rem; border-bottom: 1px solid rgba(255,255
     text-align: center;
     box-shadow: 0 15px 35px rgba(0,0,0,0.7);
     animation: slideDownFadeOut var(--anim-duration) ease forwards;
-    pointer-events: none; /* Para que no bloquee clics debajo */
+    pointer-events: none;
     text-transform: uppercase;
     letter-spacing: 1px;
     max-width: 90%;

@@ -32,14 +32,36 @@
     </div>
 
     <div id="modal-pago" class="modal">
-        <div class="modal-content" style="max-width: 350px;">
+        <div class="modal-content" style="max-width: 380px; max-height: 90vh; overflow-y: auto;">
             <button class="close-modal" onclick="document.getElementById('modal-pago').style.display='none'"><i class="fa-solid fa-xmark"></i></button>
-            <h3 style="color: var(--accent); margin-top: 0; text-align: center;">ENLACE DE PAGO</h3>
-            <div id="pago-admin-options" style="display: none; flex-direction: column; gap: 10px; margin-bottom: 15px;">
-                <input type="url" id="input-nuevo-enlace" placeholder="Ingresa el nuevo enlace (https://...)" style="width: 100%; box-sizing: border-box; text-align: center;">
-                <button class="btn-mini btn-add" onclick="guardarEnlacePago()" style="width: 100%; justify-content: center;">GUARDAR NUEVO ENLACE</button>
+            <h3 style="color: var(--accent); margin-top: 0; margin-bottom: 15px; text-align: center;">PAGAR BOLETAS</h3>
+            
+            <p style="font-size:0.65rem; color:var(--text-main); font-weight:800; margin-top:0; text-align:center;">SOLICITAR ACTIVACIÓN DE BOLETAS</p>
+            
+            <div id="lista-boletas-pendientes-pago" style="margin-bottom: 10px;"></div>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px; margin-bottom: 15px;">
+                <input type="number" id="pago-monto" placeholder="Cantidad que entrega ($)" style="padding: 10px; font-size: 0.7rem; width: 100%; box-sizing: border-box;">
+                
+                <select id="pago-metodo" style="padding: 10px; font-size: 0.7rem; width: 100%; box-sizing: border-box;">
+                    <option value="" disabled selected>Método de pago</option>
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Transferencia">Transferencia</option>
+                </select>
+                
+                <input type="text" id="pago-receptor" placeholder="Nombre de a quien le entrega" style="padding: 10px; font-size: 0.7rem; width: 100%; box-sizing: border-box;">
+                
+                <select id="pago-capacitacion" style="padding: 10px; font-size: 0.7rem; width: 100%; box-sizing: border-box;">
+                    <option value="" disabled selected>¿Asiste a capacitación de turismo?</option>
+                    <option value="Sí">Sí</option>
+                    <option value="No">No</option>
+                </select>
             </div>
-            <button class="btn-primary" onclick="irEnlacePago()" style="width: 100%;">IR AL ENLACE DE PAGO</button>
+            
+            <p style="font-size:0.55rem; color:var(--accent); font-weight:800; margin-bottom:5px; text-align:center;">FOTO DEL COMPROBANTE:</p>
+            <input type="file" id="input-comprobante-pago" accept="image/*" style="width: 100%; box-sizing: border-box; font-size: 0.6rem; padding: 10px; margin-bottom: 15px; background: rgba(0,0,0,0.5); border-radius: 8px;">
+            
+            <button class="btn-primary" id="btn-enviar-pago" onclick="enviarComprobantePago()" style="width: 100%; background: linear-gradient(135deg, #10b981, #059669); color: white;"><i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD</button>
         </div>
     </div>
 
@@ -248,6 +270,24 @@
                                         <span style="color:#f59e0b;" id="admin-tot-pendientes">0</span> Pendientes
                                     </p>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="admin-card full-width" style="border-color: rgba(16, 185, 129, 0.5);">
+                            <p class="admin-card-title" style="color: #10b981;"><i class="fa-solid fa-money-bill-transfer"></i> VALIDACIÓN DE PAGOS</p>
+                            <div id="admin-pagos-list" style="display: flex; flex-direction: column; gap: 10px;">
+                                </div>
+                            
+                            <button class="btn-mini" onclick="toggleHistorialPagos()" style="width: 100%; margin-top: 15px; justify-content: center; background: rgba(255,255,255,0.05); color: white; border-color: rgba(255,255,255,0.2);">
+                                <i class="fa-solid fa-clock-rotate-left"></i> VER HISTORIAL DE PAGOS
+                            </button>
+                            
+                            <div id="admin-pagos-historial-wrapper" style="display: none; flex-direction: column; gap: 10px; margin-top: 15px; border-top: 1px dashed rgba(255,255,255,0.2); padding-top: 15px;">
+                                <button class="btn-mini btn-delete" onclick="borrarTodoHistorialPagos()" style="width: 100%; justify-content: center; margin-bottom: 5px;">
+                                    <i class="fa-solid fa-trash-can"></i> VACIAR TODO EL HISTORIAL
+                                </button>
+                                <div id="admin-pagos-historial" style="display: flex; flex-direction: column; gap: 10px;">
+                                    </div>
                             </div>
                         </div>
 
