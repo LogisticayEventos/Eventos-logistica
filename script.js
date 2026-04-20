@@ -293,11 +293,14 @@ function renderBoletas() {
     const mapaEntregadas = {};
     const mapaRecreadores = {}; 
     const mapaCodigos = {};
+    const mapaNombres = {}; // NUEVO: Mapa para guardar los nombres del perfil
 
     allUsers.forEach(u => {
         mapaColor[u.id] = u.color || 'Gris';
         mapaEntregadas[u.id] = u.boletasEntregadas || [];
         mapaCodigos[u.id] = u.codigoInvitacion || '---';
+        // NUEVO: Guardamos el nombre y apellido registrado en el perfil
+        mapaNombres[u.id] = (u.nombre + " " + (u.apellido || "")).trim() || 'Sin Nombre'; 
     });
     
     let contadorTotal = 0, activas = 0, pendientes = 0;
@@ -312,7 +315,9 @@ function renderBoletas() {
         const col = mapaColor[b.vendedor] || 'Gris';
         if(b.n) setBoletasVendidasGlobal.add(b.n.toString());
 
-        const recKey = b.recreador || 'Sin Nombre';
+        // MODIFICACIÓN APLICADA: Agrupa usando el nombre del perfil (mapaNombres) o 'Sin Nombre' si no hay.
+        const recKey = mapaNombres[b.vendedor] || b.recreador || 'Sin Nombre';
+        
         if(!mapaRecreadores[recKey]) {
             mapaRecreadores[recKey] = { 
                 color: col, 
@@ -365,6 +370,23 @@ function renderBoletas() {
                 <td style="font-size:0.55rem;">${data.fechaVenta}</td>
                 ${accionHtml}
             </tr>`;
+    }
+
+    document.getElementById('lista-boletas-body').innerHTML = htmlBoletas;
+    if(document.getElementById('conteo-boletas-total')) document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
+    actualizarListaEntregadasVisual(setBoletasVendidasGlobal);
+    
+    if(esAdmin || esCGeneral || esCoordinador) {
+        if(document.getElementById('admin-tot-boletas')) document.getElementById('admin-tot-boletas').innerText = contadorTotal;
+        if(document.getElementById('admin-tot-activas')) document.getElementById('admin-tot-activas').innerText = activas;
+        if(document.getElementById('admin-tot-pendientes')) document.getElementById('admin-tot-pendientes').innerText = pendientes;
+        
+        let htmlBoletasE = "<p class='mini-title'>BOLETAS POR EQUIPO</p>";
+        for(let eq in boletasPorEquipo) {
+            htmlBoletasE += `<div class='summary-row'><span>${eq}</span><b>${boletasPorEquipo[eq].total} (A:${boletasPorEquipo[eq].activas})</b></div>`;
+        }
+        if(document.getElementById('resumen-boletas-equipos')) document.getElementById('resumen-boletas-equipos').innerHTML = htmlBoletasE;
+    
     }
 
     document.getElementById('lista-boletas-body').innerHTML = htmlBoletas;
@@ -802,17 +824,48 @@ function notify(msg) {
 }
 
 function exportarPersonalExcel() {
-    const c = document.getElementById('filter-user-color').value;
-    const rows = [["NOMBRE", "RANGO", "EDAD", "CORREO", "DOCUMENTO", "WHATSAPP", "EQUIPO", "INSCRITO"]];
-    allUsers.forEach(u => {
-        const codigoUsuario = u.codigoInvitacion || '---';
-        if (filtroCodigoGlobal !== "Todos" && codigoUsuario !== filtroCodigoGlobal) return;
-        
-        if(c === "Todos" || u.color === c) {
-            rows.push([(u.nombre+" "+(u.apellido||"")).toUpperCase(), u.rango || "Recreador", calcularEdad(u.nacimiento), u.id, u.doc || "", u.tel || "", u.color, u.inscripcion || "NO"]); 
-        }
+    if (!allUsers || allUsers.length === 0) {
+        if(typeof notify === "function") notify("⚠️ No hay personal registrado.");
+        else alert("⚠️ No hay personal registrado.");
+        return;
+    }
+
+    // Estructuramos los datos de manera limpia, con columnas explícitas
+    const data = allUsers.map(u => {
+        return {
+            "RANGO": u.rango || "Recreador",
+            "NOMBRES": u.nombre || "---",
+            "APELLIDOS": u.apellido || "---",
+            "DOCUMENTO DE IDENTIDAD": u.cedula || u.doc || "---",
+            "EDAD": u.edad || "---",
+            "WHATSAPP": u.telefono || "---",
+            "EQUIPO": u.color || "Gris",
+            "CÓDIGO DE ACCESO": u.codigoInvitacion || "---",
+            "BOLETAS ENTREGADAS FÍSICAS": u.boletasEntregadas ? u.boletasEntregadas.length : 0,
+            "FECHA DE REGISTRO": u.creado ? new Date(u.creado).toLocaleDateString() : "---"
+        };
     });
-    const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Personal"); XLSX.writeFile(wb, "Reporte_Personal.xlsx");
+
+    // Ordenamos todo: Primero por RANGO, luego por EQUIPO
+    data.sort((a, b) => {
+        if (a.RANGO < b.RANGO) return -1;
+        if (a.RANGO > b.RANGO) return 1;
+        if (a.EQUIPO < b.EQUIPO) return -1;
+        if (a.EQUIPO > b.EQUIPO) return 1;
+        return 0;
+    });
+
+    try {
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Personal");
+        XLSX.writeFile(workbook, "Reporte_Personal_Organizado.xlsx");
+        
+        if(typeof notify === "function") notify("✅ Reporte organizado descargado");
+    } catch (err) {
+        if(typeof notify === "function") notify("❌ Error al exportar: " + err.message);
+        else alert("❌ Error al exportar: " + err.message);
+    }
 }
 
 function exportarVentasExcel() {
@@ -1269,5 +1322,45 @@ async function borrarTodoHistorialPagos() {
         if(typeof notify === "function") notify("✅ Historial vaciado exitosamente");
     } catch(err) {
         if(typeof notify === "function") notify("❌ Error al vaciar historial: " + err.message);
+    }
+}
+
+async function exportarPagosExcel() {
+    try {
+        const snap = await db.collection("solicitudes_pago").orderBy("fecha", "desc").get();
+        if(snap.empty) {
+            if(typeof notify === "function") notify("⚠️ No hay pagos registrados.");
+            else alert("⚠️ No hay pagos registrados.");
+            return;
+        }
+        
+        const data = [];
+        snap.forEach(doc => {
+            const p = doc.data();
+            data.push({
+                "ID PAGO": doc.id,
+                "FECHA SOLICITUD": p.fecha ? new Date(p.fecha).toLocaleString() : '---',
+                "RECREADOR / VENDEDOR": p.nombreRecreador || '---',
+                "CORREO VENDEDOR": p.vendedor || '---',
+                "MONTO ($)": p.monto || 0,
+                "MÉTODO DE PAGO": p.metodo || '---',
+                "RECEPTOR (A QUIEN ENTREGA)": p.receptor || '---',
+                "ASISTE CAPACITACIÓN": p.asisteCapacitacion || '---',
+                "ESTADO": p.estado || '---',
+                "CANTIDAD BOLETAS": p.boletasIds ? p.boletasIds.length : 0,
+                "BOLETAS ASOCIADAS": p.boletasIds ? p.boletasIds.join(", ") : '---',
+                "ENLACE COMPROBANTE": p.comprobanteUrl || '---'
+            });
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(data);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Pagos");
+        XLSX.writeFile(workbook, "Reporte_Pagos_General.xlsx");
+        
+        if(typeof notify === "function") notify("✅ Reporte de pagos generado");
+    } catch (err) {
+        if(typeof notify === "function") notify("❌ Error al exportar pagos: " + err.message);
+        else alert("❌ Error al exportar pagos: " + err.message);
     }
 }
