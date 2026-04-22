@@ -609,7 +609,15 @@ function abrirGestionBoletas(nombreRecreador) {
     const render = document.getElementById('gestion-boletas-render');
     document.getElementById('modal-gestion-boletas').style.display = 'flex';
 
-    const boletasRecreador = allBoletas.filter(b => b.recreador === nombreRecreador);
+    // REGLA PRIORI: Filtro lógico ajustado para coincidir el nombre del perfil con el vendedor (correo)
+    const boletasRecreador = allBoletas.filter(b => {
+        const perfilVendedor = allUsers.find(u => u.id === b.vendedor);
+        let nombreMapeado = b.recreador || 'Sin Nombre';
+        if (perfilVendedor) {
+            nombreMapeado = (perfilVendedor.nombre + " " + (perfilVendedor.apellido || "")).trim() || 'Sin Nombre';
+        }
+        return nombreMapeado === nombreRecreador || b.recreador === nombreRecreador;
+    });
     
     if(boletasRecreador.length === 0) {
         render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreRecreador.toUpperCase()}</h3><p style="text-align:center; font-size:0.7rem;">No hay boletas registradas.</p>`;
