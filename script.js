@@ -44,7 +44,7 @@ auth.onAuthStateChanged(user => {
 
 function listenEquipos() {
     db.collection("configuracion").doc("equipos").onSnapshot(doc => {
-        listadoEquipos = doc.exists ? doc.data().lista : ["Verde", "Naranja", "Morado", "Azul"];
+        listadoEquipos = doc.exists ? doc.data().lista : ["Verde", "Naranja", "Morado", "Azul", "Rojo"];
         actualizarDesplegablesEquipos();
     });
 }
