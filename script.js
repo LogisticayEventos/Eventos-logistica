@@ -422,7 +422,7 @@ function renderComunicados() {
         }
         const del = esAdmin ? `<button class="del-com-btn" onclick="db.collection('comunicados').doc('${c.id}').delete()">✕</button>` : '';
         let extraInfo = "", countdownHtml = "", docBtn = "";
-        if(c.linkDoc) docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 DOCUMENTO</a>`;
+        if(c.linkDoc) docBtn = `<a href="${c.linkDoc}" target="_blank" class="com-doc-link">📁 CLICK AQUI</a>`;
         if(c.fechaEv) {
             const fEv = new Date(c.fechaEv + "T" + (c.horaEv || "00:00")), hoy = new Date();
             const dias = Math.ceil((fEv - hoy) / (1000 * 60 * 60 * 24));
