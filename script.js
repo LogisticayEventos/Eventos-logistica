@@ -44,6 +44,12 @@ function codificarDatoEvento(valor) {
     return encodeURIComponent(String(valor ?? "")).replace(/'/g, "%27");
 }
 
+function obtenerNombreCompletoUsuario(usuario = {}, respaldo = "Sin Nombre") {
+    const nombre = String(usuario.nombre || "").trim();
+    const apellido = String(usuario.apellido || "").trim();
+    return [nombre, apellido].filter(Boolean).join(" ") || respaldo;
+}
+
 function obtenerUrlHttpSegura(valor) {
     const texto = String(valor ?? "").trim();
     if(!texto) return "";
@@ -153,6 +159,8 @@ let listadoCodigos = [];
 let listadoEquipos = [];
 let sesionIniciada = false;
 let listenersActivos = false;
+let registroEnCurso = false;
+let ultimoIngresoActualizadoEmail = "";
 
 let timerBusquedaPersonal;
 let filtroCodigoGlobal = "Todos";
@@ -220,6 +228,8 @@ function detenerEscuchadoresPrivados() {
     if(unsubscribeUsuarioActual) unsubscribeUsuarioActual();
     if(unsubscribeAnuncioFlotante) unsubscribeAnuncioFlotante();
 
+    detenerCicloAnunciosFlotantes();
+
     detenerEscuchadoresPagosAdministracion();
 
     detenerEscuchadoresDatos();
@@ -227,15 +237,17 @@ function detenerEscuchadoresPrivados() {
     unsubscribeSeguridad = null;
     unsubscribeUsuarioActual = null;
     unsubscribeAnuncioFlotante = null;
+    ultimoIngresoActualizadoEmail = "";
 }
 
 auth.onAuthStateChanged(user => {
     if (user) {
+        // createUserWithEmailAndPassword inicia sesión antes de que el perfil
+        // termine de guardarse. Durante ese intervalo no se debe cargar la vista.
+        if(registroEnCurso) return;
+
         document.getElementById('view-auth').style.display = 'none';
         document.getElementById('view-home').style.display = 'flex';
-        db.collection("usuarios").doc(user.email).update({ lastLogin: fechaServidor() }).catch(error => {
-            manejarError(error, "No se pudo actualizar la hora de conexión");
-        });
         sesionIniciada = false; 
         loadUser();
     } else {
@@ -397,15 +409,41 @@ function loadUser() {
     const email = auth.currentUser.email;
     if(unsubscribeUsuarioActual) unsubscribeUsuarioActual();
 
-    unsubscribeUsuarioActual = db.collection("usuarios").doc(email).onSnapshot(doc => {
-        const d = doc.data() || {};
+    const usuarioRef = db.collection("usuarios").doc(email);
+    unsubscribeUsuarioActual = usuarioRef.onSnapshot(doc => {
+        if(!doc.exists) {
+            currentUserData = null;
+            document.getElementById('p-full-name').innerText = "CARGANDO PERFIL...";
+            document.getElementById('p-initials').innerText = "...";
+            document.getElementById('user-rank-badge').innerText = "CARGANDO";
+            document.querySelectorAll('.nav-item').forEach(btn => {
+                btn.style.pointerEvents = 'none';
+                btn.style.opacity = '0.3';
+            });
+            return;
+        }
+
+        const d = doc.data();
+        const nombre = String(d.nombre || "").trim();
+        const apellido = String(d.apellido || "").trim();
+        const nombreCompleto = obtenerNombreCompletoUsuario(d, "PERFIL INCOMPLETO");
+
         currentUserData = d;
         currentUserData.email = email;
         listenEquipos();
+
+        if(ultimoIngresoActualizadoEmail !== email) {
+            ultimoIngresoActualizadoEmail = email;
+            usuarioRef.update({ lastLogin: fechaServidor() }).catch(error => {
+                ultimoIngresoActualizadoEmail = "";
+                manejarError(error, "No se pudo actualizar la hora de conexión");
+            });
+        }
+
         let rango = (email === ADMIN_EMAIL) ? "Administrador" : (d.rango || "Recreador");
-        document.getElementById('p-full-name').innerText = (d.nombre + " " + (d.apellido || "")).toUpperCase();
+        document.getElementById('p-full-name').innerText = nombreCompleto.toUpperCase();
         document.getElementById('p-rango-view').innerText = rango.toUpperCase();
-        document.getElementById('p-initials').innerText = d.nombre ? d.nombre[0] : "S";
+        document.getElementById('p-initials').innerText = nombre ? nombre[0].toUpperCase() : "S";
         document.getElementById('p-equipo-view').innerText = (d.color || "---").toUpperCase();
         document.getElementById('p-doc-view').innerText = d.doc || "---";
         document.getElementById('p-tel-view').innerText = d.tel || "---";
@@ -451,7 +489,6 @@ function loadUser() {
         if (esAdmin || esCGeneral || esCoordinador) {
             navAdmin.style.display = 'block';
             document.getElementById('admin-edit-panel-code').style.display = esAdmin ? 'block' : 'none';
-            document.getElementById('admin-delete-range-panel').style.display = esAdmin ? 'block' : 'none';
             document.getElementById('admin-delete-staff-code-panel').style.display = esAdmin ? 'block' : 'none';
             document.getElementById('global-code-filter').style.display = 'block';
         } else {
@@ -592,6 +629,7 @@ async function registrarConCodigo() {
     if(!n || !a || !e || !p || !col || !c) return notify("⚠️ Completa todos los datos del registro");
 
     let credencial = null;
+    registroEnCurso = true;
     const liberarBoton = bloquearBotonActual("REGISTRANDO...");
 
     try {
@@ -605,6 +643,7 @@ async function registrarConCodigo() {
             inscripcion: 'NO',
             codigoInvitacion: c
         });
+        notify("✅ Registro completado correctamente");
         location.reload();
     } catch(err) {
         if(credencial?.user) {
@@ -616,6 +655,7 @@ async function registrarConCodigo() {
         if(err.code === 'permission-denied') notify("❌ Código incorrecto, vencido o sin autorización");
         else manejarError(err, "No se pudo completar el registro");
     } finally {
+        registroEnCurso = false;
         liberarBoton();
     }
 }
@@ -640,7 +680,7 @@ function renderBoletas() {
         mapaEntregadas[u.id] = u.boletasEntregadas || [];
         mapaCodigos[u.id] = u.codigoInvitacion || '---';
         // NUEVO: Guardamos el nombre y apellido registrado en el perfil
-        mapaNombres[u.id] = (u.nombre + " " + (u.apellido || "")).trim() || 'Sin Nombre'; 
+        mapaNombres[u.id] = obtenerNombreCompletoUsuario(u);
     });
     
     let contadorTotal = 0, activas = 0, pendientes = 0;
@@ -806,7 +846,7 @@ function renderUsuarios() {
         equipoCounts[col]++;
 
         const rangoTxt = (u.rango || 'Recreador').toUpperCase();
-        const nombreCompleto = (u.nombre + " " + (u.apellido || "")).toUpperCase();
+        const nombreCompleto = obtenerNombreCompletoUsuario(u, "PERFIL INCOMPLETO").toUpperCase();
         const edadTxt = calcularEdad(u.nacimiento);
         const docTxt = u.doc || '---';
         const telTxt = u.tel || '---';
@@ -901,7 +941,10 @@ function actualizarListaEntregadasVisual(setBoletasVendidasGlobal = new Set()) {
         const icon = vendida ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-xmark"></i>';
         const numeroSeguro = escaparHTML(num);
         const numeroEvento = codificarDatoEvento(num);
-        htmlContent += `<div class="team-mini-badge" style="background:${bg}; border:1px solid ${border};">${numeroSeguro} ${icon} <span onclick="eliminarBoletaEntregada(decodeURIComponent('${numeroEvento}'))"><i class="fa-solid fa-trash"></i></span></div>`;
+        const botonEliminar = auth.currentUser.email === ADMIN_EMAIL
+            ? `<span onclick="eliminarBoletaEntregada(decodeURIComponent('${numeroEvento}'))" title="Eliminar boleta física"><i class="fa-solid fa-trash"></i></span>`
+            : '';
+        htmlContent += `<div class="team-mini-badge" style="background:${bg}; border:1px solid ${border};">${numeroSeguro} ${icon} ${botonEliminar}</div>`;
     });
     container.innerHTML = htmlContent;
 }
@@ -922,7 +965,7 @@ function buscarDuenioBoleta() {
         resultDiv.innerHTML = `
             <div style="background: ${colorBg}; border: 1px solid ${colorEstado}; padding: 10px; border-radius: 12px; text-align: left;">
                 <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${escaparHTML(boletaEncontrada.estado)})</p>
-                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${escaparHTML((u.nombre + " " + (u.apellido || "")).toUpperCase())}</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${escaparHTML(obtenerNombreCompletoUsuario(u).toUpperCase())}</p>
                 <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${escaparHTML((u.color || "---").toUpperCase())}</p>
                 <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--accent);">Comprador: <b>${escaparHTML(boletaEncontrada.c || boletaEncontrada.comprador || '---')}</b></p>
             </div>`;
@@ -940,7 +983,7 @@ function buscarDuenioBoleta() {
         resultDiv.innerHTML = `
             <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; padding: 10px; border-radius: 12px; text-align: left;">
                 <p style="margin:0; font-size:0.5rem; font-weight:800; color:#ef4444;">ESTADO: FÍSICA (SIN VENTA REGISTRADA)</p>
-                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${escaparHTML((recreadorEncontrado.nombre + " " + (recreadorEncontrado.apellido || "")).toUpperCase())}</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${escaparHTML(obtenerNombreCompletoUsuario(recreadorEncontrado).toUpperCase())}</p>
                 <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${escaparHTML((recreadorEncontrado.color || "---").toUpperCase())}</p>
             </div>`;
     } else {
@@ -982,7 +1025,7 @@ function abrirGestionBoletas(nombreRecreador) {
         const perfilVendedor = allUsers.find(u => u.id === b.vendedor);
         let nombreMapeado = b.recreador || 'Sin Nombre';
         if (perfilVendedor) {
-            nombreMapeado = (perfilVendedor.nombre + " " + (perfilVendedor.apellido || "")).trim() || 'Sin Nombre';
+            nombreMapeado = obtenerNombreCompletoUsuario(perfilVendedor);
         }
         return nombreMapeado === nombreRecreador || b.recreador === nombreRecreador;
     });
@@ -1069,14 +1112,44 @@ async function registrarBoletaEntregada() {
     }
 }
 
-async function eliminarBoletaEntregada(num) {
+async function eliminarBoletaEntregada(num, usuarioId = auth.currentUser.email) {
     if(auth.currentUser.email !== ADMIN_EMAIL) return notify("⚠️ Solo el administrador puede borrar boletas físicas");
-    const entregadas = currentUserData.boletasEntregadas.filter(n => n !== num);
+    if(!confirm(`¿Eliminar la boleta física N° ${num} de este usuario?`)) return;
+
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
 
     try {
-        await db.collection("usuarios").doc(auth.currentUser.email).update({ boletasEntregadas: entregadas });
-        notify("🗑️ Eliminada de entregadas");
+        const usuarioRef = db.collection("usuarios").doc(usuarioId);
+        const eliminada = await db.runTransaction(async transaction => {
+            const usuarioDoc = await transaction.get(usuarioRef);
+            if(!usuarioDoc.exists) throw new Error("El usuario ya no existe");
+
+            const entregadas = Array.isArray(usuarioDoc.data().boletasEntregadas)
+                ? usuarioDoc.data().boletasEntregadas
+                : [];
+            const nuevasEntregadas = entregadas.filter(n => String(n) !== String(num));
+
+            if(nuevasEntregadas.length === entregadas.length) return false;
+
+            transaction.update(usuarioRef, { boletasEntregadas: nuevasEntregadas });
+            return true;
+        });
+
+        if(!eliminada) return notify("⚠️ La boleta física ya no estaba registrada");
+
+        const usuarioLocal = allUsers.find(user => user.id === usuarioId);
+        if(usuarioLocal) {
+            usuarioLocal.boletasEntregadas = (usuarioLocal.boletasEntregadas || []).filter(n => String(n) !== String(num));
+        }
+        if(usuarioId === auth.currentUser.email) {
+            currentUserData.boletasEntregadas = (currentUserData.boletasEntregadas || []).filter(n => String(n) !== String(num));
+            renderBoletas();
+        }
+
+        const modalCarnet = document.getElementById('modal-carnet');
+        if(modalCarnet && modalCarnet.style.display === 'flex') abrirCarnet(usuarioId);
+
+        notify("🗑️ Boleta física eliminada");
     } catch(error) {
         manejarError(error, "No se pudo eliminar la boleta entregada");
     } finally {
@@ -1203,13 +1276,21 @@ function abrirCarnet(id) {
     if (!u) return;
     
     let foto = "S"; if(u.nombre) foto = u.nombre[0];
+    const esAdmin = auth.currentUser.email === ADMIN_EMAIL;
+    const usuarioIdEvento = codificarDatoEvento(id);
     
     let boletasHtml = '';
     if (u.boletasEntregadas && u.boletasEntregadas.length > 0) {
         boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
             <span class="detail-label" style="display:block; margin-bottom:8px;">BOLETAS FÍSICAS ENTREGADAS (${u.boletasEntregadas.length})</span>
             <div style="display:flex; flex-wrap:wrap; gap:5px; justify-content:center;">
-                ${u.boletasEntregadas.map(b => `<span style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:white; font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${escaparHTML(b)}</span>`).join('')}
+                ${u.boletasEntregadas.map(b => {
+                    const boletaEvento = codificarDatoEvento(b);
+                    const botonEliminar = esAdmin
+                        ? `<button type="button" onclick="eliminarBoletaEntregada(decodeURIComponent('${boletaEvento}'), decodeURIComponent('${usuarioIdEvento}'))" title="Eliminar boleta física" aria-label="Eliminar boleta física ${escaparHTML(b)}" style="background:transparent; border:0; color:#ef4444; padding:0; margin-left:5px; cursor:pointer;"><i class="fa-solid fa-trash"></i></button>`
+                        : '';
+                    return `<span style="display:flex; align-items:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:white; font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${escaparHTML(b)}${botonEliminar}</span>`;
+                }).join('')}
             </div>
         </div>`;
     } else {
@@ -1222,7 +1303,7 @@ function abrirCarnet(id) {
     document.getElementById('carnet-detalle-render').innerHTML = `
     <div class="id-card-mini" style="margin:0;">
         <div class="avatar-circle" style="width:70px; height:70px; font-size:2rem;">${escaparHTML(foto)}</div>
-        <h3 style="font-size:1.2rem;">${escaparHTML((u.nombre+" "+(u.apellido||"")).toUpperCase())}</h3>
+        <h3 style="font-size:1.2rem;">${escaparHTML(obtenerNombreCompletoUsuario(u, "PERFIL INCOMPLETO").toUpperCase())}</h3>
         <p class="badge-rango-perfil" style="margin-bottom:15px;">${escaparHTML(u.rango||'RECREADOR')}</p>
         <div class="id-card-details">
             <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${escaparHTML((u.color||'---').toUpperCase())}</span></div>
@@ -1275,59 +1356,68 @@ async function eliminarUsuario(id) {
     }
 }
 
-async function eliminarPersonalPorCodigo() {
-    const code = document.getElementById('del-staff-code-select').value;
-    if(!code) return notify("⚠️ Selecciona un código de invitación primero");
-    if(!confirm(`⚠️ PELIGRO: ¿Estás seguro de eliminar a TODO el personal que se registró usando el código "${code}"?`)) return;
-
-    const usuariosABorrar = allUsers.filter(u => u.codigoInvitacion === code);
-    if(usuariosABorrar.length === 0) return notify(`ℹ️ No hay usuarios registrados con el código ${code}`);
-
-    const liberarBoton = bloquearBotonActual("ELIMINANDO...");
-    try {
-        let batch = db.batch();
-        usuariosABorrar.forEach(u => {
-            batch.delete(db.collection("usuarios").doc(u.id));
-        });
-        await batch.commit();
-        document.getElementById('del-staff-code-select').value = "";
-        notify(`🗑️ ${usuariosABorrar.length} usuarios eliminados`);
-    } catch(error) {
-        manejarError(error, "No se pudo eliminar el personal");
-    } finally {
-        liberarBoton();
+async function eliminarReferenciasFirestoreEnLotes(referencias, limite = 450) {
+    for(let inicio = 0; inicio < referencias.length; inicio += limite) {
+        const lote = db.batch();
+        referencias.slice(inicio, inicio + limite).forEach(referencia => lote.delete(referencia));
+        await lote.commit();
     }
 }
 
-async function eliminarBoletasPorRango() {
-    const fInicio = document.getElementById('del-bol-inicio').value;
-    const fFin = document.getElementById('del-bol-fin').value;
-    
-    if(!fInicio || !fFin) return notify("⚠️ Ingresa el rango de fechas");
-    if(!confirm(`⚠️ ¿Eliminar todas las boletas registradas entre ${fInicio} y ${fFin}?`)) return;
+async function eliminarPersonalYBoletasPorCodigo() {
+    if(auth.currentUser?.email !== ADMIN_EMAIL) {
+        return notify("⚠️ Solo el administrador puede realizar esta acción");
+    }
 
-    const tInicio = new Date(fInicio + "T00:00:00").getTime();
-    const tFin = new Date(fFin + "T23:59:59").getTime();
+    const code = document.getElementById('del-staff-code-select').value;
+    if(!code) return notify("⚠️ Selecciona un código de invitación primero");
 
-    const boletasABorrar = allBoletas.filter(b => {
-        const fechaBoleta = obtenerMilisegundosFecha(b.creado);
-        return fechaBoleta >= tInicio && fechaBoleta <= tFin;
-    });
-    
-    if(boletasABorrar.length === 0) return notify("ℹ️ No se encontraron boletas en ese rango");
-
-    const liberarBoton = bloquearBotonActual("ELIMINANDO...");
+    const liberarBoton = bloquearBotonActual("CONSULTANDO...");
     try {
-        let batch = db.batch();
-        boletasABorrar.forEach(b => {
-            batch.delete(db.collection("boletas").doc(b.id));
+        const [usuariosSnapshot, boletasSnapshot] = await Promise.all([
+            db.collection("usuarios").where("codigoInvitacion", "==", code).get(),
+            db.collection("boletas").get()
+        ]);
+
+        const usuariosABorrar = [];
+        usuariosSnapshot.forEach(doc => {
+            usuariosABorrar.push({ id: doc.id, ...doc.data() });
         });
-        await batch.commit();
-        document.getElementById('del-bol-inicio').value = "";
-        document.getElementById('del-bol-fin').value = "";
-        notify(`🗑️ ${boletasABorrar.length} boletas eliminadas`);
+
+        if(usuariosABorrar.length === 0) {
+            return notify(`ℹ️ No hay usuarios registrados con el código ${code}`);
+        }
+
+        const idsUsuarios = new Set(usuariosABorrar.map(usuario => usuario.id));
+        const boletasABorrar = [];
+        boletasSnapshot.forEach(doc => {
+            if(idsUsuarios.has(doc.data().vendedor)) boletasABorrar.push(doc);
+        });
+
+        const totalBoletasFisicas = usuariosABorrar.reduce((total, usuario) => {
+            return total + (Array.isArray(usuario.boletasEntregadas) ? usuario.boletasEntregadas.length : 0);
+        }, 0);
+
+        const confirmado = confirm(
+            `⚠️ ELIMINACIÓN DEFINITIVA\n\n` +
+            `Código: ${code}\n` +
+            `Usuarios: ${usuariosABorrar.length}\n` +
+            `Boletas registradas: ${boletasABorrar.length}\n` +
+            `Boletas físicas en perfiles: ${totalBoletasFisicas}\n\n` +
+            `¿Deseas eliminar todos estos datos?`
+        );
+        if(!confirmado) return;
+
+        const referenciasABorrar = [
+            ...boletasABorrar.map(doc => doc.ref),
+            ...usuariosABorrar.map(usuario => db.collection("usuarios").doc(usuario.id))
+        ];
+
+        await eliminarReferenciasFirestoreEnLotes(referenciasABorrar);
+        document.getElementById('del-staff-code-select').value = "";
+        notify(`🗑️ Eliminados: ${usuariosABorrar.length} usuarios y ${boletasABorrar.length} boletas`);
     } catch(error) {
-        manejarError(error, "No se pudieron eliminar las boletas del rango");
+        manejarError(error, "No se pudieron eliminar el personal y sus boletas");
     } finally {
         liberarBoton();
     }
@@ -1441,8 +1531,74 @@ function exportarVentasExcel() {
 // NUEVO CÓDIGO - SISTEMA DE ANUNCIO FLOTANTE (ACTUALIZADO PRIORI)
 // ==========================================
 
-let anuncioFlotanteData = null;
+let anunciosFlotantesData = [];
 let anuncioTimer = null;
+let anuncioListaTimer = null;
+
+function obtenerFechaLimiteAnuncio(valor) {
+    if(typeof valor === "number") return valor;
+    return obtenerMilisegundosFecha(valor);
+}
+
+function normalizarAnunciosFlotantes(data = {}) {
+    if(Array.isArray(data.anuncios)) {
+        return data.anuncios
+            .filter(anuncio => anuncio && anuncio.texto)
+            .map(anuncio => ({
+                ...anuncio,
+                id: String(anuncio.id || `anuncio_${obtenerMilisegundosFecha(anuncio.timestamp) || Date.now()}`),
+                fechaLimite: obtenerFechaLimiteAnuncio(anuncio.fechaLimite) || 0
+            }));
+    }
+
+    if(data.texto) {
+        const timestampLegacy = obtenerMilisegundosFecha(data.timestamp) || Date.now();
+        return [{
+            id: String(data.id || `anuncio_legacy_${timestampLegacy}`),
+            texto: data.texto,
+            color: data.color,
+            duracion: data.duracion,
+            intervaloMin: data.intervaloMin,
+            cantidad: data.cantidad,
+            fechaLimite: obtenerFechaLimiteAnuncio(data.fechaLimite) || 0,
+            timestamp: data.timestamp || timestampLegacy,
+            version: data.version || timestampLegacy,
+            lanzadoPor: data.lanzadoPor || ""
+        }];
+    }
+
+    return [];
+}
+
+function anuncioFlotanteEstaVigente(anuncio, ahora = Date.now()) {
+    const fechaLimite = obtenerFechaLimiteAnuncio(anuncio.fechaLimite);
+    return !fechaLimite || fechaLimite > ahora;
+}
+
+function obtenerClaveEstadisticasAnuncio(anuncio) {
+    const version = anuncio.version || obtenerMilisegundosFecha(anuncio.timestamp) || "actual";
+    return `anuncio_stats_${anuncio.id}_${version}`;
+}
+
+function leerEstadisticasAnuncio(anuncio) {
+    try {
+        const guardadas = JSON.parse(localStorage.getItem(obtenerClaveEstadisticasAnuncio(anuncio)));
+        return {
+            count: Number(guardadas?.count) || 0,
+            lastShow: Number(guardadas?.lastShow) || 0
+        };
+    } catch(error) {
+        return { count: 0, lastShow: 0 };
+    }
+}
+
+function detenerCicloAnunciosFlotantes() {
+    if(anuncioTimer) clearTimeout(anuncioTimer);
+    if(anuncioListaTimer) clearTimeout(anuncioListaTimer);
+    anuncioTimer = null;
+    anuncioListaTimer = null;
+    anunciosFlotantesData = [];
+}
 
 // Escuchador en tiempo real para usuarios autenticados
 function listenAnuncioFlotante() {
@@ -1450,60 +1606,176 @@ function listenAnuncioFlotante() {
 
     unsubscribeAnuncioFlotante = db.collection("configuracion").doc("anuncio_flotante").onSnapshot(doc => {
         if (doc.exists) {
-            anuncioFlotanteData = doc.data();
-            evaluarAnuncioCiclo(); // Evaluamos de inmediato al recibir los datos
+            anunciosFlotantesData = normalizarAnunciosFlotantes(doc.data());
         } else {
-            anuncioFlotanteData = null;
-            if(anuncioTimer) clearTimeout(anuncioTimer);
+            anunciosFlotantesData = [];
         }
+
+        renderListaAnunciosFlotantes();
+        evaluarAnuncioCiclo();
     }, error => {
         manejarError(error, "No se pudo cargar el anuncio flotante");
     });
 }
 
-// Lógica inteligente para evaluar si corresponde mostrar el anuncio
+// Conserva el límite de apariciones y el intervalo de cada anuncio por usuario.
 function evaluarAnuncioCiclo() {
     if (anuncioTimer) clearTimeout(anuncioTimer);
-    if (!anuncioFlotanteData) return;
-
-    const data = anuncioFlotanteData;
-    
-    // 1. Verificamos si ya pasó la fecha y hora límite general
-    if (data.fechaLimite && Date.now() > data.fechaLimite) return;
-
-    // 2. Usamos LocalStorage para saber cuántas veces ha visto ESTE anuncio el usuario actual
-    const identificadorAnuncio = obtenerMilisegundosFecha(data.timestamp) || 'actual';
-    let stats = JSON.parse(localStorage.getItem('anuncio_stats_' + identificadorAnuncio)) || { count: 0, lastShow: 0 };
-
-    // 3. Verificamos si ya vio el anuncio la cantidad máxima de veces indicada por el admin
-    if (data.cantidad && stats.count >= data.cantidad) return;
-
     const now = Date.now();
-    const timeSinceLast = now - stats.lastShow;
-    const intervalMs = (data.intervaloMin || 1) * 60 * 1000;
+    const pendientes = anunciosFlotantesData
+        .filter(anuncio => anuncioFlotanteEstaVigente(anuncio, now))
+        .map(anuncio => {
+            const stats = leerEstadisticasAnuncio(anuncio);
+            const cantidad = Math.max(1, Number(anuncio.cantidad) || 1);
+            const intervaloMs = Math.max(1, Number(anuncio.intervaloMin) || 1) * 60 * 1000;
+            const proximaAparicion = stats.count === 0 ? now : stats.lastShow + intervaloMs;
+            return { anuncio, stats, cantidad, proximaAparicion };
+        })
+        .filter(item => item.stats.count < item.cantidad)
+        .sort((a, b) => a.proximaAparicion - b.proximaAparicion);
 
-    // 4. Verificamos si ya pasó el intervalo de tiempo necesario o si es la primera vez (count 0)
-    if (timeSinceLast >= intervalMs || stats.count === 0) {
-        // Mostramos el anuncio
-        mostrarAnuncioFlotante(data.texto, data.color, data.duracion);
-        
-        // Actualizamos los contadores locales del usuario
-        stats.count++;
-        stats.lastShow = Date.now();
-        localStorage.setItem('anuncio_stats_' + identificadorAnuncio, JSON.stringify(stats));
+    if(pendientes.length === 0) return;
 
-        // 5. Programar el siguiente anuncio automáticamente si aún faltan reproducciones
-        if (stats.count < data.cantidad) {
-            anuncioTimer = setTimeout(evaluarAnuncioCiclo, intervalMs);
-        }
-    } else {
-        // Aún no pasa el intervalo de espera, lo programamos para el tiempo que falte
-        const timeLeft = intervalMs - timeSinceLast;
-        anuncioTimer = setTimeout(evaluarAnuncioCiclo, timeLeft);
+    const siguiente = pendientes[0];
+    if(siguiente.proximaAparicion > now) {
+        const espera = Math.min(Math.max(250, siguiente.proximaAparicion - now), 2147483000);
+        anuncioTimer = setTimeout(evaluarAnuncioCiclo, espera);
+        return;
+    }
+
+    mostrarAnuncioFlotante(siguiente.anuncio.texto, siguiente.anuncio.color, siguiente.anuncio.duracion);
+    siguiente.stats.count++;
+    siguiente.stats.lastShow = now;
+    localStorage.setItem(obtenerClaveEstadisticasAnuncio(siguiente.anuncio), JSON.stringify(siguiente.stats));
+
+    const esperaSiguiente = Math.max(1500, (Math.max(1, Number(siguiente.anuncio.duracion) || 10) * 1000) + 600);
+    anuncioTimer = setTimeout(evaluarAnuncioCiclo, esperaSiguiente);
+}
+
+function formatearFechaAnuncio(fechaLimite) {
+    const milisegundos = obtenerFechaLimiteAnuncio(fechaLimite);
+    if(!milisegundos) return "Sin fecha límite";
+    return new Date(milisegundos).toLocaleString('es-CO', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function formatearFechaAnuncioParaInput(fechaLimite) {
+    const milisegundos = obtenerFechaLimiteAnuncio(fechaLimite);
+    if(!milisegundos) return "";
+    const fecha = new Date(milisegundos);
+    const fechaLocal = new Date(fecha.getTime() - (fecha.getTimezoneOffset() * 60000));
+    return fechaLocal.toISOString().slice(0, 16);
+}
+
+function renderListaAnunciosFlotantes() {
+    const container = document.getElementById('admin-anuncios-lista');
+    const contador = document.getElementById('admin-anuncios-total');
+    if(!container || !contador) return;
+
+    if(anuncioListaTimer) clearTimeout(anuncioListaTimer);
+
+    const ahora = Date.now();
+    const vigentes = anunciosFlotantesData
+        .filter(anuncio => anuncioFlotanteEstaVigente(anuncio, ahora))
+        .sort((a, b) => (obtenerMilisegundosFecha(b.timestamp) || 0) - (obtenerMilisegundosFecha(a.timestamp) || 0));
+
+    contador.innerText = vigentes.length;
+
+    if(vigentes.length === 0) {
+        container.innerHTML = `<div class="floating-list-empty"><i class="fa-regular fa-bell-slash"></i><p>No hay anuncios vigentes</p><span>Los nuevos anuncios aparecerán en esta lista.</span></div>`;
+        return;
+    }
+
+    container.innerHTML = vigentes.map(anuncio => {
+        const anuncioIdEvento = codificarDatoEvento(anuncio.id);
+        const colorSeguro = obtenerColorSeguro(anuncio.color);
+        const duracion = Math.max(1, Number(anuncio.duracion) || 10);
+        const intervalo = Math.max(1, Number(anuncio.intervaloMin) || 1);
+        const cantidad = Math.max(1, Number(anuncio.cantidad) || 1);
+
+        return `<article class="floating-list-card" style="--announcement-accent:${colorSeguro};">
+            <div class="floating-list-card-top">
+                <span class="floating-list-status"><i></i> VIGENTE</span>
+                <span class="floating-list-expiry"><i class="fa-regular fa-clock"></i> Hasta ${escaparHTML(formatearFechaAnuncio(anuncio.fechaLimite))}</span>
+            </div>
+            <p class="floating-list-message">${escaparHTML(anuncio.texto)}</p>
+            <div class="floating-list-meta">
+                <span><i class="fa-regular fa-hourglass-half"></i> ${duracion} s</span>
+                <span><i class="fa-solid fa-rotate"></i> Cada ${intervalo} min</span>
+                <span><i class="fa-regular fa-eye"></i> ${cantidad} veces</span>
+            </div>
+            <div class="floating-list-actions">
+                <button type="button" class="floating-action-edit" onclick="editarAnuncioFlotante(decodeURIComponent('${anuncioIdEvento}'))"><i class="fa-solid fa-pen"></i> Editar</button>
+                <button type="button" class="floating-action-delete" onclick="eliminarAnuncioFlotante(decodeURIComponent('${anuncioIdEvento}'))"><i class="fa-solid fa-trash"></i> Eliminar</button>
+            </div>
+        </article>`;
+    }).join('');
+
+    const proximaExpiracion = vigentes
+        .map(anuncio => obtenerFechaLimiteAnuncio(anuncio.fechaLimite))
+        .filter(fecha => fecha && fecha > ahora)
+        .sort((a, b) => a - b)[0];
+
+    if(proximaExpiracion) {
+        const espera = Math.min(Math.max(1000, proximaExpiracion - ahora + 500), 2147483000);
+        anuncioListaTimer = setTimeout(renderListaAnunciosFlotantes, espera);
     }
 }
 
-// Función que el administrador usa para enviar y programar el anuncio
+function actualizarVistaPreviaAnuncio() {
+    const preview = document.getElementById('admin-anuncio-preview');
+    if(!preview) return;
+
+    const texto = document.getElementById('admin-anuncio-texto').value.trim() || "Tu anuncio aparecerá aquí";
+    const color = obtenerColorSeguro(document.getElementById('admin-anuncio-color').value);
+    const contrasteOscuro = color === '#00f0ff' || color === '#10b981' || color === '#f59e0b';
+
+    preview.style.setProperty('--preview-color', color);
+    preview.style.color = contrasteOscuro ? '#07111f' : '#ffffff';
+    preview.querySelector('span').innerText = texto;
+}
+
+function editarAnuncioFlotante(id) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar anuncios flotantes");
+
+    const anuncio = anunciosFlotantesData.find(item => item.id === id);
+    if(!anuncio) return notify("⚠️ El anuncio ya no está disponible");
+
+    document.getElementById('admin-anuncio-edit-id').value = anuncio.id;
+    document.getElementById('admin-anuncio-texto').value = anuncio.texto || "";
+    document.getElementById('admin-anuncio-color').value = obtenerColorSeguro(anuncio.color);
+    document.getElementById('admin-anuncio-duracion').value = Math.max(1, Number(anuncio.duracion) || 10);
+    document.getElementById('admin-anuncio-intervalo').value = Math.max(1, Number(anuncio.intervaloMin) || 1);
+    document.getElementById('admin-anuncio-cantidad').value = Math.max(1, Number(anuncio.cantidad) || 1);
+    document.getElementById('admin-anuncio-fecha').value = formatearFechaAnuncioParaInput(anuncio.fechaLimite);
+    document.getElementById('admin-anuncio-modo').innerText = "EDITANDO ANUNCIO";
+    document.getElementById('admin-anuncio-cancelar').style.display = 'inline-flex';
+    document.querySelector('#admin-anuncio-guardar span').innerText = "GUARDAR CAMBIOS";
+
+    actualizarVistaPreviaAnuncio();
+    document.querySelector('.floating-editor-panel')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+function cancelarEdicionAnuncioFlotante() {
+    document.getElementById('admin-anuncio-edit-id').value = "";
+    document.getElementById('admin-anuncio-texto').value = "";
+    document.getElementById('admin-anuncio-color').value = "#ff007a";
+    document.getElementById('admin-anuncio-duracion').value = 10;
+    document.getElementById('admin-anuncio-intervalo').value = 1;
+    document.getElementById('admin-anuncio-cantidad').value = 1;
+    document.getElementById('admin-anuncio-fecha').value = "";
+    document.getElementById('admin-anuncio-modo').innerText = "NUEVO ANUNCIO";
+    document.getElementById('admin-anuncio-cancelar').style.display = 'none';
+    document.querySelector('#admin-anuncio-guardar span').innerText = "PUBLICAR ANUNCIO";
+    actualizarVistaPreviaAnuncio();
+}
+
+// El administrador crea o actualiza anuncios dentro del documento existente.
 async function publicarAnuncioFlotante() {
     if(!esAdministradorActual()) {
         if(typeof notify === "function") return notify("⛔ Solo el administrador puede publicar anuncios flotantes");
@@ -1517,6 +1789,7 @@ async function publicarAnuncioFlotante() {
     let intervalo = parseInt(document.getElementById('admin-anuncio-intervalo').value);
     let cantidad = parseInt(document.getElementById('admin-anuncio-cantidad').value);
     let fechaInput = document.getElementById('admin-anuncio-fecha').value;
+    const anuncioEditId = document.getElementById('admin-anuncio-edit-id').value;
     
     if (!texto) {
         if(typeof notify === "function") return notify("⚠️ Escribe un texto corto para el anuncio");
@@ -1540,28 +1813,101 @@ async function publicarAnuncioFlotante() {
         fechaLimite = Date.now() + (24 * 60 * 60 * 1000); 
     }
 
-    const liberarBoton = bloquearBotonActual("PUBLICANDO...");
+    const liberarBoton = bloquearBotonActual(anuncioEditId ? "GUARDANDO..." : "PUBLICANDO...");
     try {
-        await db.collection("configuracion").doc("anuncio_flotante").set({
-            texto: texto,
-            color: color,
-            duracion: duracion,
-            intervaloMin: intervalo,
-            cantidad: cantidad,
-            fechaLimite: fechaLimite,
-            timestamp: fechaServidor(),
-            lanzadoPor: auth.currentUser.email
+        const configuracionRef = db.collection("configuracion").doc("anuncio_flotante");
+        await db.runTransaction(async transaction => {
+            const configuracionDoc = await transaction.get(configuracionRef);
+            const anunciosActuales = configuracionDoc.exists
+                ? normalizarAnunciosFlotantes(configuracionDoc.data())
+                : [];
+            const ahora = Date.now();
+
+            if(anuncioEditId) {
+                const indice = anunciosActuales.findIndex(anuncio => anuncio.id === anuncioEditId);
+                if(indice === -1) throw new Error("El anuncio ya no existe");
+
+                anunciosActuales[indice] = {
+                    ...anunciosActuales[indice],
+                    texto,
+                    color,
+                    duracion,
+                    intervaloMin: intervalo,
+                    cantidad,
+                    fechaLimite,
+                    version: ahora,
+                    actualizadoEn: ahora,
+                    actualizadoPor: auth.currentUser.email
+                };
+            } else {
+                anunciosActuales.push({
+                    id: `anuncio_${ahora}_${Math.random().toString(36).slice(2, 8)}`,
+                    texto,
+                    color,
+                    duracion,
+                    intervaloMin: intervalo,
+                    cantidad,
+                    fechaLimite,
+                    timestamp: ahora,
+                    version: ahora,
+                    lanzadoPor: auth.currentUser.email
+                });
+            }
+
+            transaction.set(configuracionRef, {
+                anuncios: anunciosActuales,
+                actualizado: fechaServidor()
+            });
         });
-        if(typeof notify === "function") notify("🚀 Anuncio programado con éxito");
-        document.getElementById('admin-anuncio-texto').value = ""; 
+        if(typeof notify === "function") notify(anuncioEditId ? "✅ Anuncio actualizado" : "🚀 Anuncio publicado con éxito");
+        cancelarEdicionAnuncioFlotante();
     } catch(error) {
-        manejarError(error, "No se pudo publicar el anuncio");
+        manejarError(error, anuncioEditId ? "No se pudo actualizar el anuncio" : "No se pudo publicar el anuncio");
     } finally {
         liberarBoton();
     }
 }
 
-// Función visual (Render)
+async function eliminarAnuncioFlotante(id) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar anuncios flotantes");
+
+    const anuncio = anunciosFlotantesData.find(item => item.id === id);
+    if(!anuncio) return notify("⚠️ El anuncio ya no está disponible");
+    if(!confirm(`¿Eliminar el anuncio flotante: “${anuncio.texto}”?`)) return;
+
+    const liberarBoton = bloquearBotonActual("ELIMINANDO...");
+    try {
+        const configuracionRef = db.collection("configuracion").doc("anuncio_flotante");
+        const eliminado = await db.runTransaction(async transaction => {
+            const configuracionDoc = await transaction.get(configuracionRef);
+            if(!configuracionDoc.exists) return false;
+
+            const anunciosActuales = normalizarAnunciosFlotantes(configuracionDoc.data());
+            const anunciosRestantes = anunciosActuales.filter(item => item.id !== id);
+            if(anunciosRestantes.length === anunciosActuales.length) return false;
+
+            if(anunciosRestantes.length === 0) {
+                transaction.delete(configuracionRef);
+            } else {
+                transaction.set(configuracionRef, {
+                    anuncios: anunciosRestantes,
+                    actualizado: fechaServidor()
+                });
+            }
+            return true;
+        });
+
+        if(!eliminado) return notify("⚠️ El anuncio ya había sido eliminado");
+        if(document.getElementById('admin-anuncio-edit-id').value === id) cancelarEdicionAnuncioFlotante();
+        notify("🗑️ Anuncio flotante eliminado");
+    } catch(error) {
+        manejarError(error, "No se pudo eliminar el anuncio");
+    } finally {
+        liberarBoton();
+    }
+}
+
+// Presentación visual del anuncio para todo el personal.
 function mostrarAnuncioFlotante(texto, color, duracionSecs) {
     let el = document.getElementById('floating-announcement');
     if (!el) {
@@ -1574,13 +1920,20 @@ function mostrarAnuncioFlotante(texto, color, duracionSecs) {
     el.parentNode.replaceChild(newEl, el);
     el = newEl;
 
-    el.style.display = 'block';
+    el.style.display = 'flex';
     const colorSeguro = obtenerColorSeguro(color);
-    el.style.backgroundColor = colorSeguro;
-    el.style.color = (colorSeguro === '#00f0ff' || colorSeguro === '#10b981') ? '#000000' : '#ffffff';
-    
-    el.innerHTML = '<i class="fa-solid fa-bolt"></i> &nbsp; ';
-    el.appendChild(document.createTextNode(String(texto ?? "")));
+    el.style.setProperty('--announcement-color', colorSeguro);
+    el.style.color = '#ffffff';
+
+    const icono = document.createElement('span');
+    icono.className = 'floating-announcement-icon';
+    icono.innerHTML = '<i class="fa-solid fa-bolt"></i>';
+    const mensaje = document.createElement('span');
+    mensaje.className = 'floating-announcement-message';
+    mensaje.textContent = String(texto ?? "");
+    el.replaceChildren(icono, mensaje);
+    el.setAttribute('role', 'status');
+    el.setAttribute('aria-live', 'polite');
     el.style.setProperty('--anim-duration', `${duracionSecs}s`);
     
     setTimeout(() => {
@@ -1680,7 +2033,7 @@ function enviarComprobantePago() {
             try {
                 await db.collection("solicitudes_pago").add({
                     recreadorEmail: auth.currentUser.email,
-                    recreadorNombre: currentUserData.nombre + " " + (currentUserData.apellido || ""),
+                    recreadorNombre: obtenerNombreCompletoUsuario(currentUserData),
                     equipo: currentUserData.color || "Gris",
                     boletas: boletasSeleccionadas,
                     monto: monto,

@@ -295,31 +295,89 @@
                             </div>
                         </div>
 
-                        <div id="admin-floating-announcement" class="admin-card full-width" style="border-color: rgba(245, 158, 11, 0.5);">
-                            <p class="admin-card-title" style="color: #f59e0b; text-align: center;"><i class="fa-solid fa-bullhorn"></i> LANZAR ANUNCIO FLOTANTE</p>
-                            <div class="form-group">
-                                <input type="text" id="admin-anuncio-texto" placeholder="Escribe el mensaje corto del anuncio aquí..." style="border-color: #f59e0b;">
-                                <div style="display: flex; gap: 10px;">
-                                    <select id="admin-anuncio-color" style="flex: 2; border-color: #f59e0b;">
-                                        <option value="#ff007a">Magenta Impacto</option>
-                                        <option value="#00f0ff">Cyan Neón</option>
-                                        <option value="#10b981">Esmeralda Positivo</option>
-                                        <option value="#f59e0b">Ámbar Alerta</option>
-                                        <option value="#ef4444">Rojo Peligro</option>
-                                    </select>
-                                    <input type="number" id="admin-anuncio-duracion" placeholder="Segundos" value="10" style="flex: 1; border-color: #f59e0b;" min="1">
+                        <div id="admin-floating-announcement" class="admin-card full-width floating-admin-card">
+                            <div class="floating-admin-header">
+                                <div class="floating-admin-heading">
+                                    <div class="floating-admin-icon"><i class="fa-solid fa-bullhorn"></i></div>
+                                    <div>
+                                        <span class="floating-admin-eyebrow">COMUNICACIÓN EN TIEMPO REAL</span>
+                                        <h3>Centro de anuncios flotantes</h3>
+                                        <p>Crea y administra los mensajes que aparecerán en la pantalla del personal.</p>
+                                    </div>
                                 </div>
-                                
-                                <div style="display: flex; gap: 10px;">
-                                    <input type="number" id="admin-anuncio-intervalo" placeholder="Intervalo (Minutos)" style="flex: 1; border-color: #f59e0b;" min="1">
-                                    <input type="number" id="admin-anuncio-cantidad" placeholder="Cantidad de veces" style="flex: 1; border-color: #f59e0b;" min="1">
-                                </div>
-                                <div style="display: flex; flex-direction: column; gap: 5px;">
-                                    <label class="label-hint" style="color: #f59e0b;">MOSTRAR HASTA LA FECHA/HORA:</label>
-                                    <input type="datetime-local" id="admin-anuncio-fecha" style="border-color: #f59e0b; width: 100%; box-sizing: border-box;">
+                                <div class="floating-admin-counter"><span class="floating-live-dot"></span><strong id="admin-anuncios-total">0</strong> vigentes</div>
+                            </div>
+
+                            <div class="floating-admin-layout">
+                                <div class="floating-editor-panel">
+                                    <div class="floating-panel-heading">
+                                        <div>
+                                            <span id="admin-anuncio-modo">NUEVO ANUNCIO</span>
+                                            <small>Configura el mensaje y su frecuencia.</small>
+                                        </div>
+                                        <button id="admin-anuncio-cancelar" class="floating-cancel-btn" type="button" onclick="cancelarEdicionAnuncioFlotante()" style="display:none;"><i class="fa-solid fa-xmark"></i> Cancelar edición</button>
+                                    </div>
+
+                                    <div class="floating-admin-form">
+                                        <input type="hidden" id="admin-anuncio-edit-id">
+
+                                        <label class="floating-field floating-field-full">
+                                            <span>Mensaje del anuncio</span>
+                                            <input type="text" id="admin-anuncio-texto" placeholder="Escribe el mensaje que verá el personal..." oninput="actualizarVistaPreviaAnuncio()">
+                                        </label>
+
+                                        <label class="floating-field">
+                                            <span>Color de impacto</span>
+                                            <select id="admin-anuncio-color" onchange="actualizarVistaPreviaAnuncio()">
+                                                <option value="#ff007a">Magenta Impacto</option>
+                                                <option value="#00f0ff">Cyan Neón</option>
+                                                <option value="#10b981">Esmeralda Positivo</option>
+                                                <option value="#f59e0b">Ámbar Alerta</option>
+                                                <option value="#ef4444">Rojo Peligro</option>
+                                            </select>
+                                        </label>
+
+                                        <label class="floating-field">
+                                            <span>Duración en pantalla</span>
+                                            <div class="floating-input-unit"><input type="number" id="admin-anuncio-duracion" value="10" min="1"><b>seg</b></div>
+                                        </label>
+
+                                        <label class="floating-field">
+                                            <span>Intervalo</span>
+                                            <div class="floating-input-unit"><input type="number" id="admin-anuncio-intervalo" value="1" min="1"><b>min</b></div>
+                                        </label>
+
+                                        <label class="floating-field">
+                                            <span>Número de apariciones</span>
+                                            <div class="floating-input-unit"><input type="number" id="admin-anuncio-cantidad" value="1" min="1"><b>veces</b></div>
+                                        </label>
+
+                                        <label class="floating-field floating-field-full">
+                                            <span>Mostrar hasta</span>
+                                            <input type="datetime-local" id="admin-anuncio-fecha">
+                                        </label>
+
+                                        <div class="floating-preview-box floating-field-full">
+                                            <span class="floating-preview-label"><i class="fa-solid fa-eye"></i> Vista previa</span>
+                                            <div id="admin-anuncio-preview" class="floating-preview-pill"><i class="fa-solid fa-bolt"></i><span>Tu anuncio aparecerá aquí</span></div>
+                                        </div>
+
+                                        <button id="admin-anuncio-guardar" class="floating-publish-btn floating-field-full" type="button" onclick="publicarAnuncioFlotante()"><i class="fa-solid fa-paper-plane"></i><span>PUBLICAR ANUNCIO</span></button>
+                                    </div>
                                 </div>
 
-                                <button class="btn-primary" onclick="publicarAnuncioFlotante()" style="background: linear-gradient(135deg, #f59e0b, #ea580c); color: #fff; width: 100%;"><i class="fa-solid fa-paper-plane"></i> LANZAR EN PANTALLA</button>
+                                <div class="floating-list-panel">
+                                    <div class="floating-panel-heading">
+                                        <div>
+                                            <span>ANUNCIOS VIGENTES</span>
+                                            <small>Edítalos o elimínalos cuando lo necesites.</small>
+                                        </div>
+                                        <i class="fa-solid fa-satellite-dish floating-list-signal"></i>
+                                    </div>
+                                    <div id="admin-anuncios-lista" class="floating-announcement-list">
+                                        <div class="floating-list-empty"><i class="fa-regular fa-bell-slash"></i><p>No hay anuncios vigentes</p><span>Los nuevos anuncios aparecerán en esta lista.</span></div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
@@ -335,31 +393,13 @@
                         </div>
                         
                         <div id="admin-delete-staff-code-panel" class="admin-card" style="display: none;">
-                            <p class="admin-card-title" style="color: #ef4444;"><i class="fa-solid fa-users-slash"></i> ELIMINAR PERSONAL POR CÓDIGO</p>
-                            <div class="form-group">
+                            <p class="admin-card-title" style="color: #ef4444;"><i class="fa-solid fa-users-slash"></i> ELIMINAR PERSONAL Y BOLETAS POR CÓDIGO</p>
+                            <div class="form-group" style="display: flex; flex-direction: column; gap: 10px;">
                                 <select id="del-staff-code-select" style="background: rgba(239, 68, 68, 0.1); border-color: #ef4444; color: white;">
                                     <option value="" disabled selected>Selecciona un código</option>
                                 </select>
-                                <button class="btn-mini btn-delete" onclick="eliminarPersonalPorCodigo()">ELIMINAR USUARIOS CON ESTE CÓDIGO</button>
-                                <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin-top: 5px; text-align: center;">* ESTO BORRARÁ DEFINITIVAMENTE AL PERSONAL QUE SE INSCRIBIÓ USANDO EL CÓDIGO SELECCIONADO.</p>
-                            </div>
-                        </div>
-
-                        <div id="admin-delete-range-panel" class="admin-card" style="display: none;">
-                            <p class="admin-card-title" style="color: #ef4444;"><i class="fa-solid fa-calendar-xmark"></i> LIMPIAR BOLETAS POR FECHA</p>
-                            <div class="form-group" style="display: flex; flex-direction: column; gap: 10px;">
-                                <div style="display: flex; gap: 5px;">
-                                    <div style="flex:1;">
-                                        <label class="label-hint">DESDE:</label>
-                                        <input type="date" id="del-bol-inicio" class="mini-input" style="width: 100%; box-sizing: border-box;">
-                                    </div>
-                                    <div style="flex:1;">
-                                        <label class="label-hint">HASTA:</label>
-                                        <input type="date" id="del-bol-fin" class="mini-input" style="width: 100%; box-sizing: border-box;">
-                                    </div>
-                                </div>
-                                <button class="btn-mini btn-delete" onclick="eliminarBoletasPorRango()">ELIMINAR BOLETAS EN ESTE RANGO</button>
-                                <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; text-align: center; margin: 0;">* LAS BOLETAS YA JUGADAS SE BORRARÁN PERMANENTEMENTE</p>
+                                <button class="btn-mini btn-delete" onclick="eliminarPersonalYBoletasPorCodigo()"><i class="fa-solid fa-trash-can"></i> ELIMINAR USUARIOS Y TODAS SUS BOLETAS</button>
+                                <p style="font-size: 0.45rem; color: #ef4444; font-weight: 800; margin: 0; text-align: center; line-height: 1.5;">* ESTA ACCIÓN BORRARÁ DEFINITIVAMENTE LOS PERFILES, SUS BOLETAS FÍSICAS Y TODAS LAS BOLETAS REGISTRADAS POR LOS USUARIOS DEL CÓDIGO SELECCIONADO.</p>
                             </div>
                         </div>
 
