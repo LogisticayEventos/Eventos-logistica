@@ -11,6 +11,19 @@ firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
 const ADMIN_EMAIL = "franboy1221@gmail.com";
+const CONFIGURACION_PAGOS_POR_DEFECTO = Object.freeze({
+    llave: "3114918913",
+    titular: "Euripides Cuervo",
+    metodos: Object.freeze(["Nequi", "Daviplata", "Bre-B"]),
+    contactos: Object.freeze({
+        verde: Object.freeze({ nombre: "Fran Santamaria", numero: "3224343263" }),
+        azul: Object.freeze({ nombre: "Nicky", numero: "3114918913" }),
+        naranja: Object.freeze({ nombre: "Steven Romero", numero: "3026334657" }),
+        rojo: Object.freeze({ nombre: "Kateryn Reyes", numero: "3115568742" }),
+        morado: Object.freeze({ nombre: "", numero: "" })
+    }),
+    qr: ""
+});
 
 function fechaServidor() {
     return firebase.firestore.FieldValue.serverTimestamp();
@@ -48,6 +61,208 @@ function obtenerNombreCompletoUsuario(usuario = {}, respaldo = "Sin Nombre") {
     const nombre = String(usuario.nombre || "").trim();
     const apellido = String(usuario.apellido || "").trim();
     return [nombre, apellido].filter(Boolean).join(" ") || respaldo;
+}
+
+function normalizarClaveColor(valor) {
+    return String(valor || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase();
+}
+
+function normalizarNumeroBoletaConsulta(valor) {
+    return String(valor || "").replace(/\D/g, "");
+}
+
+function normalizarWhatsappConsulta(valor) {
+    const digitos = String(valor || "").replace(/\D/g, "");
+    return digitos.length === 12 && digitos.startsWith("57") ? digitos.slice(2) : digitos;
+}
+
+function normalizarNumeroBoletaGuardada(valor) {
+    const digitos = normalizarNumeroBoletaConsulta(valor);
+    return /^\d{1,3}$/.test(digitos) ? digitos.padStart(3, "0") : digitos;
+}
+
+async function obtenerHashConsultaBoleta(numeroBoleta, whatsapp) {
+    const numeroNormalizado = normalizarNumeroBoletaConsulta(numeroBoleta);
+    const whatsappNormalizado = normalizarWhatsappConsulta(whatsapp);
+    if(!/^\d{3}$/.test(numeroNormalizado)) throw new Error("El número de boleta no es válido");
+    if(!/^\d{10}$/.test(whatsappNormalizado)) throw new Error("El WhatsApp no es válido");
+    if(!globalThis.crypto?.subtle || typeof TextEncoder === "undefined") {
+        throw new Error("Este navegador no permite realizar la consulta segura");
+    }
+
+    const bytes = new TextEncoder().encode(`${numeroNormalizado}|${whatsappNormalizado}`);
+    const hash = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(hash), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function obtenerReferenciaConsultaBoleta(numeroBoleta, whatsapp) {
+    const hash = await obtenerHashConsultaBoleta(numeroBoleta, whatsapp);
+    return db.collection("consulta_boletas").doc(hash);
+}
+
+function crearDatosConsultaBoleta(boleta = {}, boletaId = "", permitirFechaServidor = false) {
+    const n = normalizarNumeroBoletaGuardada(boleta.n);
+    const comprador = String(boleta.c || boleta.comprador || "").trim();
+    const whatsapp = normalizarWhatsappConsulta(boleta.t || boleta.whatsapp || boleta.telefono);
+    const recreador = String(boleta.recreador || "").trim();
+    const equipo = String(boleta.equipo || boleta.color || "").trim();
+    const fechaConvertida = convertirFechaFirestore(boleta.creado);
+    const creado = fechaConvertida || (permitirFechaServidor ? boleta.creado : null);
+
+    if(!boletaId || !/^\d{3}$/.test(n) || !/^\d{10}$/.test(whatsapp) || !comprador) return null;
+
+    return {
+        boletaId: String(boletaId),
+        n,
+        comprador,
+        whatsapp,
+        recreador,
+        equipo,
+        estado: boleta.estado === "Activa" ? "Activa" : "Pendiente",
+        creado,
+        actualizado: fechaServidor()
+    };
+}
+
+async function obtenerEquipoRegistradorBoleta(boleta = {}) {
+    const equipoGuardado = String(boleta.equipo || boleta.color || "").trim();
+    if(equipoGuardado) return equipoGuardado;
+
+    const vendedor = String(boleta.vendedor || "").trim();
+    if(!vendedor) return "";
+
+    if(auth.currentUser?.email === vendedor && currentUserData?.color) {
+        return String(currentUserData.color).trim();
+    }
+
+    const usuarioLocal = allUsers.find(usuario => usuario.id === vendedor);
+    if(usuarioLocal?.color) return String(usuarioLocal.color).trim();
+
+    try {
+        const documento = await db.collection("usuarios").doc(vendedor).get();
+        return documento.exists ? String(documento.data().color || "").trim() : "";
+    } catch(error) {
+        console.warn("No se pudo determinar el equipo de la boleta", vendedor, error);
+        return "";
+    }
+}
+
+function normalizarConfiguracionPagosLista(datos = {}) {
+    const metodosRecibidos = Array.isArray(datos.metodos) ? datos.metodos : [];
+    const metodos = metodosRecibidos
+        .map(metodo => String(metodo || "").trim())
+        .filter(Boolean)
+        .slice(0, 10);
+    const contactosRecibidos = datos.contactos && typeof datos.contactos === "object" ? datos.contactos : {};
+    const contactosNormalizados = {};
+    Object.entries(contactosRecibidos).forEach(([clave, contacto]) => {
+        const claveNormalizada = normalizarClaveColor(clave);
+        if(claveNormalizada) contactosNormalizados[claveNormalizada] = contacto;
+    });
+    const clavesContacto = new Set([
+        ...Object.keys(CONFIGURACION_PAGOS_POR_DEFECTO.contactos),
+        ...Object.keys(contactosNormalizados)
+    ]);
+    const contactos = {};
+
+    clavesContacto.forEach(clave => {
+        const tieneContactoGuardado = Object.prototype.hasOwnProperty.call(contactosNormalizados, clave);
+        const origen = tieneContactoGuardado
+            ? contactosNormalizados[clave]
+            : CONFIGURACION_PAGOS_POR_DEFECTO.contactos[clave];
+
+        contactos[clave] = {
+            nombre: String(origen?.nombre || "").trim().slice(0, 80),
+            numero: String(origen?.numero || "").replace(/\D/g, "").slice(0, 10)
+        };
+    });
+
+    const qrRecibido = String(datos.qr || "");
+    return {
+        llave: String(datos.llave || CONFIGURACION_PAGOS_POR_DEFECTO.llave).trim().slice(0, 100),
+        titular: String(datos.titular || CONFIGURACION_PAGOS_POR_DEFECTO.titular).trim().slice(0, 100),
+        metodos: metodos.length ? metodos : [...CONFIGURACION_PAGOS_POR_DEFECTO.metodos],
+        contactos,
+        qr: esComprobanteSeguro(qrRecibido) ? qrRecibido : ""
+    };
+}
+
+function renderConfiguracionPagosLista() {
+    const metodosEl = document.getElementById("lista-pago-metodos");
+    const llaveEl = document.getElementById("lista-pago-llave");
+    const titularEl = document.getElementById("lista-pago-titular");
+    const qrBoton = document.getElementById("lista-pago-qr-boton");
+    const qrInline = document.getElementById("lista-pago-qr-inline");
+
+    if(metodosEl) {
+        const metodosTexto = configuracionPagoLista.metodos.join(" - ");
+        metodosEl.textContent = metodosTexto;
+        metodosEl.title = `Métodos aceptados: ${metodosTexto}`;
+    }
+    if(llaveEl) llaveEl.textContent = configuracionPagoLista.llave;
+    if(titularEl) titularEl.textContent = configuracionPagoLista.titular;
+    if(qrBoton) qrBoton.style.display = configuracionPagoLista.qr ? "block" : "none";
+    if(qrInline) {
+        if(configuracionPagoLista.qr) qrInline.src = configuracionPagoLista.qr;
+        else qrInline.removeAttribute("src");
+    }
+
+    actualizarContactoPagoLista();
+}
+
+function actualizarContactoPagoLista() {
+    const nombreEl = document.getElementById("lista-contacto-pago-nombre");
+    const numeroEl = document.getElementById("lista-contacto-pago-numero");
+    const enlaceEl = document.getElementById("lista-contacto-pago-whatsapp");
+    const avisoEl = document.getElementById("lista-contacto-pago-aviso");
+    if(!nombreEl || !numeroEl || !enlaceEl || !avisoEl) return;
+
+    const colorUsuario = String(currentUserData?.color || "").trim();
+    const contacto = configuracionPagoLista.contactos[normalizarClaveColor(colorUsuario)];
+    const numeroContacto = String(contacto?.numero || "").replace(/\D/g, "");
+
+    if(!contacto?.nombre || numeroContacto.length !== 10) {
+        nombreEl.textContent = "Contacto no asignado";
+        numeroEl.textContent = colorUsuario ? `Equipo ${colorUsuario}` : "Equipo sin color registrado";
+        enlaceEl.removeAttribute("href");
+        enlaceEl.setAttribute("aria-disabled", "true");
+        enlaceEl.classList.add("is-disabled");
+        avisoEl.textContent = "Este equipo todavía no tiene un número de WhatsApp asignado para confirmar pagos.";
+        avisoEl.style.display = "block";
+        return;
+    }
+
+    const nombreUsuario = obtenerNombreCompletoUsuario(currentUserData, "un integrante");
+    const mensaje = `Hola ${contacto.nombre}, soy ${nombreUsuario}, del equipo ${colorUsuario}. Te envío mi comprobante de pago para confirmar.`;
+
+    nombreEl.textContent = contacto.nombre;
+    numeroEl.textContent = numeroContacto;
+    enlaceEl.href = `https://wa.me/57${numeroContacto}?text=${encodeURIComponent(mensaje)}`;
+    enlaceEl.removeAttribute("aria-disabled");
+    enlaceEl.classList.remove("is-disabled");
+    enlaceEl.setAttribute("aria-label", `Enviar comprobante de pago a ${contacto.nombre} por WhatsApp`);
+    avisoEl.textContent = "";
+    avisoEl.style.display = "none";
+}
+
+function abrirQrPago() {
+    if(!esComprobanteSeguro(configuracionPagoLista.qr)) return notify("⚠️ No hay una imagen QR configurada");
+
+    const modal = document.getElementById("modal-qr-pago");
+    const imagen = document.getElementById("lista-pago-qr-imagen");
+    if(!modal || !imagen) return;
+
+    imagen.src = configuracionPagoLista.qr;
+    modal.style.display = "flex";
+}
+
+function cerrarQrPago() {
+    const modal = document.getElementById("modal-qr-pago");
+    if(modal) modal.style.display = "none";
 }
 
 function obtenerUrlHttpSegura(valor) {
@@ -153,6 +368,8 @@ let currentUserData = null;
 let allUsers = [];
 let allBoletas = [];
 let allComunicados = [];
+let configuracionPagoLista = normalizarConfiguracionPagosLista();
+let qrPagoPendiente = "";
 
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
@@ -172,6 +389,7 @@ let unsubscribeUsuarios = null;
 let unsubscribeBoletas = null;
 let unsubscribeComunicados = null;
 let unsubscribeAnuncioFlotante = null;
+let unsubscribeConfiguracionPagos = null;
 let unsubscribePagosPendientes = null;
 let listenerHistorialPagos = null;
 let comprobantesTemp = {};
@@ -227,6 +445,7 @@ function detenerEscuchadoresPrivados() {
     if(unsubscribeSeguridad) unsubscribeSeguridad();
     if(unsubscribeUsuarioActual) unsubscribeUsuarioActual();
     if(unsubscribeAnuncioFlotante) unsubscribeAnuncioFlotante();
+    if(unsubscribeConfiguracionPagos) unsubscribeConfiguracionPagos();
 
     detenerCicloAnunciosFlotantes();
 
@@ -237,6 +456,7 @@ function detenerEscuchadoresPrivados() {
     unsubscribeSeguridad = null;
     unsubscribeUsuarioActual = null;
     unsubscribeAnuncioFlotante = null;
+    unsubscribeConfiguracionPagos = null;
     ultimoIngresoActualizadoEmail = "";
 }
 
@@ -249,11 +469,13 @@ auth.onAuthStateChanged(user => {
         document.getElementById('view-auth').style.display = 'none';
         document.getElementById('view-home').style.display = 'flex';
         sesionIniciada = false; 
+        listenConfiguracionPagosLista();
         loadUser();
     } else {
         detenerEscuchadoresPrivados();
         document.getElementById('view-auth').style.display = 'block';
         document.getElementById('view-home').style.display = 'none';
+        volverSeleccionAcceso();
         listenEquipos();
     }
 });
@@ -293,6 +515,227 @@ function actualizarDesplegablesEquipos() {
             const colSegura = escaparHTML(col);
             container.innerHTML += `<label><input type="checkbox" name="dest-color" value="${colSegura}"><span>${escaparHTML(String(col).toUpperCase())}</span></label>`;
         });
+    }
+
+    if(esAdministradorActual()) renderEditorContactosPago();
+}
+
+function listenConfiguracionPagosLista() {
+    if(unsubscribeConfiguracionPagos || !auth.currentUser) return;
+
+    unsubscribeConfiguracionPagos = db.collection("configuracion").doc("pagos_lista").onSnapshot(doc => {
+        configuracionPagoLista = normalizarConfiguracionPagosLista(doc.exists ? doc.data() : {});
+        qrPagoPendiente = configuracionPagoLista.qr;
+        renderConfiguracionPagosLista();
+        if(esAdministradorActual()) cargarFormularioConfiguracionPagos();
+    }, error => {
+        configuracionPagoLista = normalizarConfiguracionPagosLista();
+        qrPagoPendiente = configuracionPagoLista.qr;
+        renderConfiguracionPagosLista();
+        if(esAdministradorActual()) manejarError(error, "No se pudo cargar la configuración de pagos");
+    });
+}
+
+function obtenerColoresEditorPagos() {
+    const colores = new Map();
+
+    listadoEquipos.forEach(color => {
+        const etiqueta = String(color || "").trim();
+        const clave = normalizarClaveColor(etiqueta);
+        if(clave) colores.set(clave, etiqueta);
+    });
+
+    Object.keys(configuracionPagoLista.contactos).forEach(clave => {
+        if(!colores.has(clave)) colores.set(clave, clave.charAt(0).toUpperCase() + clave.slice(1));
+    });
+
+    return [...colores.entries()];
+}
+
+function renderEditorContactosPago() {
+    const contenedor = document.getElementById("admin-pago-contactos");
+    if(!contenedor || !esAdministradorActual()) return;
+
+    contenedor.replaceChildren();
+    obtenerColoresEditorPagos().forEach(([clave, etiqueta]) => {
+        const contacto = configuracionPagoLista.contactos[clave] || { nombre: "", numero: "" };
+        const fila = document.createElement("div");
+        fila.className = "admin-payment-contact-row";
+        fila.dataset.colorPago = clave;
+
+        const equipo = document.createElement("strong");
+        equipo.textContent = `Equipo ${etiqueta}`;
+
+        const nombre = document.createElement("input");
+        nombre.type = "text";
+        nombre.className = "admin-pago-contacto-nombre";
+        nombre.maxLength = 80;
+        nombre.placeholder = "Nombre del contacto";
+        nombre.value = contacto.nombre;
+
+        const numero = document.createElement("input");
+        numero.type = "tel";
+        numero.inputMode = "numeric";
+        numero.className = "admin-pago-contacto-numero";
+        numero.maxLength = 10;
+        numero.placeholder = "WhatsApp de 10 dígitos";
+        numero.value = contacto.numero;
+
+        fila.append(equipo, nombre, numero);
+        contenedor.appendChild(fila);
+    });
+}
+
+function actualizarPrevisualizacionQrPago() {
+    const envoltura = document.getElementById("admin-pago-qr-preview-wrap");
+    const imagen = document.getElementById("admin-pago-qr-preview");
+    if(!envoltura || !imagen) return;
+
+    const tieneQr = esComprobanteSeguro(qrPagoPendiente);
+    envoltura.style.display = tieneQr ? "flex" : "none";
+    if(tieneQr) imagen.src = qrPagoPendiente;
+    else imagen.removeAttribute("src");
+}
+
+function cargarFormularioConfiguracionPagos() {
+    if(!esAdministradorActual()) return;
+
+    const llave = document.getElementById("admin-pago-llave");
+    const titular = document.getElementById("admin-pago-titular");
+    const metodos = document.getElementById("admin-pago-metodos");
+    if(llave) llave.value = configuracionPagoLista.llave;
+    if(titular) titular.value = configuracionPagoLista.titular;
+    if(metodos) metodos.value = configuracionPagoLista.metodos.join(", ");
+
+    qrPagoPendiente = configuracionPagoLista.qr;
+    renderEditorContactosPago();
+    actualizarPrevisualizacionQrPago();
+}
+
+async function seleccionarQrPago(archivo) {
+    const input = document.getElementById("admin-pago-qr-input");
+    if(!esAdministradorActual()) {
+        if(input) input.value = "";
+        return notify("⚠️ Solo el administrador puede modificar el QR");
+    }
+    if(!archivo) return;
+    if(!archivo.type || !["image/png", "image/jpeg", "image/webp"].includes(archivo.type)) {
+        if(input) input.value = "";
+        return notify("⚠️ Selecciona una imagen PNG, JPG o WEBP");
+    }
+    if(archivo.size > 8 * 1024 * 1024) {
+        if(input) input.value = "";
+        return notify("⚠️ La imagen no puede superar 8 MB");
+    }
+
+    try {
+        const dataUrl = await new Promise((resolve, reject) => {
+            const lector = new FileReader();
+            lector.onload = evento => resolve(evento.target.result);
+            lector.onerror = () => reject(new Error("No se pudo leer la imagen"));
+            lector.readAsDataURL(archivo);
+        });
+
+        const imagen = await new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("La imagen no es válida"));
+            img.src = dataUrl;
+        });
+
+        const maximo = 600;
+        const escala = Math.min(1, maximo / Math.max(imagen.width, imagen.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(imagen.width * escala));
+        canvas.height = Math.max(1, Math.round(imagen.height * escala));
+        const contexto = canvas.getContext("2d");
+        contexto.fillStyle = "#ffffff";
+        contexto.fillRect(0, 0, canvas.width, canvas.height);
+        contexto.imageSmoothingEnabled = false;
+        contexto.drawImage(imagen, 0, 0, canvas.width, canvas.height);
+
+        let qrProcesado = canvas.toDataURL("image/png");
+        if(qrProcesado.length > 700000) qrProcesado = canvas.toDataURL("image/jpeg", 0.88);
+        if(qrProcesado.length > 750000 || !esComprobanteSeguro(qrProcesado)) {
+            throw new Error("La imagen sigue siendo demasiado pesada después de comprimirla");
+        }
+
+        qrPagoPendiente = qrProcesado;
+        actualizarPrevisualizacionQrPago();
+        notify("✅ Imagen QR preparada. Pulsa Guardar datos de pago.");
+    } catch(error) {
+        manejarError(error, "No se pudo procesar la imagen QR");
+    } finally {
+        if(input) input.value = "";
+    }
+}
+
+function quitarQrPago() {
+    if(!esAdministradorActual()) return notify("⚠️ Solo el administrador puede modificar el QR");
+    qrPagoPendiente = "";
+    actualizarPrevisualizacionQrPago();
+    notify("ℹ️ QR retirado. Pulsa Guardar datos de pago para confirmar.");
+}
+
+async function guardarConfiguracionPagosLista() {
+    if(!esAdministradorActual()) return notify("⚠️ Solo el administrador puede editar los datos de pago");
+
+    const llave = document.getElementById("admin-pago-llave").value.trim();
+    const titular = document.getElementById("admin-pago-titular").value.trim();
+    const metodosTexto = document.getElementById("admin-pago-metodos").value;
+    const metodos = [];
+
+    metodosTexto.split(/[,;\n]+/).forEach(valor => {
+        const metodo = valor.trim();
+        if(metodo && !metodos.some(actual => actual.toLowerCase() === metodo.toLowerCase())) metodos.push(metodo);
+    });
+
+    if(llave.length < 3 || llave.length > 100) return notify("⚠️ Ingresa una llave de pago válida");
+    if(titular.length < 2 || titular.length > 100) return notify("⚠️ Ingresa el nombre del titular");
+    if(!metodos.length || metodos.length > 10 || metodos.some(metodo => metodo.length > 40)) {
+        return notify("⚠️ Ingresa entre 1 y 10 métodos de pago válidos");
+    }
+
+    const contactos = {};
+    const filas = document.querySelectorAll("#admin-pago-contactos .admin-payment-contact-row");
+    for(const fila of filas) {
+        const clave = normalizarClaveColor(fila.dataset.colorPago);
+        const nombre = fila.querySelector(".admin-pago-contacto-nombre").value.trim();
+        const numero = fila.querySelector(".admin-pago-contacto-numero").value.replace(/\D/g, "");
+
+        if((nombre || numero) && (!nombre || numero.length !== 10)) {
+            return notify(`⚠️ Completa el nombre y WhatsApp de 10 dígitos para el equipo ${clave}`);
+        }
+        contactos[clave] = { nombre: nombre.slice(0, 80), numero };
+    }
+
+    if(qrPagoPendiente && (!esComprobanteSeguro(qrPagoPendiente) || qrPagoPendiente.length > 750000)) {
+        return notify("⚠️ La imagen QR no es válida o es demasiado pesada");
+    }
+
+    const liberarBoton = bloquearBotonActual("GUARDANDO...");
+    try {
+        const batch = db.batch();
+        batch.set(db.collection("configuracion").doc("pagos_lista"), {
+            llave,
+            titular,
+            metodos,
+            contactos,
+            qr: qrPagoPendiente,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        });
+        batch.set(db.collection("configuracion").doc("contactos_ayuda"), {
+            contactos,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        });
+        await batch.commit();
+        notify("✅ Datos de pago actualizados");
+    } catch(error) {
+        manejarError(error, "No se pudieron guardar los datos de pago");
+    } finally {
+        liberarBoton();
     }
 }
 
@@ -430,6 +873,7 @@ function loadUser() {
 
         currentUserData = d;
         currentUserData.email = email;
+        actualizarContactoPagoLista();
         listenEquipos();
 
         if(ultimoIngresoActualizadoEmail !== email) {
@@ -497,6 +941,9 @@ function loadUser() {
         }
         document.getElementById('admin-com-form').style.display = (esAdmin || esCGeneral) ? 'flex' : 'none';
         document.getElementById('admin-floating-announcement').style.display = esAdmin ? 'block' : 'none';
+        document.getElementById('admin-payment-settings').style.display = esAdmin ? 'block' : 'none';
+        document.getElementById('admin-buyer-sync-panel').style.display = esAdmin ? 'block' : 'none';
+        if(esAdmin) cargarFormularioConfiguracionPagos();
 
         const panelPagos = document.getElementById('admin-pagos-list')?.closest('.admin-card');
         if(panelPagos) panelPagos.style.display = (esAdmin || esCGeneral) ? 'block' : 'none';
@@ -999,11 +1446,18 @@ async function eliminarTodosRegistrosRecreador(nombreRecreador) {
 
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
     try {
-        let batch = db.batch();
-        boletasABorrar.forEach(b => {
-            batch.delete(db.collection("boletas").doc(b.id));
-        });
-        await batch.commit();
+        const referenciasPublicas = await Promise.all(boletasABorrar.map(b => {
+            const numero = normalizarNumeroBoletaConsulta(b.n);
+            const whatsapp = normalizarWhatsappConsulta(b.t || b.whatsapp);
+            return /^\d{3}$/.test(numero) && /^\d{10}$/.test(whatsapp)
+                ? obtenerReferenciaConsultaBoleta(numero, whatsapp)
+                : null;
+        }));
+        const referencias = [
+            ...boletasABorrar.map(b => db.collection("boletas").doc(b.id)),
+            ...referenciasPublicas.filter(Boolean)
+        ];
+        await eliminarReferenciasFirestoreEnLotes(referencias);
         notify(`🗑️ Registros de ${nombreRecreador} eliminados`);
     } catch(error) {
         manejarError(error, "No se pudieron eliminar las boletas del recreador");
@@ -1216,7 +1670,15 @@ async function inscribirBoleta() {
     const liberarBoton = bloquearBotonActual("REGISTRANDO...");
 
     try {
-        await db.collection("boletas").add({ recreador: r, n: n, c: c, t: t, vendedor: auth.currentUser.email, estado: 'Pendiente', creado: fechaServidor() });
+        const boletaRef = db.collection("boletas").doc();
+        const datosBoleta = { recreador: r, n: n, c: c, t: t, vendedor: auth.currentUser.email, estado: 'Pendiente', creado: fechaServidor() };
+        const equipo = await obtenerEquipoRegistradorBoleta(datosBoleta);
+        const datosConsulta = crearDatosConsultaBoleta({ ...datosBoleta, equipo }, boletaRef.id, true);
+        const consultaRef = await obtenerReferenciaConsultaBoleta(n, t);
+        const batch = db.batch();
+        batch.set(boletaRef, datosBoleta);
+        batch.set(consultaRef, datosConsulta);
+        await batch.commit();
         document.getElementById('ins-rec-nom').value = ""; document.getElementById('ins-n-boleta').value = ""; document.getElementById('ins-com-nom').value = ""; document.getElementById('ins-com-tel').value = "";
         notify("✅ Registrada");
     } catch(error) {
@@ -1229,7 +1691,18 @@ async function inscribirBoleta() {
 async function cambiarEstado(id, est) {
     const liberarBoton = bloquearBotonActual("GUARDANDO...");
     try {
-        await db.collection("boletas").doc(id).update({ estado: est });
+        const boletaRef = db.collection("boletas").doc(id);
+        const boletaDoc = await boletaRef.get();
+        if(!boletaDoc.exists) throw new Error("La boleta ya no existe");
+
+        const datos = boletaDoc.data();
+        const equipo = await obtenerEquipoRegistradorBoleta(datos);
+        const datosConsulta = crearDatosConsultaBoleta({ ...datos, equipo, estado: est }, id);
+        const consultaRef = datosConsulta ? await obtenerReferenciaConsultaBoleta(datos.n, datos.t || datos.whatsapp) : null;
+        const batch = db.batch();
+        batch.update(boletaRef, { estado: est });
+        if(consultaRef) batch.set(consultaRef, datosConsulta);
+        await batch.commit();
     } catch(error) {
         manejarError(error, "No se pudo cambiar el estado de la boleta");
     } finally {
@@ -1241,7 +1714,20 @@ async function eliminarBoleta(id) {
     if(!confirm("¿Eliminar registro?")) return;
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
     try {
-        await db.collection("boletas").doc(id).delete();
+        const boletaRef = db.collection("boletas").doc(id);
+        const boletaDoc = await boletaRef.get();
+        if(!boletaDoc.exists) return notify("⚠️ La boleta ya había sido eliminada");
+
+        const datos = boletaDoc.data();
+        const numero = normalizarNumeroBoletaConsulta(datos.n);
+        const whatsapp = normalizarWhatsappConsulta(datos.t || datos.whatsapp);
+        const consultaRef = /^\d{3}$/.test(numero) && /^\d{10}$/.test(whatsapp)
+            ? await obtenerReferenciaConsultaBoleta(numero, whatsapp)
+            : null;
+        const batch = db.batch();
+        batch.delete(boletaRef);
+        if(consultaRef) batch.delete(consultaRef);
+        await batch.commit();
         notify("🗑️ Eliminado");
     } catch(error) {
         manejarError(error, "No se pudo eliminar la boleta");
@@ -1408,8 +1894,18 @@ async function eliminarPersonalYBoletasPorCodigo() {
         );
         if(!confirmado) return;
 
+        const referenciasConsulta = await Promise.all(boletasABorrar.map(doc => {
+            const datos = doc.data();
+            const numero = normalizarNumeroBoletaConsulta(datos.n);
+            const whatsapp = normalizarWhatsappConsulta(datos.t || datos.whatsapp);
+            return /^\d{3}$/.test(numero) && /^\d{10}$/.test(whatsapp)
+                ? obtenerReferenciaConsultaBoleta(numero, whatsapp)
+                : null;
+        }));
+
         const referenciasABorrar = [
             ...boletasABorrar.map(doc => doc.ref),
+            ...referenciasConsulta.filter(Boolean),
             ...usuariosABorrar.map(usuario => db.collection("usuarios").doc(usuario.id))
         ];
 
@@ -1418,6 +1914,241 @@ async function eliminarPersonalYBoletasPorCodigo() {
         notify(`🗑️ Eliminados: ${usuariosABorrar.length} usuarios y ${boletasABorrar.length} boletas`);
     } catch(error) {
         manejarError(error, "No se pudieron eliminar el personal y sus boletas");
+    } finally {
+        liberarBoton();
+    }
+}
+
+function abrirAccesoInicial(tipo) {
+    const selector = document.getElementById("auth-access-choice");
+    const accesoUsuario = document.getElementById("auth-user-access");
+    const accesoComprador = document.getElementById("auth-buyer-access");
+    if(!selector || !accesoUsuario || !accesoComprador) return;
+
+    selector.style.display = "none";
+    accesoUsuario.style.display = tipo === "usuario" ? "block" : "none";
+    accesoComprador.style.display = tipo === "comprador" ? "block" : "none";
+
+    if(tipo === "usuario") toggleAuth("login");
+    if(tipo === "comprador") {
+        document.getElementById("buyer-lookup-ticket")?.focus();
+    }
+}
+
+function volverSeleccionAcceso() {
+    const selector = document.getElementById("auth-access-choice");
+    const accesoUsuario = document.getElementById("auth-user-access");
+    const accesoComprador = document.getElementById("auth-buyer-access");
+    const resultados = document.getElementById("buyer-lookup-results");
+    if(selector) selector.style.display = "flex";
+    if(accesoUsuario) accesoUsuario.style.display = "none";
+    if(accesoComprador) accesoComprador.style.display = "none";
+    if(resultados) resultados.replaceChildren();
+}
+
+function renderResultadosComprador(boletas, configuracionAyuda = CONFIGURACION_PAGOS_POR_DEFECTO) {
+    const contenedor = document.getElementById("buyer-lookup-results");
+    if(!contenedor) return;
+    contenedor.replaceChildren();
+
+    if(!boletas.length) {
+        const vacio = document.createElement("div");
+        vacio.className = "buyer-lookup-empty";
+        vacio.innerHTML = '<i class="fa-regular fa-circle-question"></i><span>No encontramos una boleta con ese número y WhatsApp.</span>';
+        contenedor.appendChild(vacio);
+        return;
+    }
+
+    const activas = boletas.filter(boleta => boleta.estado === "Activa").length;
+    const pendientes = boletas.length - activas;
+    const resumen = document.createElement("div");
+    resumen.className = "buyer-lookup-summary";
+    resumen.textContent = `${boletas.length} boleta${boletas.length === 1 ? "" : "s"} · ${activas} activa${activas === 1 ? "" : "s"} · ${pendientes} pendiente${pendientes === 1 ? "" : "s"}`;
+    contenedor.appendChild(resumen);
+
+    const lista = document.createElement("div");
+    lista.className = "buyer-ticket-list";
+    boletas.forEach(boleta => {
+        const fila = document.createElement("div");
+        fila.className = "buyer-ticket-item";
+
+        const encabezado = document.createElement("div");
+        encabezado.className = "buyer-ticket-header";
+        const numero = document.createElement("strong");
+        numero.textContent = `Boleta N.º ${boleta.n}`;
+
+        const estado = document.createElement("span");
+        estado.className = boleta.estado === "Activa" ? "is-active" : "is-pending";
+        estado.textContent = boleta.estado;
+        encabezado.append(numero, estado);
+
+        const detalles = document.createElement("div");
+        detalles.className = "buyer-ticket-details";
+        const fecha = convertirFechaFirestore(boleta.creado);
+        const campos = [
+            ["Comprador", boleta.comprador || "---"],
+            ["WhatsApp", boleta.whatsapp || "---"],
+            ["Recreador", boleta.recreador || "---"],
+            ["Equipo", boleta.equipo || "---"],
+            ["Fecha de registro", fecha ? fecha.toLocaleDateString("es-CO") : "---"]
+        ];
+
+        campos.forEach(([etiqueta, valor]) => {
+            const campo = document.createElement("div");
+            campo.className = "buyer-ticket-field";
+            const titulo = document.createElement("small");
+            titulo.textContent = etiqueta;
+            const contenido = document.createElement("span");
+            contenido.textContent = valor;
+            campo.append(titulo, contenido);
+            detalles.appendChild(campo);
+        });
+
+        fila.append(encabezado, detalles);
+
+        const claveEquipo = normalizarClaveColor(boleta.equipo);
+        const contacto = configuracionAyuda.contactos?.[claveEquipo];
+        const numeroAyuda = String(contacto?.numero || "").replace(/\D/g, "");
+        if(contacto?.nombre && /^\d{10}$/.test(numeroAyuda)) {
+            const mensaje = `Hola ${contacto.nombre}, necesito ayuda con la boleta N.º ${boleta.n}, registrada a nombre de ${boleta.comprador}. Su estado aparece como ${boleta.estado}.`;
+            const ayuda = document.createElement("a");
+            ayuda.className = "buyer-ticket-help";
+            ayuda.href = `https://wa.me/57${numeroAyuda}?text=${encodeURIComponent(mensaje)}`;
+            ayuda.target = "_blank";
+            ayuda.rel = "noopener noreferrer";
+            ayuda.setAttribute("aria-label", `Solicitar ayuda por WhatsApp a ${contacto.nombre}`);
+
+            const icono = document.createElement("i");
+            icono.className = "fa-brands fa-whatsapp";
+            const texto = document.createElement("span");
+            texto.textContent = "AYUDA POR WHATSAPP";
+            const contactoTexto = document.createElement("small");
+            contactoTexto.textContent = `${contacto.nombre} · ${numeroAyuda}`;
+            texto.appendChild(contactoTexto);
+            ayuda.append(icono, texto);
+            fila.appendChild(ayuda);
+        } else {
+            const sinContacto = document.createElement("small");
+            sinContacto.className = "buyer-ticket-help-missing";
+            sinContacto.textContent = boleta.equipo
+                ? `El equipo ${boleta.equipo} todavía no tiene un contacto de ayuda asignado.`
+                : "No fue posible identificar el equipo que registró esta boleta.";
+            fila.appendChild(sinContacto);
+        }
+
+        lista.appendChild(fila);
+    });
+    contenedor.appendChild(lista);
+}
+
+async function consultarBoletasComprador() {
+    const numero = normalizarNumeroBoletaConsulta(document.getElementById("buyer-lookup-ticket").value);
+    const whatsapp = normalizarWhatsappConsulta(document.getElementById("buyer-lookup-phone").value);
+    const contenedor = document.getElementById("buyer-lookup-results");
+    if(!/^\d{3}$/.test(numero)) return notify("⚠️ Ingresa los 3 dígitos de la boleta");
+    if(!/^\d{10}$/.test(whatsapp)) return notify("⚠️ Ingresa los 10 dígitos del WhatsApp registrado");
+
+    const liberarBoton = bloquearBotonActual("CONSULTANDO...");
+    if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-loading"><i class="fa-solid fa-spinner fa-spin"></i> Buscando tus boletas...</p>';
+
+    try {
+        const hash = await obtenerHashConsultaBoleta(numero, whatsapp);
+        const documento = await db.collection("consulta_boletas").doc(hash).get();
+        const boletas = [];
+        if(documento.exists) {
+            const datos = documento.data();
+            if(String(datos.n || "") === numero && String(datos.whatsapp || "") === whatsapp) {
+                boletas.push({
+                    n: numero,
+                    comprador: String(datos.comprador || ""),
+                    whatsapp,
+                    recreador: String(datos.recreador || ""),
+                    equipo: String(datos.equipo || ""),
+                    estado: datos.estado === "Activa" ? "Activa" : "Pendiente",
+                    creado: datos.creado || null
+                });
+            }
+        }
+        boletas.sort((a, b) => obtenerMilisegundosFecha(b.creado) - obtenerMilisegundosFecha(a.creado));
+        let configuracionAyuda = normalizarConfiguracionPagosLista();
+        if(boletas.length) {
+            try {
+                const configuracionDoc = await db.collection("configuracion").doc("contactos_ayuda").get();
+                if(configuracionDoc.exists) configuracionAyuda = normalizarConfiguracionPagosLista({ contactos: configuracionDoc.data().contactos });
+            } catch(errorConfiguracion) {
+                console.warn("Se usarán los contactos de ayuda predeterminados", errorConfiguracion);
+            }
+        }
+        renderResultadosComprador(boletas, configuracionAyuda);
+    } catch(error) {
+        if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-error">No fue posible consultar las boletas en este momento.</p>';
+        manejarError(error, "No se pudo realizar la consulta del comprador");
+    } finally {
+        liberarBoton();
+    }
+}
+
+async function sincronizarConsultaCompradores() {
+    if(!esAdministradorActual()) return notify("⚠️ Solo el administrador puede sincronizar las consultas");
+
+    const estado = document.getElementById("admin-buyer-sync-status");
+    const liberarBoton = bloquearBotonActual("SINCRONIZANDO...");
+    let sincronizadas = 0;
+    let omitidas = 0;
+
+    try {
+        if(estado) estado.textContent = "Leyendo y preparando las boletas existentes...";
+        const [snapshot, usuariosSnapshot, pagosSnapshot] = await Promise.all([
+            db.collection("boletas").get(),
+            db.collection("usuarios").get(),
+            db.collection("configuracion").doc("pagos_lista").get()
+        ]);
+        const configuracionContactos = normalizarConfiguracionPagosLista(pagosSnapshot.exists ? pagosSnapshot.data() : {});
+        await db.collection("configuracion").doc("contactos_ayuda").set({
+            contactos: configuracionContactos.contactos,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        });
+        const equiposPorUsuario = new Map();
+        usuariosSnapshot.forEach(doc => equiposPorUsuario.set(doc.id, String(doc.data().color || "").trim()));
+        let lote = db.batch();
+        let operaciones = 0;
+
+        for(const doc of snapshot.docs) {
+            const datos = doc.data();
+            const equipo = String(datos.equipo || equiposPorUsuario.get(datos.vendedor) || "").trim();
+            const datosConsulta = crearDatosConsultaBoleta({ ...datos, equipo }, doc.id);
+            if(!datosConsulta) {
+                omitidas++;
+                continue;
+            }
+
+            const referencia = await obtenerReferenciaConsultaBoleta(datosConsulta.n, datosConsulta.whatsapp);
+            lote.set(referencia, datosConsulta);
+            operaciones++;
+            sincronizadas++;
+
+            if(operaciones === 400) {
+                await lote.commit();
+                if(estado) estado.textContent = `${sincronizadas} boletas preparadas...`;
+                lote = db.batch();
+                operaciones = 0;
+            }
+        }
+
+        if(operaciones > 0) await lote.commit();
+        if(estado) estado.textContent = `Última sincronización: ${sincronizadas} boletas preparadas${omitidas ? ` y ${omitidas} omitidas por datos incompletos` : ""}.`;
+        notify(`✅ ${sincronizadas} boletas disponibles para consulta`);
+    } catch(error) {
+        const esPermiso = String(error?.code || "").toLowerCase().includes("permission-denied");
+        if(esPermiso) {
+            if(estado) estado.textContent = "Firebase rechazó la sincronización. Publica primero el archivo firestore.rules incluido en esta versión y vuelve a intentarlo.";
+            console.error("Firestore rechazó la sincronización", error);
+            notify("❌ Publica las reglas nuevas de Firestore antes de sincronizar");
+        } else {
+            if(estado) estado.textContent = "La sincronización no pudo completarse.";
+            manejarError(error, "No se pudo sincronizar la consulta de compradores");
+        }
     } finally {
         liberarBoton();
     }
@@ -2165,12 +2896,27 @@ async function verificarPago(solicitudId, aprobado) {
             if(!Array.isArray(d.boletas) || d.boletas.length === 0) {
                 throw new Error("La solicitud no contiene boletas válidas");
             }
+
+            const boletasPreparadas = await Promise.all(d.boletas.map(async b => {
+                if(!b.id) throw new Error("Una de las boletas no tiene identificador");
+                const referencia = db.collection("boletas").doc(b.id);
+                const documento = await referencia.get();
+                if(!documento.exists) throw new Error(`La boleta ${b.n || "seleccionada"} ya no existe`);
+                const datos = documento.data();
+                const equipo = await obtenerEquipoRegistradorBoleta(datos);
+                const datosConsulta = crearDatosConsultaBoleta({ ...datos, equipo, estado: "Activa" }, b.id);
+                const consultaRef = datosConsulta
+                    ? await obtenerReferenciaConsultaBoleta(datosConsulta.n, datosConsulta.whatsapp)
+                    : null;
+                return { referencia, consultaRef, datosConsulta };
+            }));
             
             const batch = db.batch();
-            d.boletas.forEach(b => {
-                if(!b.id) throw new Error("Una de las boletas no tiene identificador");
-                const bRef = db.collection("boletas").doc(b.id);
-                batch.update(bRef, { estado: 'Activa' });
+            boletasPreparadas.forEach(item => {
+                batch.update(item.referencia, { estado: 'Activa' });
+                if(item.consultaRef) {
+                    batch.set(item.consultaRef, item.datosConsulta);
+                }
             });
 
             batch.update(solicitudRef, {

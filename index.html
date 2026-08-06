@@ -65,27 +65,63 @@
         </div>
     </div>
 
+    <div id="modal-qr-pago" class="modal">
+        <div class="modal-content qr-payment-modal">
+            <button class="close-modal" onclick="cerrarQrPago()"><i class="fa-solid fa-xmark"></i></button>
+            <p class="qr-payment-title"><i class="fa-solid fa-qrcode"></i> QR DE PAGO</p>
+            <img id="lista-pago-qr-imagen" alt="Código QR para realizar el pago">
+            <small>Escanea el código desde tu aplicación de pagos.</small>
+        </div>
+    </div>
+
     <div class="main-wrapper">
         <div id="view-auth">
             <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
             <p style="color:var(--accent); font-weight:800; font-size:0.9rem; letter-spacing: 2px; text-shadow: 0 0 8px var(--accent-glow);">EVENTOS</p>
-            <div id="auth-login" class="form-group" style="margin-top:20px;">
-                <input type="email" id="login-email" placeholder="Correo">
-                <input type="password" id="login-pass" placeholder="Contraseña">
-                <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
-                <p class="toggle-text" style="color:#94a3b8; text-align: center; margin-top: 10px;">¿Nuevo? <a href="#" onclick="toggleAuth('reg')" style="color:var(--accent);">Crear cuenta</a></p>
+            <div id="auth-access-choice" class="auth-access-choice">
+                <p>SELECCIONA CÓMO DESEAS INGRESAR</p>
+                <button type="button" class="auth-access-button" onclick="abrirAccesoInicial('usuario')">
+                    <i class="fa-solid fa-user-shield"></i>
+                    <span>USUARIO<small>Ingresar o crear cuenta</small></span>
+                </button>
+                <button type="button" class="auth-access-button auth-access-buyer" onclick="abrirAccesoInicial('comprador')">
+                    <i class="fa-solid fa-ticket"></i>
+                    <span>COMPRADOR<small>Consultar estado de boletas</small></span>
+                </button>
             </div>
-            <div id="auth-register" class="form-group" style="display:none;">
-                <input type="text" id="reg-nombre" placeholder="Nombre">
-                <input type="text" id="reg-apellido" placeholder="Apellido">
-                <input type="email" id="reg-email" placeholder="Correo">
-                <input type="password" id="reg-pass" placeholder="Clave (6+ carac.)">
-                <select id="reg-color" class="dynamic-colors">
-                    <option value="" disabled selected>Color de Equipo</option>
-                </select>
-                <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
-                <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
-                <p class="toggle-text" style="color:#94a3b8; text-align: center; margin-top: 10px;"><a href="#" onclick="toggleAuth('login')" style="color:var(--accent);">Volver</a></p>
+
+            <div id="auth-user-access" class="auth-access-panel" style="display:none;">
+                <button type="button" class="auth-access-back" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+                <div id="auth-login" class="form-group">
+                    <input type="email" id="login-email" placeholder="Usuario (correo electrónico)">
+                    <input type="password" id="login-pass" placeholder="Contraseña">
+                    <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
+                    <p class="toggle-text" style="color:#94a3b8; text-align: center; margin-top: 10px;">¿Nuevo? <a href="#" onclick="toggleAuth('reg')" style="color:var(--accent);">Crear cuenta</a></p>
+                </div>
+                <div id="auth-register" class="form-group" style="display:none;">
+                    <input type="text" id="reg-nombre" placeholder="Nombre">
+                    <input type="text" id="reg-apellido" placeholder="Apellido">
+                    <input type="email" id="reg-email" placeholder="Correo">
+                    <input type="password" id="reg-pass" placeholder="Clave (6+ carac.)">
+                    <select id="reg-color" class="dynamic-colors">
+                        <option value="" disabled selected>Color de Equipo</option>
+                    </select>
+                    <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
+                    <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
+                    <p class="toggle-text" style="color:#94a3b8; text-align: center; margin-top: 10px;"><a href="#" onclick="toggleAuth('login')" style="color:var(--accent);">Volver al ingreso</a></p>
+                </div>
+            </div>
+
+            <div id="auth-buyer-access" class="auth-access-panel" style="display:none;">
+                <button type="button" class="auth-access-back" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+                <div class="form-group buyer-lookup-form">
+                    <div class="buyer-lookup-heading"><i class="fa-solid fa-magnifying-glass"></i><span>CONSULTA TU BOLETA<small>Ingresa el número y el WhatsApp registrados en la compra.</small></span></div>
+                    <input type="text" id="buyer-lookup-ticket" maxlength="3" inputmode="numeric" autocomplete="off" placeholder="Número de boleta (3 dígitos)">
+                    <input type="tel" id="buyer-lookup-phone" maxlength="14" inputmode="numeric" autocomplete="tel" placeholder="WhatsApp registrado (10 dígitos)">
+                    <small class="buyer-lookup-security-note"><i class="fa-solid fa-lock"></i> El WhatsApp protege tus datos de consultas realizadas por otras personas.</small>
+                    <button id="buyer-lookup-button" class="btn-primary" type="button" onclick="consultarBoletasComprador()"><i class="fa-solid fa-ticket"></i> CONSULTAR</button>
+                    <div id="buyer-lookup-results" class="buyer-lookup-results" aria-live="polite"></div>
+                </div>
             </div>
         </div>
 
@@ -191,6 +227,24 @@
                             <i class="fa-solid fa-money-check-dollar"></i> PAGAR BOLETAS
                         </button>
                     </div>
+
+                    <div id="lista-info-pagos" class="lista-payment-card">
+                        <p class="lista-payment-title"><i class="fa-solid fa-key"></i> ÚNICA LLAVE PARA PAGOS</p>
+                        <p id="lista-pago-metodos" class="lista-payment-methods">Nequi - Daviplata - Bre-B</p>
+                        <button id="lista-pago-qr-boton" class="lista-payment-qr" type="button" onclick="abrirQrPago()" style="display:none;" aria-label="Ampliar código QR de pago">
+                            <img id="lista-pago-qr-inline" alt="Código QR para realizar el pago">
+                        </button>
+                        <strong id="lista-pago-llave" class="lista-payment-key">3114918913</strong>
+                        <span id="lista-pago-titular" class="lista-payment-owner">Euripides Cuervo</span>
+                        <a id="lista-contacto-pago-whatsapp" class="lista-payment-whatsapp" href="#" target="_blank" rel="noopener noreferrer" aria-label="Enviar comprobante de pago por WhatsApp">
+                            <i class="fa-brands fa-whatsapp"></i>
+                            <span>
+                                ENVIAR COMPROBANTE POR WHATSAPP
+                                <small><strong id="lista-contacto-pago-nombre">Cargando contacto...</strong> <b>·</b> <span id="lista-contacto-pago-numero"></span></small>
+                            </span>
+                        </a>
+                        <p id="lista-contacto-pago-aviso" class="lista-payment-notice" style="display:none;"></p>
+                    </div>
                 </section>
 
                 <section id="sec-perfil" class="section-content">
@@ -293,6 +347,50 @@
                                 <div id="admin-pagos-historial" style="display: flex; flex-direction: column; gap: 10px;">
                                     </div>
                             </div>
+                        </div>
+
+                        <div id="admin-payment-settings" class="admin-card full-width admin-payment-settings-card" style="display:none;">
+                            <p class="admin-card-title"><i class="fa-solid fa-wallet"></i> CONFIGURACIÓN DE DATOS DE PAGO</p>
+                            <p class="admin-payment-description">Edita la información compacta que aparece debajo de la lista de boletas.</p>
+
+                            <div class="admin-payment-config-grid">
+                                <label class="admin-payment-field">
+                                    <span>Única llave para pagos</span>
+                                    <input type="text" id="admin-pago-llave" maxlength="100" placeholder="Número o llave de pago">
+                                </label>
+                                <label class="admin-payment-field">
+                                    <span>Nombre del titular</span>
+                                    <input type="text" id="admin-pago-titular" maxlength="100" placeholder="Nombre del titular">
+                                </label>
+                                <label class="admin-payment-field admin-payment-field-full">
+                                    <span>Métodos aceptados, separados por comas</span>
+                                    <input type="text" id="admin-pago-metodos" maxlength="200" placeholder="Nequi, Daviplata, Bre-B">
+                                </label>
+                            </div>
+
+                            <div class="admin-payment-subheading"><i class="fa-brands fa-whatsapp"></i> Contactos para confirmar por equipo</div>
+                            <div id="admin-pago-contactos" class="admin-payment-contacts"></div>
+
+                            <div class="admin-payment-qr-area">
+                                <div class="admin-payment-qr-copy">
+                                    <strong><i class="fa-solid fa-qrcode"></i> Imagen QR opcional</strong>
+                                    <small>Se comprimirá automáticamente antes de guardarse.</small>
+                                    <input type="file" id="admin-pago-qr-input" accept="image/png,image/jpeg,image/webp" onchange="seleccionarQrPago(this.files[0])">
+                                </div>
+                                <div id="admin-pago-qr-preview-wrap" class="admin-payment-qr-preview" style="display:none;">
+                                    <img id="admin-pago-qr-preview" alt="Vista previa del código QR">
+                                    <button class="btn-mini btn-delete" type="button" onclick="quitarQrPago()"><i class="fa-solid fa-trash-can"></i> Quitar</button>
+                                </div>
+                            </div>
+
+                            <button id="admin-pago-guardar" class="btn-primary admin-payment-save" type="button" onclick="guardarConfiguracionPagosLista()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR DATOS DE PAGO</button>
+                        </div>
+
+                        <div id="admin-buyer-sync-panel" class="admin-card" style="display:none;">
+                            <p class="admin-card-title"><i class="fa-solid fa-arrows-rotate"></i> CONSULTA DE COMPRADORES</p>
+                            <p class="admin-buyer-sync-description">Prepara la consulta por número y WhatsApp de las boletas registradas anteriormente.</p>
+                            <button id="admin-buyer-sync-button" class="btn-mini" type="button" onclick="sincronizarConsultaCompradores()"><i class="fa-solid fa-database"></i> SINCRONIZAR BOLETAS</button>
+                            <p id="admin-buyer-sync-status" class="admin-buyer-sync-status">La consulta exige número y WhatsApp y no permite listar compradores.</p>
                         </div>
 
                         <div id="admin-floating-announcement" class="admin-card full-width floating-admin-card">
