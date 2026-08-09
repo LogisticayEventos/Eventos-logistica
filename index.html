@@ -137,7 +137,8 @@
             </header>
             <nav class="nav-menu">
                 <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados"><i class="fa-solid fa-house"></i> INICIO</button>
-                <button onclick="showSection('boletas-ins')" class="nav-item" id="nav-boletas-ins"><i class="fa-solid fa-ticket"></i> VENTA</button>
+                <button onclick="showSection('resumen')" class="nav-item" id="nav-resumen" style="display:none;"><i class="fa-solid fa-chart-pie"></i> RESUMEN</button>
+                <button onclick="showSection('boletas-ins')" class="nav-item" id="nav-boletas-ins" style="display:none;"><i class="fa-solid fa-ticket"></i> VENTA</button>
                 <button onclick="showSection('boletas-list')" class="nav-item" id="nav-boletas-list"><i class="fa-solid fa-list-ul"></i> LISTA</button>
                 <button onclick="showSection('perfil')" class="nav-item" id="nav-perfil"><i class="fa-solid fa-user"></i> PERFIL</button>
                 <button onclick="showSection('usuarios-adm')" class="nav-item" id="nav-usuarios-adm" style="display:none;"><i class="fa-solid fa-users"></i> PERSONAL</button>
@@ -160,6 +161,10 @@
                         <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR</button>
                     </div>
                     <div id="comunicados-list"></div>
+                </section>
+
+                <section id="sec-resumen" class="section-content">
+                    <div id="resumen-admin-grid" class="grid-admin"></div>
                 </section>
 
                 <section id="sec-boletas-ins" class="section-content">
@@ -269,7 +274,6 @@
                         <select id="edit-color" class="dynamic-colors">
                             <option value="Verde">Verde</option>
                             <option value="Naranja">Naranja</option>
-                            <option value="Morado">Morado</option>
                             <option value="Azul">Azul</option>
                         </select>
                         <button class="btn-primary" onclick="guardarPerfil()">GUARDAR DATOS</button>
@@ -309,7 +313,7 @@
                 <section id="sec-administracion" class="section-content">
                     <div class="grid-admin">
                         
-                        <div class="admin-card full-width" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
+                        <div id="admin-summary-general-card" class="admin-card full-width" style="background: rgba(16, 185, 129, 0.05); border-color: rgba(16, 185, 129, 0.3);">
                             <p class="admin-card-title" style="color: #10b981; text-align: center;"><i class="fa-solid fa-chart-pie"></i> RESUMEN GENERAL</p>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; text-align: center;">
                                 <div style="background: rgba(0,0,0,0.3); padding: 15px 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
@@ -327,7 +331,7 @@
                             </div>
                         </div>
 
-                        <div class="admin-card full-width" style="border-color: rgba(16, 185, 129, 0.5);">
+                        <div id="admin-payment-validation-card" class="admin-card full-width" style="border-color: rgba(16, 185, 129, 0.5);">
                             <p class="admin-card-title" style="color: #10b981;"><i class="fa-solid fa-money-bill-transfer"></i> VALIDACIÓN DE PAGOS</p>
                             <div id="admin-pagos-list" style="display: flex; flex-direction: column; gap: 10px;">
                                 </div>
@@ -384,13 +388,6 @@
                             </div>
 
                             <button id="admin-pago-guardar" class="btn-primary admin-payment-save" type="button" onclick="guardarConfiguracionPagosLista()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR DATOS DE PAGO</button>
-                        </div>
-
-                        <div id="admin-buyer-sync-panel" class="admin-card" style="display:none;">
-                            <p class="admin-card-title"><i class="fa-solid fa-arrows-rotate"></i> CONSULTA DE COMPRADORES</p>
-                            <p class="admin-buyer-sync-description">Prepara la consulta por número y WhatsApp de las boletas registradas anteriormente.</p>
-                            <button id="admin-buyer-sync-button" class="btn-mini" type="button" onclick="sincronizarConsultaCompradores()"><i class="fa-solid fa-database"></i> SINCRONIZAR BOLETAS</button>
-                            <p id="admin-buyer-sync-status" class="admin-buyer-sync-status">La consulta exige número y WhatsApp y no permite listar compradores.</p>
                         </div>
 
                         <div id="admin-floating-announcement" class="admin-card full-width floating-admin-card">
@@ -501,7 +498,7 @@
                             </div>
                         </div>
 
-                        <div class="admin-card full-width">
+                        <div id="admin-team-breakdown-card" class="admin-card full-width">
                             <p class="admin-card-title">DESGLOSE POR EQUIPOS</p>
                             <div class="grid-summary-details">
                                 <div id="resumen-boletas-equipos" class="summary-list"></div>

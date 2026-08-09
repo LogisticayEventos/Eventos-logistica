@@ -40,6 +40,8 @@ function reactivarSincronizacionFirestore() {
 document.addEventListener("visibilitychange", reactivarSincronizacionFirestore, { passive: true });
 window.addEventListener("online", reactivarSincronizacionFirestore, { passive: true });
 const ADMIN_EMAIL = "franboy1221@gmail.com";
+const EQUIPOS_POR_DEFECTO = Object.freeze(["Verde", "Naranja", "Azul"]);
+const EQUIPOS_RETIRADOS = new Set(["morado", "rojo"]);
 const CONFIGURACION_PAGOS_POR_DEFECTO = Object.freeze({
     llave: "3114918913",
     titular: "Euripides Cuervo",
@@ -98,6 +100,25 @@ function normalizarClaveColor(valor) {
         .replace(/[\u0300-\u036f]/g, "")
         .trim()
         .toLowerCase();
+}
+
+function esEquipoRetirado(valor) {
+    return EQUIPOS_RETIRADOS.has(normalizarClaveColor(valor));
+}
+
+function normalizarListaEquiposActivos(lista) {
+    const equipos = [];
+    const claves = new Set();
+
+    (Array.isArray(lista) ? lista : []).forEach(valor => {
+        const equipo = String(valor || "").trim();
+        const clave = normalizarClaveColor(equipo);
+        if(!equipo || !clave || EQUIPOS_RETIRADOS.has(clave) || claves.has(clave)) return;
+        claves.add(clave);
+        equipos.push(equipo);
+    });
+
+    return equipos.length ? equipos : [...EQUIPOS_POR_DEFECTO];
 }
 
 function normalizarNumeroBoletaConsulta(valor) {
@@ -403,6 +424,8 @@ let qrPagoPendiente = "";
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
 let listadoEquipos = [];
+let depuracionEquiposCompletada = false;
+let depuracionEquiposEnCurso = false;
 let sesionIniciada = false;
 let listenersActivos = false;
 let registroEnCurso = false;
@@ -538,13 +561,48 @@ function listenEquipos() {
     if(unsubscribeEquipos) return;
 
     unsubscribeEquipos = db.collection("configuracion").doc("equipos").onSnapshot(doc => {
-        listadoEquipos = doc.exists ? doc.data().lista : ["Verde", "Naranja", "Morado", "Azul", "Rojo"];
+        const listaRecibida = doc.exists ? doc.data().lista : EQUIPOS_POR_DEFECTO;
+        if(Array.isArray(listaRecibida) && listaRecibida.some(esEquipoRetirado)) depuracionEquiposCompletada = false;
+        listadoEquipos = normalizarListaEquiposActivos(listaRecibida);
         actualizarDesplegablesEquipos();
+        if(esAdministradorActual()) depurarEquiposRetirados();
     }, error => {
-        listadoEquipos = ["Verde", "Naranja", "Morado", "Azul", "Rojo"];
+        listadoEquipos = [...EQUIPOS_POR_DEFECTO];
         actualizarDesplegablesEquipos();
         manejarError(error, "No se pudieron cargar los equipos");
     });
+}
+
+async function depurarEquiposRetirados() {
+    if(!esAdministradorActual() || depuracionEquiposCompletada || depuracionEquiposEnCurso) return;
+    depuracionEquiposEnCurso = true;
+
+    try {
+        const referencia = db.collection("configuracion").doc("equipos");
+        const documento = await referencia.get();
+        const tieneListaConfigurada = documento.exists && Array.isArray(documento.data().lista);
+        const listaOriginal = tieneListaConfigurada
+            ? documento.data().lista
+            : [...EQUIPOS_POR_DEFECTO];
+        const listaActiva = normalizarListaEquiposActivos(listaOriginal);
+        const requiereCambio = !tieneListaConfigurada
+            || listaOriginal.length !== listaActiva.length
+            || listaOriginal.some((equipo, indice) => String(equipo || "").trim() !== listaActiva[indice]);
+
+        if(requiereCambio) {
+            await referencia.set({
+                lista: listaActiva,
+                actualizado: fechaServidor(),
+                actualizadoPor: auth.currentUser.email
+            }, { merge: true });
+        }
+
+        depuracionEquiposCompletada = true;
+    } catch(error) {
+        console.error("No se pudo actualizar la lista de equipos retirados", error);
+    } finally {
+        depuracionEquiposEnCurso = false;
+    }
 }
 
 function actualizarDesplegablesEquipos() {
@@ -600,7 +658,7 @@ function obtenerColoresEditorPagos() {
     });
 
     Object.keys(configuracionPagoLista.contactos).forEach(clave => {
-        if(!colores.has(clave)) colores.set(clave, clave.charAt(0).toUpperCase() + clave.slice(1));
+        if(!esEquipoRetirado(clave) && !colores.has(clave)) colores.set(clave, clave.charAt(0).toUpperCase() + clave.slice(1));
     });
 
     return [...colores.entries()];
@@ -751,6 +809,9 @@ async function guardarConfiguracionPagosLista() {
     }
 
     const contactos = {};
+    Object.entries(configuracionPagoLista.contactos).forEach(([clave, contacto]) => {
+        if(esEquipoRetirado(clave)) contactos[clave] = contacto;
+    });
     const filas = document.querySelectorAll("#admin-pago-contactos .admin-payment-contact-row");
     for(const fila of filas) {
         const clave = normalizarClaveColor(fila.dataset.colorPago);
@@ -963,8 +1024,8 @@ function loadUser() {
         listenAnuncioFlotante();
 
         if(esCGeneral || esAdmin) {
-            const seccionAdministracion = document.getElementById('sec-administracion');
-            if(seccionAdministracion && seccionAdministracion.style.display === 'block') {
+            const seccionResumen = document.getElementById('sec-resumen');
+            if(seccionResumen && seccionResumen.style.display === 'block') {
                 listenPagosPendientes();
             }
         } else {
@@ -978,26 +1039,27 @@ function loadUser() {
         const buscadorGlobal = document.getElementById('container-buscador-global');
         if(buscadorGlobal) buscadorGlobal.style.display = esAdmin ? 'block' : 'none';
 
+        prepararSeccionResumen();
+
+        document.getElementById('nav-boletas-ins').style.display = esRecreador ? 'block' : 'none';
+        document.getElementById('nav-resumen').style.display = esRecreador ? 'none' : 'block';
         document.getElementById('nav-usuarios-adm').style.display = (!esRecreador) ? 'block' : 'none';
         
         const panelEntregadas = document.getElementById('panel-boletas-entregadas');
         if (panelEntregadas) panelEntregadas.style.display = esRecreador ? 'block' : 'none';
 
         const navAdmin = document.getElementById('nav-administracion');
-        if (esAdmin || esCGeneral || esCoordinador) {
-            navAdmin.style.display = 'block';
-            document.getElementById('admin-edit-panel-code').style.display = esAdmin ? 'block' : 'none';
-            document.getElementById('admin-delete-staff-code-panel').style.display = esAdmin ? 'block' : 'none';
-            document.getElementById('global-code-filter').style.display = 'block';
-        } else {
-            navAdmin.style.display = 'none';
-            document.getElementById('global-code-filter').style.display = 'none';
-        }
+        navAdmin.style.display = esAdmin ? 'block' : 'none';
+        document.getElementById('admin-edit-panel-code').style.display = esAdmin ? 'block' : 'none';
+        document.getElementById('admin-delete-staff-code-panel').style.display = esAdmin ? 'block' : 'none';
+        document.getElementById('global-code-filter').style.display = esRecreador ? 'none' : 'block';
         document.getElementById('admin-com-form').style.display = (esAdmin || esCGeneral) ? 'flex' : 'none';
         document.getElementById('admin-floating-announcement').style.display = esAdmin ? 'block' : 'none';
         document.getElementById('admin-payment-settings').style.display = esAdmin ? 'block' : 'none';
-        document.getElementById('admin-buyer-sync-panel').style.display = esAdmin ? 'block' : 'none';
-        if(esAdmin) cargarFormularioConfiguracionPagos();
+        if(esAdmin) {
+            cargarFormularioConfiguracionPagos();
+            depurarEquiposRetirados();
+        }
 
         const panelPagos = document.getElementById('admin-pagos-list')?.closest('.admin-card');
         if(panelPagos) panelPagos.style.display = (esAdmin || esCGeneral) ? 'block' : 'none';
@@ -1119,13 +1181,28 @@ function establecerEstadoSeccionAdmin(tarjeta, abierta) {
     if(estado) estado.textContent = abierta ? "Cerrar" : "Abrir";
 }
 
+function prepararSeccionResumen() {
+    const contenedor = document.getElementById("resumen-admin-grid");
+    if(!contenedor) return;
+
+    [
+        "admin-summary-general-card",
+        "admin-team-breakdown-card",
+        "admin-payment-validation-card"
+    ].forEach(id => {
+        const tarjeta = document.getElementById(id);
+        if(tarjeta && tarjeta.parentElement !== contenedor) contenedor.appendChild(tarjeta);
+    });
+}
+
 function toggleSeccionAdministrativa(boton) {
     const tarjeta = boton?.closest(".admin-collapsible-card");
     if(!tarjeta) return;
 
     const abrir = !tarjeta.classList.contains("is-open");
     if(abrir) {
-        document.querySelectorAll("#sec-administracion .admin-collapsible-card.is-open").forEach(otraTarjeta => {
+        const seccion = tarjeta.closest(".section-content");
+        seccion?.querySelectorAll(".admin-collapsible-card.is-open").forEach(otraTarjeta => {
             if(otraTarjeta !== tarjeta) establecerEstadoSeccionAdmin(otraTarjeta, false);
         });
     }
@@ -1134,6 +1211,7 @@ function toggleSeccionAdministrativa(boton) {
 }
 
 function inicializarSeccionesAdminPlegables() {
+    prepararSeccionResumen();
     const tarjetas = document.querySelectorAll("#sec-administracion .grid-admin > .admin-card");
 
     tarjetas.forEach((tarjeta, indice) => {
@@ -1144,7 +1222,8 @@ function inicializarSeccionesAdminPlegables() {
         const titulo = String(tituloDirecto?.textContent || tituloFlotante?.textContent || "Herramienta administrativa").trim();
         const iconoOrigen = tituloDirecto?.querySelector("i") || tarjeta.querySelector(".floating-admin-icon i");
         const claseIcono = iconoOrigen?.className || "fa-solid fa-sliders";
-        const contenidoId = `admin-collapsible-content-${indice + 1}`;
+        const seccionId = tarjeta.closest(".section-content")?.id || "admin";
+        const contenidoId = `${seccionId}-collapsible-content-${indice + 1}`;
 
         const contenido = document.createElement("div");
         contenido.className = "admin-collapsible-body";
@@ -1170,6 +1249,12 @@ function inicializarSeccionesAdminPlegables() {
 }
 
 function showSection(id) {
+    const rango = obtenerRangoActual();
+    if(rango === 'Recreador' && (id === 'resumen' || id === 'administracion')) id = 'boletas-ins';
+    if(rango !== 'Recreador' && id === 'boletas-ins') id = 'resumen';
+    if(rango !== 'Recreador' && rango !== 'Administrador' && id === 'administracion') id = 'resumen';
+
+    prepararSeccionResumen();
     document.querySelectorAll('.section-content').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     const target = document.getElementById('sec-' + id);
@@ -1177,13 +1262,9 @@ function showSection(id) {
     const nav = document.getElementById('nav-' + id);
     if(nav) nav.classList.add('active');
 
-    if(id === 'administracion') {
-        inicializarSeccionesAdminPlegables();
-        if(puedeGestionarPagosActual()) listenPagosPendientes();
-        else detenerEscuchadoresPagosAdministracion();
-    } else {
-        detenerEscuchadoresPagosAdministracion();
-    }
+    if(id === 'administracion') inicializarSeccionesAdminPlegables();
+    if(id === 'resumen' && puedeGestionarPagosActual()) listenPagosPendientes();
+    else detenerEscuchadoresPagosAdministracion();
 }
 
 async function registrarConCodigo() {
