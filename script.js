@@ -10,6 +10,35 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const db = firebase.firestore();
 const auth = firebase.auth();
+const FIRESTORE_READY = (() => {
+    try {
+        db.settings({
+            cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
+            experimentalAutoDetectLongPolling: true
+        });
+    } catch(error) {
+        console.warn("Se usará la configuración de red estándar de Firestore", error);
+    }
+
+    if(typeof db.enablePersistence !== "function") return Promise.resolve();
+    return db.enablePersistence({ synchronizeTabs: true }).catch(error => {
+        console.warn("La caché persistente no está disponible; la app continuará en línea", error);
+    });
+})();
+const AUTH_READY = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(error => {
+    console.warn("No fue posible fijar la persistencia local de la sesión", error);
+});
+
+function reactivarSincronizacionFirestore() {
+    if(document.visibilityState === "visible" && navigator.onLine !== false) {
+        FIRESTORE_READY
+            .then(() => db.enableNetwork())
+            .catch(error => console.warn("Firestore reintentará la conexión automáticamente", error));
+    }
+}
+
+document.addEventListener("visibilitychange", reactivarSincronizacionFirestore, { passive: true });
+window.addEventListener("online", reactivarSincronizacionFirestore, { passive: true });
 const ADMIN_EMAIL = "franboy1221@gmail.com";
 const CONFIGURACION_PAGOS_POR_DEFECTO = Object.freeze({
     llave: "3114918913",
@@ -394,6 +423,24 @@ let unsubscribePagosPendientes = null;
 let listenerHistorialPagos = null;
 let comprobantesTemp = {};
 let alcanceDatosActivo = null;
+let frameRenderBoletas = null;
+let frameRenderUsuarios = null;
+
+function programarRenderBoletas() {
+    if(frameRenderBoletas !== null) return;
+    frameRenderBoletas = requestAnimationFrame(() => {
+        frameRenderBoletas = null;
+        renderBoletas();
+    });
+}
+
+function programarRenderUsuarios() {
+    if(frameRenderUsuarios !== null) return;
+    frameRenderUsuarios = requestAnimationFrame(() => {
+        frameRenderUsuarios = null;
+        renderUsuarios();
+    });
+}
 
 function obtenerRangoActual() {
     const email = auth.currentUser ? auth.currentUser.email : "";
@@ -420,6 +467,11 @@ function detenerEscuchadoresDatos() {
     unsubscribeComunicados = null;
     alcanceDatosActivo = null;
     listenersActivos = false;
+
+    if(frameRenderBoletas !== null) cancelAnimationFrame(frameRenderBoletas);
+    if(frameRenderUsuarios !== null) cancelAnimationFrame(frameRenderUsuarios);
+    frameRenderBoletas = null;
+    frameRenderUsuarios = null;
 
     allUsers = [];
     allBoletas = [];
@@ -460,7 +512,9 @@ function detenerEscuchadoresPrivados() {
     ultimoIngresoActualizadoEmail = "";
 }
 
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
+    await Promise.all([FIRESTORE_READY, AUTH_READY]);
+
     if (user) {
         // createUserWithEmailAndPassword inicia sesión antes de que el perfil
         // termine de guardarse. Durante ese intervalo no se debe cargar la vista.
@@ -984,8 +1038,8 @@ function loadUser() {
                 initDataListeners();
                 listenersActivos = true;
             } else {
-                renderBoletas();
-                renderUsuarios();
+                programarRenderBoletas();
+                programarRenderUsuarios();
                 renderComunicados();
             }
             
@@ -1013,8 +1067,8 @@ function initDataListeners() {
             allUsers = [];
             snap.forEach(doc => allUsers.push({ id: doc.id, ...doc.data() }));
             allUsers.sort((a, b) => obtenerMilisegundosFecha(b.creado) - obtenerMilisegundosFecha(a.creado));
-            renderUsuarios();
-            renderBoletas();
+            programarRenderUsuarios();
+            programarRenderBoletas();
         }, error => {
             mostrarEstadoLista("lista-usuarios-body", "No fue posible cargar el personal.", "error", 10);
             manejarError(error, "No se pudo cargar el personal");
@@ -1032,7 +1086,7 @@ function initDataListeners() {
         allBoletas = [];
         snap.forEach(doc => allBoletas.push({ id: doc.id, ...doc.data() }));
         allBoletas.sort((a, b) => obtenerMilisegundosFecha(b.creado) - obtenerMilisegundosFecha(a.creado));
-        renderBoletas();
+        programarRenderBoletas();
     }, error => {
         mostrarEstadoLista("lista-boletas-body", "No fue posible cargar las boletas.", "error", 7);
         manejarError(error, "No se pudieron cargar las boletas");
@@ -1050,6 +1104,71 @@ function initDataListeners() {
     });
 }
 
+function establecerEstadoSeccionAdmin(tarjeta, abierta) {
+    if(!tarjeta) return;
+
+    const boton = tarjeta.querySelector(".admin-collapsible-toggle");
+    const contenido = tarjeta.querySelector(".admin-collapsible-body");
+    if(!boton || !contenido) return;
+
+    tarjeta.classList.toggle("is-open", abierta);
+    contenido.hidden = !abierta;
+    boton.setAttribute("aria-expanded", String(abierta));
+
+    const estado = boton.querySelector(".admin-collapsible-state");
+    if(estado) estado.textContent = abierta ? "Cerrar" : "Abrir";
+}
+
+function toggleSeccionAdministrativa(boton) {
+    const tarjeta = boton?.closest(".admin-collapsible-card");
+    if(!tarjeta) return;
+
+    const abrir = !tarjeta.classList.contains("is-open");
+    if(abrir) {
+        document.querySelectorAll("#sec-administracion .admin-collapsible-card.is-open").forEach(otraTarjeta => {
+            if(otraTarjeta !== tarjeta) establecerEstadoSeccionAdmin(otraTarjeta, false);
+        });
+    }
+
+    establecerEstadoSeccionAdmin(tarjeta, abrir);
+}
+
+function inicializarSeccionesAdminPlegables() {
+    const tarjetas = document.querySelectorAll("#sec-administracion .grid-admin > .admin-card");
+
+    tarjetas.forEach((tarjeta, indice) => {
+        if(tarjeta.dataset.adminCollapsibleReady === "true") return;
+
+        const tituloDirecto = Array.from(tarjeta.children).find(elemento => elemento.classList?.contains("admin-card-title"));
+        const tituloFlotante = tarjeta.querySelector(".floating-admin-heading h3");
+        const titulo = String(tituloDirecto?.textContent || tituloFlotante?.textContent || "Herramienta administrativa").trim();
+        const iconoOrigen = tituloDirecto?.querySelector("i") || tarjeta.querySelector(".floating-admin-icon i");
+        const claseIcono = iconoOrigen?.className || "fa-solid fa-sliders";
+        const contenidoId = `admin-collapsible-content-${indice + 1}`;
+
+        const contenido = document.createElement("div");
+        contenido.className = "admin-collapsible-body";
+        contenido.id = contenidoId;
+        contenido.hidden = true;
+        while(tarjeta.firstChild) contenido.appendChild(tarjeta.firstChild);
+
+        const boton = document.createElement("button");
+        boton.type = "button";
+        boton.className = "admin-collapsible-toggle";
+        boton.setAttribute("aria-expanded", "false");
+        boton.setAttribute("aria-controls", contenidoId);
+        boton.innerHTML = `
+            <span class="admin-collapsible-icon"><i class="${escaparHTML(claseIcono)}"></i></span>
+            <span class="admin-collapsible-title">${escaparHTML(titulo)}</span>
+            <span class="admin-collapsible-action"><span class="admin-collapsible-state">Abrir</span><i class="fa-solid fa-chevron-down"></i></span>`;
+        boton.addEventListener("click", () => toggleSeccionAdministrativa(boton));
+
+        tarjeta.classList.add("admin-collapsible-card");
+        tarjeta.dataset.adminCollapsibleReady = "true";
+        tarjeta.append(boton, contenido);
+    });
+}
+
 function showSection(id) {
     document.querySelectorAll('.section-content').forEach(s => s.style.display = 'none');
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
@@ -1058,8 +1177,10 @@ function showSection(id) {
     const nav = document.getElementById('nav-' + id);
     if(nav) nav.classList.add('active');
 
-    if(id === 'administracion' && puedeGestionarPagosActual()) {
-        listenPagosPendientes();
+    if(id === 'administracion') {
+        inicializarSeccionesAdminPlegables();
+        if(puedeGestionarPagosActual()) listenPagosPendientes();
+        else detenerEscuchadoresPagosAdministracion();
     } else {
         detenerEscuchadoresPagosAdministracion();
     }
@@ -1222,22 +1343,6 @@ function renderBoletas() {
     
     }
 
-    document.getElementById('lista-boletas-body').innerHTML = htmlBoletas;
-
-    if(document.getElementById('conteo-boletas-total')) document.getElementById('conteo-boletas-total').innerText = "Recreadores activos: " + (index - 1);
-    actualizarListaEntregadasVisual(setBoletasVendidasGlobal);
-
-    if(esAdmin || esCGeneral || esCoordinador) {
-        if(document.getElementById('admin-tot-boletas')) document.getElementById('admin-tot-boletas').innerText = contadorTotal;
-        if(document.getElementById('admin-tot-activas')) document.getElementById('admin-tot-activas').innerText = activas;
-        if(document.getElementById('admin-tot-pendientes')) document.getElementById('admin-tot-pendientes').innerText = pendientes;
-        
-        let htmlBoletasE = "<p class='mini-title'>BOLETAS POR EQUIPO</p>";
-        for(let eq in boletasPorEquipo) {
-            htmlBoletasE += `<div class='summary-row'><span>${escaparHTML(eq)}</span><b>${boletasPorEquipo[eq].total} (A:${boletasPorEquipo[eq].activas})</b></div>`;
-        }
-        if(document.getElementById('resumen-boletas-equipos')) document.getElementById('resumen-boletas-equipos').innerHTML = htmlBoletasE;
-    }
 }
 
 function renderComunicados() {
@@ -1325,7 +1430,7 @@ function renderUsuarios() {
         htmlUsuarios += `
         <tr class="user-row" data-name="${escaparHTML(nombreCompleto.toLowerCase())}" data-doc="${documentoSeguro}" data-color="${escaparHTML(col)}">
             <td><span class="badge-rango" style="background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">${rangoSeguro}</span></td>
-            <td style="font-weight:800; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirCarnet(decodeURIComponent('${usuarioIdEvento}'))" title="Ver Carnet de Datos">${nombreSeguro}</td>
+            <td style="font-weight:800; font-size:0.65rem; color:var(--accent); cursor:pointer; text-decoration:underline;" onclick="abrirCarnet(decodeURIComponent('${usuarioIdEvento}'))" title="Ver datos del usuario">${nombreSeguro}${esAdmin ? ' <i class="fa-solid fa-eye" style="font-size:0.55rem; margin-left:4px;"></i>' : ''}</td>
             <td>${edadTxt}</td>
             <td>${documentoSeguro}</td>
             <td style="white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${telefonoSeguro} ${btnWa}</td>
@@ -1757,12 +1862,225 @@ async function guardarPerfil() {
     }
 }
 
-function abrirCarnet(id) {
+function crearOpcionesEdicionUsuario(valores, seleccionado) {
+    const seleccionActual = String(seleccionado || "").trim();
+    const opciones = [];
+    const agregadas = new Set();
+
+    [seleccionActual, ...valores].forEach(valor => {
+        const texto = String(valor || "").trim();
+        if(!texto || agregadas.has(texto)) return;
+        agregadas.add(texto);
+        opciones.push(texto);
+    });
+
+    return opciones.map(opcion => {
+        const opcionSegura = escaparHTML(opcion);
+        return `<option value="${opcionSegura}" ${opcion === seleccionActual ? "selected" : ""}>${opcionSegura}</option>`;
+    }).join("");
+}
+
+function renderFormularioEdicionUsuario(usuario, usuarioIdEvento) {
+    const rangoActual = usuario.id === ADMIN_EMAIL ? "Administrador" : (usuario.rango || "Recreador");
+    const opcionesRango = crearOpcionesEdicionUsuario(
+        ["Recreador", "Coordinador", "Coordinador General", "Administrador"],
+        rangoActual
+    );
+    const opcionesInscripcion = crearOpcionesEdicionUsuario(["NO", "SI"], usuario.inscripcion || "NO");
+    const opcionesColor = crearOpcionesEdicionUsuario(listadoEquipos, usuario.color || "");
+    const opcionesCodigo = crearOpcionesEdicionUsuario(listadoCodigos, usuario.codigoInvitacion || "");
+    const bloqueoRango = usuario.id === ADMIN_EMAIL ? "disabled" : "";
+
+    return `
+        <div class="user-profile-edit-heading">
+            <div class="avatar-circle">${escaparHTML(String(usuario.nombre || "S").charAt(0).toUpperCase())}</div>
+            <div>
+                <span>EDICIÓN DE PERSONAL</span>
+                <h3>${escaparHTML(obtenerNombreCompletoUsuario(usuario, "PERFIL INCOMPLETO").toUpperCase())}</h3>
+                <small>Corrige los datos y guarda los cambios.</small>
+            </div>
+        </div>
+        <form class="user-profile-edit-form" onsubmit="guardarEdicionUsuario(event, decodeURIComponent('${usuarioIdEvento}'))">
+            <div class="user-profile-edit-grid">
+                <label class="user-profile-edit-field user-profile-edit-full">
+                    <span>Correo de la cuenta</span>
+                    <input type="email" value="${escaparHTML(usuario.id)}" readonly>
+                    <small>El correo identifica la cuenta y no se puede cambiar desde este panel.</small>
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Nombre</span>
+                    <input id="admin-user-edit-nombre" type="text" maxlength="80" value="${escaparHTML(usuario.nombre || "")}" required>
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Apellido</span>
+                    <input id="admin-user-edit-apellido" type="text" maxlength="80" value="${escaparHTML(usuario.apellido || "")}" required>
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Documento</span>
+                    <input id="admin-user-edit-doc" type="text" inputmode="numeric" maxlength="10" value="${escaparHTML(usuario.doc || "")}" placeholder="10 dígitos">
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>WhatsApp</span>
+                    <input id="admin-user-edit-tel" type="tel" inputmode="numeric" maxlength="10" value="${escaparHTML(usuario.tel || "")}" placeholder="10 dígitos">
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Fecha de nacimiento</span>
+                    <input id="admin-user-edit-nacimiento" type="date" value="${escaparHTML(usuario.nacimiento || "")}">
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Color de equipo</span>
+                    <select id="admin-user-edit-color" required>${opcionesColor}</select>
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Código de grupo</span>
+                    <select id="admin-user-edit-codigo" required>${opcionesCodigo}</select>
+                </label>
+                <label class="user-profile-edit-field">
+                    <span>Rango</span>
+                    <select id="admin-user-edit-rango" ${bloqueoRango} required>${opcionesRango}</select>
+                </label>
+                <label class="user-profile-edit-field user-profile-edit-full">
+                    <span>Inscripción validada</span>
+                    <select id="admin-user-edit-inscripcion" required>${opcionesInscripcion}</select>
+                </label>
+            </div>
+            <div class="user-profile-edit-actions">
+                <button type="button" class="btn-secondary user-profile-cancel-button" onclick="abrirCarnet(decodeURIComponent('${usuarioIdEvento}'))"><i class="fa-solid fa-arrow-left"></i> CANCELAR</button>
+                <button type="submit" class="btn-primary user-profile-save-button"><i class="fa-solid fa-floppy-disk"></i> GUARDAR CORRECCIONES</button>
+            </div>
+        </form>`;
+}
+
+function renderVistaUsuario(usuario, usuarioIdEvento, esAdmin) {
+    const nombreCompleto = obtenerNombreCompletoUsuario(usuario, "PERFIL INCOMPLETO").toUpperCase();
+    const inicial = String(usuario.nombre || "S").charAt(0).toUpperCase();
+    const nacimiento = usuario.nacimiento || "---";
+    const botonEditar = esAdmin
+        ? `<button type="button" class="btn-primary user-profile-edit-button" onclick="abrirEditorUsuario(decodeURIComponent('${usuarioIdEvento}'))"><i class="fa-solid fa-pen-to-square"></i> EDITAR DATOS</button>`
+        : "";
+
+    return `
+        <div class="avatar-circle" style="width:70px; height:70px; font-size:2rem;">${escaparHTML(inicial)}</div>
+        <h3 style="font-size:1.2rem;">${escaparHTML(nombreCompleto)}</h3>
+        <p class="badge-rango-perfil" style="margin-bottom:15px;">${escaparHTML(usuario.rango || "RECREADOR")}</p>
+        <div class="id-card-details">
+            <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${escaparHTML((usuario.color || "---").toUpperCase())}</span></div>
+            <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${escaparHTML(usuario.doc || "---")}</span></div>
+            <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${escaparHTML(usuario.tel || "---")}</span></div>
+            <div class="id-detail-item"><span class="detail-label">FECHA DE NACIMIENTO</span><span class="detail-value">${escaparHTML(nacimiento)}</span></div>
+            <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${escaparHTML(calcularEdad(usuario.nacimiento).toUpperCase())}</span></div>
+            <div class="id-detail-item"><span class="detail-label">CÓDIGO DE GRUPO</span><span class="detail-value">${escaparHTML(usuario.codigoInvitacion || "---")}</span></div>
+            <div class="id-detail-item" style="grid-column:span 2;"><span class="detail-label">CORREO</span><span class="detail-value" style="overflow-wrap:anywhere;">${escaparHTML(usuario.id || "---")}</span></div>
+            <div class="id-detail-item" style="grid-column:span 2;"><span class="detail-label">INSCRITO</span><span class="detail-value" style="color:${usuario.inscripcion === "SI" ? "#10b981" : "#ef4444"};">${escaparHTML(usuario.inscripcion || "NO")}</span></div>
+        </div>
+        ${botonEditar}`;
+}
+
+function abrirEditorUsuario(id) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar usuarios");
+    abrirCarnet(id, true);
+}
+
+async function sincronizarConsultasUsuarioEditado(usuarioId, nombreCompleto, color) {
+    const snapshot = await db.collection("boletas").where("vendedor", "==", usuarioId).get();
+    if(snapshot.empty) return 0;
+
+    const preparadas = await Promise.all(snapshot.docs.map(async documento => {
+        const datos = documento.data();
+        const datosConsulta = crearDatosConsultaBoleta({
+            ...datos,
+            recreador: nombreCompleto,
+            equipo: color
+        }, documento.id);
+        if(!datosConsulta) return null;
+
+        const referencia = await obtenerReferenciaConsultaBoleta(datosConsulta.n, datosConsulta.whatsapp);
+        return { referencia, datosConsulta };
+    }));
+    const validas = preparadas.filter(Boolean);
+
+    for(let inicio = 0; inicio < validas.length; inicio += 400) {
+        const batch = db.batch();
+        validas.slice(inicio, inicio + 400).forEach(item => batch.set(item.referencia, item.datosConsulta));
+        await batch.commit();
+    }
+
+    return validas.length;
+}
+
+async function guardarEdicionUsuario(evento, id) {
+    evento?.preventDefault();
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar usuarios");
+
+    const usuarioOriginal = allUsers.find(usuario => usuario.id === id);
+    if(!usuarioOriginal) return notify("⚠️ El usuario ya no está disponible");
+
+    const nombre = document.getElementById("admin-user-edit-nombre").value.trim();
+    const apellido = document.getElementById("admin-user-edit-apellido").value.trim();
+    const doc = document.getElementById("admin-user-edit-doc").value.trim();
+    const tel = document.getElementById("admin-user-edit-tel").value.trim();
+    const nacimiento = document.getElementById("admin-user-edit-nacimiento").value;
+    const color = document.getElementById("admin-user-edit-color").value;
+    const codigoInvitacion = document.getElementById("admin-user-edit-codigo").value;
+    const rango = id === ADMIN_EMAIL ? "Administrador" : document.getElementById("admin-user-edit-rango").value;
+    const inscripcion = document.getElementById("admin-user-edit-inscripcion").value;
+
+    if(!nombre || !apellido || !color || !codigoInvitacion) return notify("⚠️ Completa nombre, apellido, equipo y código de grupo");
+    if(doc && !/^\d{10}$/.test(doc)) return notify("⚠️ El documento debe tener exactamente 10 dígitos");
+    if(tel && !/^\d{10}$/.test(tel)) return notify("⚠️ El WhatsApp debe tener exactamente 10 dígitos");
+    if(!["Recreador", "Coordinador", "Coordinador General", "Administrador"].includes(rango)) return notify("⚠️ Selecciona un rango válido");
+    if(!["NO", "SI"].includes(inscripcion)) return notify("⚠️ Selecciona un estado de inscripción válido");
+
+    if(nacimiento) {
+        const fechaNacimiento = new Date(`${nacimiento}T00:00:00`);
+        if(Number.isNaN(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) return notify("⚠️ La fecha de nacimiento no es válida");
+    }
+
+    const datosActualizados = { nombre, apellido, doc, tel, nacimiento, color, codigoInvitacion, rango, inscripcion };
+    const cambioNombre = obtenerNombreCompletoUsuario(usuarioOriginal, "") !== `${nombre} ${apellido}`.trim();
+    const cambioColor = String(usuarioOriginal.color || "") !== color;
+    const liberarBoton = bloquearBotonActual("GUARDANDO...");
+
+    try {
+        await db.collection("usuarios").doc(id).update(datosActualizados);
+
+        const indiceLocal = allUsers.findIndex(usuario => usuario.id === id);
+        if(indiceLocal >= 0) allUsers[indiceLocal] = { ...allUsers[indiceLocal], ...datosActualizados };
+
+        let consultasSincronizadas = 0;
+        let sincronizacionIncompleta = false;
+        if(cambioNombre || cambioColor) {
+            try {
+                consultasSincronizadas = await sincronizarConsultasUsuarioEditado(id, `${nombre} ${apellido}`.trim(), color);
+            } catch(errorSincronizacion) {
+                sincronizacionIncompleta = true;
+                console.error("No se pudieron sincronizar todas las consultas del comprador", errorSincronizacion);
+            }
+        }
+
+        programarRenderUsuarios();
+        programarRenderBoletas();
+        abrirCarnet(id);
+
+        if(sincronizacionIncompleta) {
+            notify("⚠️ Perfil guardado, pero algunas consultas de boletas no pudieron actualizarse");
+        } else if(consultasSincronizadas > 0) {
+            notify(`✅ Usuario corregido y ${consultasSincronizadas} boleta${consultasSincronizadas === 1 ? "" : "s"} sincronizada${consultasSincronizadas === 1 ? "" : "s"}`);
+        } else {
+            notify("✅ Datos del usuario actualizados");
+        }
+    } catch(error) {
+        manejarError(error, "No se pudieron actualizar los datos del usuario");
+    } finally {
+        liberarBoton();
+    }
+}
+
+function abrirCarnet(id, modoEdicion = false) {
     const u = allUsers.find(user => user.id === id);
     if (!u) return;
-    
-    let foto = "S"; if(u.nombre) foto = u.nombre[0];
-    const esAdmin = auth.currentUser.email === ADMIN_EMAIL;
+
+    const esAdmin = esAdministradorActual();
     const usuarioIdEvento = codificarDatoEvento(id);
     
     let boletasHtml = '';
@@ -1786,21 +2104,16 @@ function abrirCarnet(id) {
         </div>`;
     }
 
+    const contenidoUsuario = esAdmin && modoEdicion
+        ? renderFormularioEdicionUsuario({ id, ...u }, usuarioIdEvento)
+        : renderVistaUsuario({ id, ...u }, usuarioIdEvento, esAdmin);
+
     document.getElementById('carnet-detalle-render').innerHTML = `
-    <div class="id-card-mini" style="margin:0;">
-        <div class="avatar-circle" style="width:70px; height:70px; font-size:2rem;">${escaparHTML(foto)}</div>
-        <h3 style="font-size:1.2rem;">${escaparHTML(obtenerNombreCompletoUsuario(u, "PERFIL INCOMPLETO").toUpperCase())}</h3>
-        <p class="badge-rango-perfil" style="margin-bottom:15px;">${escaparHTML(u.rango||'RECREADOR')}</p>
-        <div class="id-card-details">
-            <div class="id-detail-item"><span class="detail-label">EQUIPO</span><span class="detail-value">${escaparHTML((u.color||'---').toUpperCase())}</span></div>
-            <div class="id-detail-item"><span class="detail-label">DOCUMENTO</span><span class="detail-value">${escaparHTML(u.doc||'---')}</span></div>
-            <div class="id-detail-item"><span class="detail-label">WHATSAPP</span><span class="detail-value">${escaparHTML(u.tel||'---')}</span></div>
-            <div class="id-detail-item"><span class="detail-label">EDAD</span><span class="detail-value">${calcularEdad(u.nacimiento).toUpperCase()}</span></div>
-            <div class="id-detail-item" style="grid-column: span 2;"><span class="detail-label">INSCRITO</span><span class="detail-value" style="color:${u.inscripcion==='SI'?'#10b981':'#ef4444'};">${escaparHTML(u.inscripcion||'NO')}</span></div>
-        </div>
-        ${boletasHtml}
-        <div class="card-brand-footer" style="margin-top:25px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">LOGISTICA & EVENTOS</div>
-    </div>`;
+        <div class="id-card-mini user-profile-card" style="margin:0;">
+            ${contenidoUsuario}
+            ${boletasHtml}
+            <div class="card-brand-footer" style="margin-top:25px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px;">LOGISTICA & EVENTOS</div>
+        </div>`;
     
     document.getElementById('modal-carnet').style.display = 'flex';
 }
@@ -2041,6 +2354,32 @@ function renderResultadosComprador(boletas, configuracionAyuda = CONFIGURACION_P
     contenedor.appendChild(lista);
 }
 
+function prepararConsultaComprador(documento, numero, whatsapp) {
+    const boletas = [];
+    if(documento?.exists) {
+        const datos = documento.data();
+        if(String(datos.n || "") === numero && String(datos.whatsapp || "") === whatsapp) {
+            boletas.push({
+                n: numero,
+                comprador: String(datos.comprador || ""),
+                whatsapp,
+                recreador: String(datos.recreador || ""),
+                equipo: String(datos.equipo || ""),
+                estado: datos.estado === "Activa" ? "Activa" : "Pendiente",
+                creado: datos.creado || null
+            });
+        }
+    }
+    boletas.sort((a, b) => obtenerMilisegundosFecha(b.creado) - obtenerMilisegundosFecha(a.creado));
+    return boletas;
+}
+
+function prepararContactosAyuda(documento) {
+    return documento?.exists
+        ? normalizarConfiguracionPagosLista({ contactos: documento.data().contactos })
+        : normalizarConfiguracionPagosLista();
+}
+
 async function consultarBoletasComprador() {
     const numero = normalizarNumeroBoletaConsulta(document.getElementById("buyer-lookup-ticket").value);
     const whatsapp = normalizarWhatsappConsulta(document.getElementById("buyer-lookup-phone").value);
@@ -2050,39 +2389,44 @@ async function consultarBoletasComprador() {
 
     const liberarBoton = bloquearBotonActual("CONSULTANDO...");
     if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-loading"><i class="fa-solid fa-spinner fa-spin"></i> Buscando tus boletas...</p>';
+    let resultadoCacheMostrado = false;
 
     try {
+        await FIRESTORE_READY;
         const hash = await obtenerHashConsultaBoleta(numero, whatsapp);
-        const documento = await db.collection("consulta_boletas").doc(hash).get();
-        const boletas = [];
-        if(documento.exists) {
-            const datos = documento.data();
-            if(String(datos.n || "") === numero && String(datos.whatsapp || "") === whatsapp) {
-                boletas.push({
-                    n: numero,
-                    comprador: String(datos.comprador || ""),
-                    whatsapp,
-                    recreador: String(datos.recreador || ""),
-                    equipo: String(datos.equipo || ""),
-                    estado: datos.estado === "Activa" ? "Activa" : "Pendiente",
-                    creado: datos.creado || null
-                });
-            }
+        const boletaRef = db.collection("consulta_boletas").doc(hash);
+        const contactosRef = db.collection("configuracion").doc("contactos_ayuda");
+        const consultaServidor = Promise.all([
+            boletaRef.get({ source: "server" }),
+            contactosRef.get({ source: "server" })
+        ]).then(valor => ({ valor }), error => ({ error }));
+
+        const [boletaCache, contactosCache] = await Promise.allSettled([
+            boletaRef.get({ source: "cache" }),
+            contactosRef.get({ source: "cache" })
+        ]);
+        if(boletaCache.status === "fulfilled" && boletaCache.value.exists) {
+            const boletas = prepararConsultaComprador(boletaCache.value, numero, whatsapp);
+            const configuracionAyuda = contactosCache.status === "fulfilled"
+                ? prepararContactosAyuda(contactosCache.value)
+                : normalizarConfiguracionPagosLista();
+            renderResultadosComprador(boletas, configuracionAyuda);
+            resultadoCacheMostrado = boletas.length > 0;
         }
-        boletas.sort((a, b) => obtenerMilisegundosFecha(b.creado) - obtenerMilisegundosFecha(a.creado));
-        let configuracionAyuda = normalizarConfiguracionPagosLista();
-        if(boletas.length) {
-            try {
-                const configuracionDoc = await db.collection("configuracion").doc("contactos_ayuda").get();
-                if(configuracionDoc.exists) configuracionAyuda = normalizarConfiguracionPagosLista({ contactos: configuracionDoc.data().contactos });
-            } catch(errorConfiguracion) {
-                console.warn("Se usarán los contactos de ayuda predeterminados", errorConfiguracion);
-            }
-        }
+
+        const resultadoServidor = await consultaServidor;
+        if(resultadoServidor.error) throw resultadoServidor.error;
+        const [documento, configuracionDoc] = resultadoServidor.valor;
+        const boletas = prepararConsultaComprador(documento, numero, whatsapp);
+        const configuracionAyuda = prepararContactosAyuda(configuracionDoc);
         renderResultadosComprador(boletas, configuracionAyuda);
     } catch(error) {
-        if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-error">No fue posible consultar las boletas en este momento.</p>';
-        manejarError(error, "No se pudo realizar la consulta del comprador");
+        if(!resultadoCacheMostrado) {
+            if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-error">No fue posible consultar las boletas en este momento.</p>';
+            manejarError(error, "No se pudo realizar la consulta del comprador");
+        } else {
+            notify("ℹ️ Mostrando la última información guardada en el teléfono");
+        }
     } finally {
         liberarBoton();
     }
@@ -2173,9 +2517,9 @@ async function handleLogout() {
     const liberarBoton = bloquearBotonActual("SALIENDO...");
     try {
         await auth.signOut();
-        location.reload();
     } catch(error) {
         manejarError(error, "No se pudo cerrar la sesión");
+    } finally {
         liberarBoton();
     }
 }
@@ -2195,7 +2539,30 @@ function notify(msg) {
     c.appendChild(d); setTimeout(() => d.remove(), 3000);
 }
 
-function exportarPersonalExcel() {
+let promesaCargaExcel = null;
+
+function cargarBibliotecaExcel() {
+    if(globalThis.XLSX) return Promise.resolve(globalThis.XLSX);
+    if(promesaCargaExcel) return promesaCargaExcel;
+
+    promesaCargaExcel = new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "vendor/xlsx/xlsx.full.min.js";
+        script.async = true;
+        script.onload = () => globalThis.XLSX
+            ? resolve(globalThis.XLSX)
+            : reject(new Error("La biblioteca de Excel no se inició correctamente"));
+        script.onerror = () => reject(new Error("No fue posible cargar la biblioteca de Excel"));
+        document.head.appendChild(script);
+    }).catch(error => {
+        promesaCargaExcel = null;
+        throw error;
+    });
+
+    return promesaCargaExcel;
+}
+
+async function exportarPersonalExcel() {
     if (!allUsers || allUsers.length === 0) {
         if(typeof notify === "function") notify("⚠️ No hay personal registrado.");
         else alert("⚠️ No hay personal registrado.");
@@ -2220,6 +2587,7 @@ function exportarPersonalExcel() {
     });
 
     try {
+        await cargarBibliotecaExcel();
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Personal");
@@ -2232,30 +2600,37 @@ function exportarPersonalExcel() {
     }
 }
 
-function exportarVentasExcel() {
-    const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
-    const rows = [["ITEM", "BOLETA", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
-    
-    const mapaColores = {}; 
-    const mapaCodigos = {};
-    allUsers.forEach(u => { 
-        mapaColores[u.id] = u.color || 'Gris'; 
-        mapaCodigos[u.id] = u.codigoInvitacion || '---'; 
-    });
-    
-    let exportContador = 0;
-    allBoletas.forEach(b => {
-        const codigoVendedor = mapaCodigos[b.vendedor] || '---';
-        if (filtroCodigoGlobal !== "Todos" && codigoVendedor !== filtroCodigoGlobal) return;
+async function exportarVentasExcel() {
+    try {
+        await cargarBibliotecaExcel();
+        const filterCol = document.getElementById('filter-color').value, filterEst = document.getElementById('filter-estado').value;
+        const rows = [["ITEM", "BOLETA", "EQUIPO", "RECREADOR", "COMPRADOR", "WHATSAPP", "ESTADO", "FECHA"]];
         
-        const col = mapaColores[b.vendedor] || 'Gris';
-        if(filterCol !== "Todos" && col !== filterCol) return;
-        if(filterEst !== "Todos" && b.estado !== filterEst) return;
+        const mapaColores = {}; 
+        const mapaCodigos = {};
+        allUsers.forEach(u => { 
+            mapaColores[u.id] = u.color || 'Gris'; 
+            mapaCodigos[u.id] = u.codigoInvitacion || '---'; 
+        });
         
-        exportContador++;
-        rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado, convertirFechaFirestore(b.creado)?.toLocaleDateString() || '---']);
-    });
-    const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Ventas"); XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
+        let exportContador = 0;
+        allBoletas.forEach(b => {
+            const codigoVendedor = mapaCodigos[b.vendedor] || '---';
+            if (filtroCodigoGlobal !== "Todos" && codigoVendedor !== filtroCodigoGlobal) return;
+            
+            const col = mapaColores[b.vendedor] || 'Gris';
+            if(filterCol !== "Todos" && col !== filterCol) return;
+            if(filterEst !== "Todos" && b.estado !== filterEst) return;
+            
+            exportContador++;
+            rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado, convertirFechaFirestore(b.creado)?.toLocaleDateString() || '---']);
+        });
+        const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Ventas");
+        XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
+    } catch(error) {
+        manejarError(error, "No se pudo exportar el reporte de ventas");
+    }
 }
 
 // ==========================================
@@ -2817,7 +3192,6 @@ function listenPagosPendientes() {
     unsubscribePagosPendientes = db.collection("solicitudes_pago")
         .where("estado", "==", "Pendiente")
         .onSnapshot(snap => {
-            container.innerHTML = '';
             comprobantesTemp = {};
 
             if(snap.empty) {
@@ -2825,13 +3199,14 @@ function listenPagosPendientes() {
                 return;
             }
 
+            const tarjetas = [];
             snap.forEach(doc => {
                 const d = doc.data();
                 const bolStr = Array.isArray(d.boletas) ? d.boletas.map(b => b?.n ?? '').join(', ') : '---';
                 comprobantesTemp[doc.id] = esComprobanteSeguro(d.comprobanteUrl) ? d.comprobanteUrl : '';
                 const pagoIdEvento = codificarDatoEvento(doc.id);
 
-                container.innerHTML += `
+                tarjetas.push(`
                     <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(16,185,129,0.3); padding:15px; border-radius:12px;">
                         <p style="margin:0 0 5px 0; font-size:0.65rem; color:#10b981; font-weight:800;">${escaparHTML(String(d.recreadorNombre || '---').toUpperCase())} <span style="color:#94a3b8; font-weight:400;">(${escaparHTML(d.equipo || '---')})</span></p>
                         <p style="margin:0 0 10px 0; font-size:0.65rem;">Boletas solicitadas: <b style="color:white;">${escaparHTML(bolStr)}</b></p>
@@ -2848,8 +3223,9 @@ function listenPagosPendientes() {
                             <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(239,68,68,0.2); color:#ef4444; border-color:#ef4444;" onclick="verificarPago(decodeURIComponent('${pagoIdEvento}'), false)"><i class="fa-solid fa-xmark"></i> NO</button>
                         </div>
                     </div>
-                `;
+                `);
             });
+            container.innerHTML = tarjetas.join("");
         }, error => {
             mostrarEstadoLista("admin-pagos-list", "No fue posible cargar los pagos.", "error");
             manejarError(error, "No se pudieron cargar los pagos pendientes");
@@ -2961,7 +3337,6 @@ function cargarHistorialPagos() {
     listenerHistorialPagos = db.collection("solicitudes_pago")
         .where("estado", "==", "Aprobado")
         .onSnapshot(snap => {
-            container.innerHTML = '';
             if(snap.empty) {
                 container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;">No hay pagos verificados en el historial.</p>';
                 return;
@@ -2975,6 +3350,7 @@ function cargarHistorialPagos() {
             historial.sort((a, b) => obtenerMilisegundosFecha(b.fechaVerificacion) - obtenerMilisegundosFecha(a.fechaVerificacion));
 
             const esAdmin = esAdministradorActual();
+            const tarjetas = [];
             
             historial.forEach(d => {
                 const bolStr = Array.isArray(d.boletas) ? d.boletas.map(b => b?.n ?? '').join(', ') : '---';
@@ -2986,7 +3362,7 @@ function cargarHistorialPagos() {
                     ? `<button class="btn-mini" style="flex:1; justify-content:center; background:rgba(239,68,68,0.1); border-color:#ef4444; color:#ef4444;" onclick="borrarPagoHistorial(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-trash"></i></button>`
                     : '';
 
-                container.innerHTML += `
+                tarjetas.push(`
                     <div style="background:rgba(0,0,0,0.3); border:1px solid rgba(255,255,255,0.1); padding:15px; border-radius:12px; opacity: 0.85;">
                         <div style="display:flex; justify-content:space-between; align-items: flex-start; margin-bottom: 5px;">
                             <p style="margin:0; font-size:0.65rem; color:#e2e8f0; font-weight:800;">${escaparHTML(String(d.recreadorNombre || '---').toUpperCase())} <span style="color:#94a3b8; font-weight:400;">(${escaparHTML(d.equipo || '---')})</span></p>
@@ -3006,8 +3382,9 @@ function cargarHistorialPagos() {
                             ${botonEliminar}
                         </div>
                     </div>
-                `;
+                `);
             });
+            container.innerHTML = tarjetas.join("");
         }, error => {
             mostrarEstadoLista("admin-pagos-historial", "No fue posible cargar el historial de pagos.", "error");
             manejarError(error, "No se pudo cargar el historial de pagos");
@@ -3062,6 +3439,7 @@ async function exportarPagosExcel() {
 
     const liberarBoton = bloquearBotonActual("GENERANDO...");
     try {
+        await cargarBibliotecaExcel();
         const snap = await db.collection("solicitudes_pago").orderBy("creado", "desc").get();
         if(snap.empty) {
             if(typeof notify === "function") notify("⚠️ No hay pagos registrados.");
