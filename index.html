@@ -3,7 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark light">
+    <meta id="theme-color-meta" name="theme-color" content="#05080f">
     <title>Logistica & Eventos | Control</title>
+    <script>
+        (() => {
+            const temasValidos = ["system", "dark", "light"];
+            let preferencia = "system";
+
+            try {
+                const guardada = localStorage.getItem("logistica-eventos-tema");
+                if(temasValidos.includes(guardada)) preferencia = guardada;
+            } catch(error) {
+                console.warn("No fue posible leer la preferencia visual guardada", error);
+            }
+
+            const temaResuelto = preferencia === "system"
+                ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+                : preferencia;
+
+            document.documentElement.dataset.themePreference = preferencia;
+            document.documentElement.dataset.theme = temaResuelto;
+            document.documentElement.style.colorScheme = temaResuelto;
+            document.getElementById("theme-color-meta").content = temaResuelto === "dark" ? "#05080f" : "#f4f8fc";
+        })();
+    </script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
@@ -76,6 +100,12 @@
 
     <div class="main-wrapper">
         <div id="view-auth">
+            <div class="auth-theme-toolbar">
+                <button class="theme-toggle" type="button" onclick="cambiarTema()" aria-label="Cambiar tema de la página">
+                    <i class="fa-solid fa-desktop" aria-hidden="true"></i>
+                    <span>Sistema</span>
+                </button>
+            </div>
             <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
             <p style="color:var(--accent); font-weight:800; font-size:0.9rem; letter-spacing: 2px; text-shadow: 0 0 8px var(--accent-glow);">EVENTOS</p>
             <div id="auth-access-choice" class="auth-access-choice">
@@ -129,10 +159,14 @@
             <header>
                 <div id="user-rank-badge" class="badge-rank">---</div>
                 <h2 style="margin:0; font-size:0.9rem; letter-spacing: 1px; flex-grow: 1; text-align: center;">LOGISTICA & EVENTOS</h2>
-                <div style="width: auto;">
+                <div class="header-actions">
                     <select id="global-code-filter" class="dynamic-codes-filter" onchange="aplicarFiltroCodigoGlobal()" style="display:none;">
                         <option value="Todos">★ TODOS LOS GRUPOS</option>
                     </select>
+                    <button class="theme-toggle theme-toggle-header" type="button" onclick="cambiarTema()" aria-label="Cambiar tema de la página">
+                        <i class="fa-solid fa-desktop" aria-hidden="true"></i>
+                        <span>Sistema</span>
+                    </button>
                 </div>
             </header>
             <nav class="nav-menu">
@@ -180,7 +214,7 @@
                 <section id="sec-boletas-list" class="section-content">
                     <div id="container-buscador-global" class="form-group" style="display: none; margin-bottom: 20px; border: 1px solid var(--accent); padding: 15px; border-radius: 20px; background: rgba(0, 240, 255, 0.05);">
                         <p class="label-hint" style="text-align: center; color: var(--accent); font-weight: 900;">BUSCADOR GLOBAL DE BOLETA (PREMIOS)</p>
-                        <div style="display: flex; gap: 8px; justify-content: center;">
+                        <div class="inline-action-row" style="display: flex; gap: 8px; justify-content: center;">
                             <input type="text" id="search-n-boleta" placeholder="Ingresa N° de Boleta" style="flex-grow: 1;">
                             <button class="btn-mini" style="width: max-content;" onclick="buscarDuenioBoleta()">BUSCAR</button>
                         </div>
@@ -189,7 +223,7 @@
 
                     <div id="panel-boletas-entregadas" class="form-group" style="margin-bottom: 20px; border: 1px solid rgba(0,240,255,0.2); padding: 15px; border-radius: 20px; background: rgba(30, 41, 59, 0.5);">
                         <p class="label-hint" style="text-align: center;">REGISTRAR BOLETAS ENTREGADAS (FÍSICAS)</p>
-                        <div style="display: flex; gap: 8px; justify-content: center;">
+                        <div class="inline-action-row" style="display: flex; gap: 8px; justify-content: center;">
                             <input type="text" id="input-boleta-entregada" placeholder="N° Boleta" style="flex-grow: 1;">
                             <button class="btn-mini btn-add" style="width: max-content;" onclick="registrarBoletaEntregada()"><i class="fa-solid fa-plus"></i></button>
                         </div>
@@ -226,7 +260,7 @@
                         </table>
                     </div>
                     
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-bottom: 5px;">
+                    <div class="list-footer-actions" style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding-bottom: 5px;">
                         <div id="conteo-boletas-total" class="total-count-display" style="margin-top: 0; padding-right: 0;">Total registros: 0</div>
                         <button id="btn-flotante-pago" class="btn-flotante-pago" onclick="gestionarEnlacePago()">
                             <i class="fa-solid fa-money-check-dollar"></i> PAGAR BOLETAS

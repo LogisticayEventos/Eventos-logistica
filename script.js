@@ -1,3 +1,93 @@
+const CLAVE_PREFERENCIA_TEMA = "logistica-eventos-tema";
+const ORDEN_TEMAS = Object.freeze(["system", "dark", "light"]);
+const INFORMACION_TEMAS = Object.freeze({
+    system: Object.freeze({ nombre: "Sistema", icono: "fa-desktop" }),
+    dark: Object.freeze({ nombre: "Oscuro", icono: "fa-moon" }),
+    light: Object.freeze({ nombre: "Claro", icono: "fa-sun" })
+});
+const consultaTemaOscuroSistema = window.matchMedia("(prefers-color-scheme: dark)");
+
+function normalizarPreferenciaTema(preferencia) {
+    return ORDEN_TEMAS.includes(preferencia) ? preferencia : "system";
+}
+
+function resolverTemaVisual(preferencia) {
+    return preferencia === "system"
+        ? (consultaTemaOscuroSistema.matches ? "dark" : "light")
+        : preferencia;
+}
+
+function actualizarControlesTema(preferencia, temaResuelto) {
+    const informacion = INFORMACION_TEMAS[preferencia];
+    const indiceActual = ORDEN_TEMAS.indexOf(preferencia);
+    const siguiente = ORDEN_TEMAS[(indiceActual + 1) % ORDEN_TEMAS.length];
+    const descripcionSistema = preferencia === "system" ? ` (${temaResuelto === "dark" ? "oscuro" : "claro"} del dispositivo)` : "";
+
+    document.querySelectorAll(".theme-toggle").forEach(boton => {
+        const icono = boton.querySelector("i");
+        const texto = boton.querySelector("span");
+
+        if(icono) icono.className = `fa-solid ${informacion.icono}`;
+        if(texto) texto.textContent = informacion.nombre;
+
+        boton.dataset.themePreference = preferencia;
+        boton.setAttribute("aria-label", `Tema actual: ${informacion.nombre}${descripcionSistema}. Pulsa para cambiar a ${INFORMACION_TEMAS[siguiente].nombre}.`);
+        boton.title = `Tema: ${informacion.nombre}${descripcionSistema}`;
+    });
+}
+
+function aplicarPreferenciaTema(preferencia, guardar = true) {
+    const preferenciaNormalizada = normalizarPreferenciaTema(preferencia);
+    const temaResuelto = resolverTemaVisual(preferenciaNormalizada);
+    const raiz = document.documentElement;
+
+    raiz.dataset.themePreference = preferenciaNormalizada;
+    raiz.dataset.theme = temaResuelto;
+    raiz.style.colorScheme = temaResuelto;
+
+    const metaTema = document.getElementById("theme-color-meta");
+    if(metaTema) metaTema.content = temaResuelto === "dark" ? "#05080f" : "#f4f8fc";
+
+    if(guardar) {
+        try {
+            localStorage.setItem(CLAVE_PREFERENCIA_TEMA, preferenciaNormalizada);
+        } catch(error) {
+            console.warn("No fue posible guardar la preferencia visual", error);
+        }
+    }
+
+    actualizarControlesTema(preferenciaNormalizada, temaResuelto);
+}
+
+function cambiarTema() {
+    const preferenciaActual = normalizarPreferenciaTema(document.documentElement.dataset.themePreference);
+    const indiceActual = ORDEN_TEMAS.indexOf(preferenciaActual);
+    aplicarPreferenciaTema(ORDEN_TEMAS[(indiceActual + 1) % ORDEN_TEMAS.length]);
+}
+
+function sincronizarTemaConSistema() {
+    const preferenciaActual = normalizarPreferenciaTema(document.documentElement.dataset.themePreference);
+    if(preferenciaActual === "system") aplicarPreferenciaTema("system", false);
+}
+
+if(typeof consultaTemaOscuroSistema.addEventListener === "function") {
+    consultaTemaOscuroSistema.addEventListener("change", sincronizarTemaConSistema);
+} else if(typeof consultaTemaOscuroSistema.addListener === "function") {
+    consultaTemaOscuroSistema.addListener(sincronizarTemaConSistema);
+}
+
+window.addEventListener("storage", evento => {
+    if(evento.key === CLAVE_PREFERENCIA_TEMA) aplicarPreferenciaTema(evento.newValue || "system", false);
+});
+
+if(document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", () => {
+        aplicarPreferenciaTema(document.documentElement.dataset.themePreference, false);
+    }, { once: true });
+} else {
+    aplicarPreferenciaTema(document.documentElement.dataset.themePreference, false);
+}
+
 const firebaseConfig = {
     apiKey: "AIzaSyAD_FPhpmmbuvnXUxKVlNpENdViPTIBaYU",
     authDomain: "sentinels-web.firebaseapp.com",
@@ -1502,7 +1592,7 @@ function renderUsuarios() {
         let btnAdminHTML = "", btnRolHTML = "";
         
         if(esAdmin) {
-            btnRolHTML = `<td class="col-rango-admin"><select onchange="cambiarRol(decodeURIComponent('${usuarioIdEvento}'), this.value)" style="padding:4px; font-size:0.55rem; background:rgba(0,0,0,0.5); border:1px solid rgba(0,240,255,0.3); color:white; border-radius:4px;"><option value="Recreador" ${u.rango==='Recreador'?'selected':''}>Recreador</option><option value="Coordinador" ${u.rango==='Coordinador'?'selected':''}>Coordinador</option><option value="Coordinador General" ${u.rango==='Coordinador General'?'selected':''}>C. General</option><option value="Administrador" ${u.rango==='Administrador'?'selected':''}>Administrador</option></select></td>`;
+            btnRolHTML = `<td class="col-rango-admin"><select onchange="cambiarRol(decodeURIComponent('${usuarioIdEvento}'), this.value)" style="padding:4px; font-size:0.55rem; background:var(--surface-soft); border:1px solid var(--border-strong); color:var(--text-main); border-radius:4px;"><option value="Recreador" ${u.rango==='Recreador'?'selected':''}>Recreador</option><option value="Coordinador" ${u.rango==='Coordinador'?'selected':''}>Coordinador</option><option value="Coordinador General" ${u.rango==='Coordinador General'?'selected':''}>C. General</option><option value="Administrador" ${u.rango==='Administrador'?'selected':''}>Administrador</option></select></td>`;
             btnAdminHTML = `<td class="col-rango-admin"><button class="btn-status btn-delete" style="padding:6px 10px;" onclick="eliminarUsuario(decodeURIComponent('${usuarioIdEvento}'))"><i class="fa-solid fa-trash"></i></button></td>`;
         }
         
@@ -1562,7 +1652,7 @@ function actualizarListaEntregadasVisual(setBoletasVendidasGlobal = new Set()) {
     
     const entregadas = currentUserData?.boletasEntregadas || [];
     if(entregadas.length === 0) {
-        container.innerHTML = `<p style="font-size:0.6rem; color:#94a3b8; width:100%; text-align:center;">No hay boletas físicas registradas</p>`;
+        container.innerHTML = `<p style="font-size:0.6rem; color:var(--text-muted); width:100%; text-align:center;">No hay boletas físicas registradas</p>`;
         return;
     }
     
@@ -1592,14 +1682,15 @@ function buscarDuenioBoleta() {
     const boletaEncontrada = allBoletas.find(b => b.n == numero);
     if(boletaEncontrada) {
         const u = allUsers.find(user => user.id === boletaEncontrada.vendedor) || { nombre: "Desconocido" };
-        const colorEstado = boletaEncontrada.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        const colorEstado = boletaEncontrada.estado === 'Activa' ? 'var(--success-text)' : 'var(--warning-text)';
+        const colorBordeEstado = boletaEncontrada.estado === 'Activa' ? '#10b981' : '#f59e0b';
         const colorBg = boletaEncontrada.estado === 'Activa' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(245, 158, 11, 0.2)';
         
         resultDiv.innerHTML = `
-            <div style="background: ${colorBg}; border: 1px solid ${colorEstado}; padding: 10px; border-radius: 12px; text-align: left;">
+            <div style="background: ${colorBg}; border: 1px solid ${colorBordeEstado}; padding: 10px; border-radius: 12px; text-align: left;">
                 <p style="margin:0; font-size:0.5rem; font-weight:800; color:${colorEstado};">ESTADO: VENDIDA (${escaparHTML(boletaEncontrada.estado)})</p>
-                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${escaparHTML(obtenerNombreCompletoUsuario(u).toUpperCase())}</p>
-                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${escaparHTML((u.color || "---").toUpperCase())}</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:var(--text-main);">RECREADOR: ${escaparHTML(obtenerNombreCompletoUsuario(u).toUpperCase())}</p>
+                <p style="margin:0; font-size:0.6rem; font-weight:700; color:var(--text-soft);">EQUIPO: ${escaparHTML((u.color || "---").toUpperCase())}</p>
                 <p style="margin:5px 0 0 0; font-size:0.55rem; color:var(--accent);">Comprador: <b>${escaparHTML(boletaEncontrada.c || boletaEncontrada.comprador || '---')}</b></p>
             </div>`;
         return;
@@ -1616,8 +1707,8 @@ function buscarDuenioBoleta() {
         resultDiv.innerHTML = `
             <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid #ef4444; padding: 10px; border-radius: 12px; text-align: left;">
                 <p style="margin:0; font-size:0.5rem; font-weight:800; color:#ef4444;">ESTADO: FÍSICA (SIN VENTA REGISTRADA)</p>
-                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:white;">RECREADOR: ${escaparHTML(obtenerNombreCompletoUsuario(recreadorEncontrado).toUpperCase())}</p>
-                <p style="margin:0; font-size:0.6rem; font-weight:700; color:#cbd5e1;">EQUIPO: ${escaparHTML((recreadorEncontrado.color || "---").toUpperCase())}</p>
+                <p style="margin:2px 0; font-size:0.8rem; font-weight:900; color:var(--text-main);">RECREADOR: ${escaparHTML(obtenerNombreCompletoUsuario(recreadorEncontrado).toUpperCase())}</p>
+                <p style="margin:0; font-size:0.6rem; font-weight:700; color:var(--text-soft);">EQUIPO: ${escaparHTML((recreadorEncontrado.color || "---").toUpperCase())}</p>
             </div>`;
     } else {
         resultDiv.innerHTML = `<p style="font-size:0.6rem; color:#ef4444; font-weight:800; background:rgba(239, 68, 68, 0.2); border:1px solid #ef4444; padding:10px; border-radius:10px;"><i class="fa-solid fa-xmark"></i> BOLETA NO REGISTRADA EN EL SISTEMA</p>`;
@@ -1690,7 +1781,7 @@ function abrirGestionBoletas(nombreRecreador) {
                             <tbody>`;
                             
     boletasRecreador.forEach(b => {
-        const colorEstado = b.estado === 'Activa' ? '#10b981' : '#f59e0b';
+        const colorEstado = b.estado === 'Activa' ? 'var(--success-text)' : 'var(--warning-text)';
         const boletaIdEvento = codificarDatoEvento(b.id);
         let botones = "<td>--</td>";
         if (esAdmin) {
@@ -1715,8 +1806,8 @@ function abrirGestionBoletas(nombreRecreador) {
 
         htmlTable += `
             <tr>
-                <td style="font-weight:800; color:white;">${escaparHTML(numBoleta)}</td>
-                <td style="font-size:0.6rem; font-weight:800; color:#cbd5e1;">${escaparHTML(nomComprador)}</td>
+                <td style="font-weight:800; color:var(--text-main);">${escaparHTML(numBoleta)}</td>
+                <td style="font-size:0.6rem; font-weight:800; color:var(--text-soft);">${escaparHTML(nomComprador)}</td>
                 <td style="font-size:0.6rem; white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${escaparHTML(telComprador)} ${btnWa}</td>
                 <td style="font-weight:800; color:${colorEstado}">${escaparHTML(b.estado)}</td>
                 ${botones}
@@ -2174,14 +2265,14 @@ function abrirCarnet(id, modoEdicion = false) {
                     const botonEliminar = esAdmin
                         ? `<button type="button" onclick="eliminarBoletaEntregada(decodeURIComponent('${boletaEvento}'), decodeURIComponent('${usuarioIdEvento}'))" title="Eliminar boleta física" aria-label="Eliminar boleta física ${escaparHTML(b)}" style="background:transparent; border:0; color:#ef4444; padding:0; margin-left:5px; cursor:pointer;"><i class="fa-solid fa-trash"></i></button>`
                         : '';
-                    return `<span style="display:flex; align-items:center; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.2); color:white; font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${escaparHTML(b)}${botonEliminar}</span>`;
+                    return `<span style="display:flex; align-items:center; background:var(--surface-soft); border:1px solid var(--border); color:var(--text-main); font-size:0.55rem; padding:4px 8px; border-radius:6px; font-weight:800;">${escaparHTML(b)}${botonEliminar}</span>`;
                 }).join('')}
             </div>
         </div>`;
     } else {
         boletasHtml = `<div style="margin-top:15px; border-top:1px solid rgba(255,255,255,0.1); padding-top:15px; width:100%; text-align:center;">
             <span class="detail-label" style="display:block; margin-bottom:5px;">BOLETAS FÍSICAS ENTREGADAS (0)</span>
-            <span style="font-size:0.55rem; color:#94a3b8;">Ninguna boleta registrada</span>
+            <span style="font-size:0.55rem; color:var(--text-muted);">Ninguna boleta registrada</span>
         </div>`;
     }
 
@@ -3146,7 +3237,7 @@ function renderBoletasParaPagar() {
     let misPendientes = allBoletas.filter(b => b.vendedor === email && b.estado === 'Pendiente');
     
     if(misPendientes.length === 0) {
-        container.innerHTML = '<p style="font-size:0.65rem; color:#94a3b8; text-align:center;">No tienes boletas pendientes de pago.</p>';
+        container.innerHTML = '<p style="font-size:0.65rem; color:var(--text-muted); text-align:center;">No tienes boletas pendientes de pago.</p>';
         return;
     }
     
@@ -3276,7 +3367,7 @@ function listenPagosPendientes() {
             comprobantesTemp = {};
 
             if(snap.empty) {
-                container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;">No hay pagos pendientes por verificar en este momento.</p>';
+                container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:var(--text-muted);">No hay pagos pendientes por verificar en este momento.</p>';
                 return;
             }
 
@@ -3298,10 +3389,10 @@ function listenPagosPendientes() {
                             <div><span style="color:var(--accent); font-weight:800;">¿Asiste capacitación?:</span> ${escaparHTML(d.capacitacion)}</div>
                         </div>
 
-                        <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                            <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(0,240,255,0.1); border-color:var(--accent); color:var(--accent);" onclick="verFotoComprobante(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-image"></i> VER FOTO</button>
-                            <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(16,185,129,0.2); color:#10b981; border-color:#10b981;" onclick="verificarPago(decodeURIComponent('${pagoIdEvento}'), true)"><i class="fa-solid fa-check"></i> VERIFICADO</button>
-                            <button class="btn-mini" style="flex:1; min-width:80px; background:rgba(239,68,68,0.2); color:#ef4444; border-color:#ef4444;" onclick="verificarPago(decodeURIComponent('${pagoIdEvento}'), false)"><i class="fa-solid fa-xmark"></i> NO</button>
+                        <div class="payment-action-row" style="display:flex; gap:5px; flex-wrap:wrap;">
+                            <button class="btn-mini" style="min-width:80px; background:rgba(0,240,255,0.1); border-color:var(--accent); color:var(--accent);" onclick="verFotoComprobante(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-image"></i> VER FOTO</button>
+                            <button class="btn-mini" style="min-width:80px; background:rgba(16,185,129,0.2); color:#10b981; border-color:#10b981;" onclick="verificarPago(decodeURIComponent('${pagoIdEvento}'), true)"><i class="fa-solid fa-check"></i> VERIFICADO</button>
+                            <button class="btn-mini" style="min-width:80px; background:rgba(239,68,68,0.2); color:#ef4444; border-color:#ef4444;" onclick="verificarPago(decodeURIComponent('${pagoIdEvento}'), false)"><i class="fa-solid fa-xmark"></i> NO</button>
                         </div>
                     </div>
                 `);
@@ -3413,13 +3504,13 @@ function cargarHistorialPagos() {
     if(listenerHistorialPagos) return;
 
     const container = document.getElementById('admin-pagos-historial');
-    container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;"><i class="fa-solid fa-spinner fa-spin"></i> Cargando historial...</p>';
+    container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:var(--text-muted);"><i class="fa-solid fa-spinner fa-spin"></i> Cargando historial...</p>';
     
     listenerHistorialPagos = db.collection("solicitudes_pago")
         .where("estado", "==", "Aprobado")
         .onSnapshot(snap => {
             if(snap.empty) {
-                container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:#94a3b8;">No hay pagos verificados en el historial.</p>';
+                container.innerHTML = '<p style="text-align:center; font-size:0.65rem; color:var(--text-muted);">No hay pagos verificados en el historial.</p>';
                 return;
             }
             
@@ -3440,7 +3531,7 @@ function cargarHistorialPagos() {
                 const fechaStr = fechaHistorial ? fechaHistorial.toLocaleString() : '---';
                 const pagoIdEvento = codificarDatoEvento(d.id);
                 const botonEliminar = esAdmin
-                    ? `<button class="btn-mini" style="flex:1; justify-content:center; background:rgba(239,68,68,0.1); border-color:#ef4444; color:#ef4444;" onclick="borrarPagoHistorial(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-trash"></i></button>`
+                    ? `<button class="btn-mini" style="justify-content:center; background:rgba(239,68,68,0.1); border-color:#ef4444; color:#ef4444;" onclick="borrarPagoHistorial(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-trash"></i></button>`
                     : '';
 
                 tarjetas.push(`
@@ -3458,8 +3549,8 @@ function cargarHistorialPagos() {
                             <div><span style="color:var(--accent); font-weight:800;">¿Asiste capacitación?:</span> ${escaparHTML(d.capacitacion)}</div>
                         </div>
                         
-                        <div style="display: flex; gap: 5px;">
-                            <button class="btn-mini" style="flex:3; justify-content:center; background:rgba(0,240,255,0.1); border-color:var(--accent); color:var(--accent);" onclick="verFotoComprobante(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-image"></i> VER FOTO</button>
+                        <div class="payment-action-row" style="display: flex; gap: 5px; flex-wrap:wrap;">
+                            <button class="btn-mini" style="justify-content:center; background:rgba(0,240,255,0.1); border-color:var(--accent); color:var(--accent);" onclick="verFotoComprobante(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-image"></i> VER FOTO</button>
                             ${botonEliminar}
                         </div>
                     </div>
