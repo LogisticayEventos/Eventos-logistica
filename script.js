@@ -132,6 +132,26 @@ window.addEventListener("online", reactivarSincronizacionFirestore, { passive: t
 const ADMIN_EMAIL = "franboy1221@gmail.com";
 const EQUIPOS_POR_DEFECTO = Object.freeze(["Verde", "Naranja", "Azul"]);
 const EQUIPOS_RETIRADOS = new Set(["morado", "rojo"]);
+const COLORES_EQUIPO_VISUALES = Object.freeze({
+    amarillo: "#eab308",
+    azul: "#2563eb",
+    blanco: "#e2e8f0",
+    cafe: "#92400e",
+    celeste: "#0ea5e9",
+    cian: "#06b6d4",
+    dorado: "#d97706",
+    gris: "#64748b",
+    magenta: "#db2777",
+    morado: "#7c3aed",
+    naranja: "#f97316",
+    negro: "#111827",
+    plateado: "#94a3b8",
+    rojo: "#dc2626",
+    rosado: "#ec4899",
+    turquesa: "#0d9488",
+    verde: "#16a34a",
+    violeta: "#8b5cf6"
+});
 const CONFIGURACION_PAGOS_POR_DEFECTO = Object.freeze({
     llave: "3114918913",
     titular: "Euripides Cuervo",
@@ -139,9 +159,7 @@ const CONFIGURACION_PAGOS_POR_DEFECTO = Object.freeze({
     contactos: Object.freeze({
         verde: Object.freeze({ nombre: "Fran Santamaria", numero: "3224343263" }),
         azul: Object.freeze({ nombre: "Nicky", numero: "3114918913" }),
-        naranja: Object.freeze({ nombre: "Steven Romero", numero: "3026334657" }),
-        rojo: Object.freeze({ nombre: "Kateryn Reyes", numero: "3115568742" }),
-        morado: Object.freeze({ nombre: "", numero: "" })
+        naranja: Object.freeze({ nombre: "Steven Romero", numero: "3026334657" })
     }),
     qr: ""
 });
@@ -419,6 +437,8 @@ function obtenerUrlHttpSegura(valor) {
 
 function obtenerColorSeguro(valor, respaldo = "#64748b") {
     const color = String(valor ?? "").trim();
+    const colorPredefinido = COLORES_EQUIPO_VISUALES[normalizarClaveColor(color)];
+    if(colorPredefinido) return colorPredefinido;
     return window.CSS && window.CSS.supports("color", color) ? color : respaldo;
 }
 
@@ -695,6 +715,303 @@ async function depurarEquiposRetirados() {
     }
 }
 
+function normalizarNombreEquipo(valor) {
+    const nombre = String(valor || "").replace(/\s+/g, " ").trim();
+    if(!nombre) return "";
+    return nombre.charAt(0).toLocaleUpperCase("es-CO") + nombre.slice(1);
+}
+
+function validarNombreEquipo(valor, equipoOriginal = "") {
+    const nombre = normalizarNombreEquipo(valor);
+    const clave = normalizarClaveColor(nombre);
+    const claveOriginal = normalizarClaveColor(equipoOriginal);
+
+    if(nombre.length < 3 || nombre.length > 30) {
+        notify("⚠️ El nombre del equipo debe tener entre 3 y 30 caracteres");
+        return "";
+    }
+    if(clave === "todos") {
+        notify('⚠️ "Todos" está reservado para los filtros');
+        return "";
+    }
+    if(esEquipoRetirado(nombre)) {
+        notify("⚠️ Ese color fue retirado previamente de los equipos");
+        return "";
+    }
+    if(listadoEquipos.some(equipo => {
+        const claveEquipo = normalizarClaveColor(equipo);
+        return claveEquipo === clave && claveEquipo !== claveOriginal;
+    })) {
+        notify("⚠️ Ya existe un equipo con ese nombre");
+        return "";
+    }
+
+    return nombre;
+}
+
+function obtenerContactosConClaveActualizada(contactosOriginales, equipoOriginal, equipoNuevo = "") {
+    const claveOriginal = normalizarClaveColor(equipoOriginal);
+    const claveNueva = normalizarClaveColor(equipoNuevo);
+    const contactos = {};
+    let contactoAnterior = null;
+
+    Object.entries(contactosOriginales || {}).forEach(([clave, contacto]) => {
+        if(normalizarClaveColor(clave) === claveOriginal) contactoAnterior = contacto;
+        else contactos[normalizarClaveColor(clave)] = contacto;
+    });
+
+    if(claveNueva && contactoAnterior) contactos[claveNueva] = contactoAnterior;
+    return contactos;
+}
+
+async function ejecutarOperacionesEquiposEnLotes(operaciones) {
+    for(let inicio = 0; inicio < operaciones.length; inicio += 400) {
+        const batch = db.batch();
+        operaciones.slice(inicio, inicio + 400).forEach(operacion => {
+            if(operacion.tipo === "update") batch.update(operacion.referencia, operacion.datos);
+            else batch.set(operacion.referencia, operacion.datos, { merge: operacion.merge !== false });
+        });
+        await batch.commit();
+    }
+}
+
+function renderAdministradorEquipos() {
+    const contenedor = document.getElementById("admin-team-editor-list");
+    if(!contenedor) return;
+
+    contenedor.replaceChildren();
+    if(!esAdministradorActual()) return;
+
+    if(!listadoEquipos.length) {
+        const vacio = document.createElement("p");
+        vacio.className = "admin-team-list-empty";
+        vacio.textContent = "No hay equipos configurados.";
+        contenedor.appendChild(vacio);
+        return;
+    }
+
+    listadoEquipos.forEach(equipo => {
+        const fila = document.createElement("div");
+        fila.className = "admin-team-editor-row";
+
+        const muestra = document.createElement("span");
+        muestra.className = "admin-team-color-swatch";
+        muestra.style.background = obtenerColorSeguro(equipo);
+        muestra.setAttribute("aria-hidden", "true");
+
+        const input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = 30;
+        input.value = equipo;
+        input.setAttribute("aria-label", `Nombre del equipo ${equipo}`);
+
+        const acciones = document.createElement("div");
+        acciones.className = "admin-team-row-actions";
+
+        const guardar = document.createElement("button");
+        guardar.type = "button";
+        guardar.className = "btn-mini admin-team-save-button";
+        guardar.innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>Guardar</span>';
+        guardar.setAttribute("aria-label", `Guardar cambios del equipo ${equipo}`);
+        guardar.addEventListener("click", () => renombrarEquipo(equipo, input.value));
+
+        const eliminar = document.createElement("button");
+        eliminar.type = "button";
+        eliminar.className = "btn-mini btn-delete admin-team-delete-button";
+        eliminar.innerHTML = '<i class="fa-solid fa-trash-can"></i><span>Eliminar</span>';
+        eliminar.setAttribute("aria-label", `Eliminar el equipo ${equipo}`);
+        eliminar.disabled = listadoEquipos.length <= 1;
+        if(eliminar.disabled) eliminar.title = "Debe existir al menos un equipo";
+        eliminar.addEventListener("click", () => eliminarEquipo(equipo));
+
+        input.addEventListener("keydown", evento => {
+            if(evento.key !== "Enter") return;
+            evento.preventDefault();
+            guardar.click();
+        });
+
+        acciones.append(guardar, eliminar);
+        fila.append(muestra, input, acciones);
+        contenedor.appendChild(fila);
+    });
+}
+
+async function agregarEquipo(evento) {
+    evento?.preventDefault();
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede gestionar los equipos");
+
+    const input = document.getElementById("admin-team-new-name");
+    const nombre = validarNombreEquipo(input?.value || "");
+    if(!nombre) return;
+
+    const liberarBoton = bloquearBotonActual("AGREGANDO...");
+    try {
+        await db.collection("configuracion").doc("equipos").set({
+            lista: [...listadoEquipos, nombre],
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+        if(input) input.value = "";
+        notify(`✅ Equipo ${nombre} agregado`);
+    } catch(error) {
+        manejarError(error, "No se pudo agregar el equipo");
+    } finally {
+        liberarBoton();
+    }
+}
+
+async function renombrarEquipo(equipoOriginal, valorNuevo) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede gestionar los equipos");
+
+    const claveOriginal = normalizarClaveColor(equipoOriginal);
+    const indice = listadoEquipos.findIndex(equipo => normalizarClaveColor(equipo) === claveOriginal);
+    if(indice < 0) return notify("⚠️ Ese equipo ya no está disponible");
+
+    const nombreNuevo = validarNombreEquipo(valorNuevo, equipoOriginal);
+    if(!nombreNuevo) return;
+    if(nombreNuevo === listadoEquipos[indice]) return notify("ℹ️ El nombre del equipo no cambió");
+    if(!confirm(`¿Cambiar el equipo "${listadoEquipos[indice]}" por "${nombreNuevo}"? También se actualizarán sus registros asociados.`)) return;
+
+    const liberarBoton = bloquearBotonActual("GUARDANDO...");
+    try {
+        const [usuariosSnapshot, boletasSnapshot, solicitudesSnapshot, comunicadosSnapshot, pagosSnapshot] = await Promise.all([
+            db.collection("usuarios").get(),
+            db.collection("boletas").get(),
+            db.collection("solicitudes_pago").get(),
+            db.collection("comunicados").get(),
+            db.collection("configuracion").doc("pagos_lista").get()
+        ]);
+
+        const usuariosAfectados = usuariosSnapshot.docs.filter(documento => normalizarClaveColor(documento.data().color) === claveOriginal);
+        const idsUsuarios = new Set(usuariosAfectados.map(documento => documento.id));
+        const boletasAfectadas = boletasSnapshot.docs.filter(documento => {
+            const datos = documento.data();
+            return idsUsuarios.has(datos.vendedor) || normalizarClaveColor(datos.equipo) === claveOriginal;
+        });
+        const operaciones = [];
+
+        usuariosAfectados.forEach(documento => {
+            operaciones.push({ tipo: "update", referencia: documento.ref, datos: { color: nombreNuevo } });
+        });
+
+        solicitudesSnapshot.docs.forEach(documento => {
+            if(normalizarClaveColor(documento.data().equipo) === claveOriginal) {
+                operaciones.push({ tipo: "update", referencia: documento.ref, datos: { equipo: nombreNuevo } });
+            }
+        });
+
+        comunicadosSnapshot.docs.forEach(documento => {
+            const destinatarios = Array.isArray(documento.data().destinatarios) ? documento.data().destinatarios : [];
+            let cambio = false;
+            const actualizados = destinatarios.map(destinatario => {
+                if(normalizarClaveColor(destinatario) !== claveOriginal) return destinatario;
+                cambio = true;
+                return nombreNuevo;
+            });
+            if(cambio) operaciones.push({ tipo: "update", referencia: documento.ref, datos: { destinatarios: actualizados } });
+        });
+
+        for(const documento of boletasAfectadas) {
+            const datos = documento.data();
+            if(Object.prototype.hasOwnProperty.call(datos, "equipo")) {
+                operaciones.push({ tipo: "update", referencia: documento.ref, datos: { equipo: nombreNuevo } });
+            }
+
+            const datosConsulta = crearDatosConsultaBoleta({ ...datos, equipo: nombreNuevo }, documento.id);
+            if(!datosConsulta) continue;
+            const referenciaConsulta = await obtenerReferenciaConsultaBoleta(datosConsulta.n, datosConsulta.whatsapp);
+            operaciones.push({ tipo: "set", referencia: referenciaConsulta, datos: datosConsulta, merge: false });
+        }
+
+        const listaActualizada = [...listadoEquipos];
+        listaActualizada[indice] = nombreNuevo;
+        const contactosBase = normalizarConfiguracionPagosLista(pagosSnapshot.exists ? pagosSnapshot.data() : {}).contactos;
+        const contactosActualizados = obtenerContactosConClaveActualizada(contactosBase, equipoOriginal, nombreNuevo);
+
+        operaciones.push(
+            {
+                tipo: "set",
+                referencia: db.collection("configuracion").doc("pagos_lista"),
+                datos: { contactos: contactosActualizados, actualizado: fechaServidor(), actualizadoPor: auth.currentUser.email }
+            },
+            {
+                tipo: "set",
+                referencia: db.collection("configuracion").doc("contactos_ayuda"),
+                datos: { contactos: contactosActualizados, actualizado: fechaServidor(), actualizadoPor: auth.currentUser.email }
+            },
+            {
+                tipo: "set",
+                referencia: db.collection("configuracion").doc("equipos"),
+                datos: { lista: listaActualizada, actualizado: fechaServidor(), actualizadoPor: auth.currentUser.email }
+            }
+        );
+
+        await ejecutarOperacionesEquiposEnLotes(operaciones);
+        notify(`✅ Equipo actualizado: ${equipoOriginal} → ${nombreNuevo}`);
+    } catch(error) {
+        manejarError(error, "No se pudo editar el equipo");
+    } finally {
+        liberarBoton();
+    }
+}
+
+async function eliminarEquipo(equipo) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede gestionar los equipos");
+    if(listadoEquipos.length <= 1) return notify("⚠️ Debe existir al menos un equipo");
+
+    const clave = normalizarClaveColor(equipo);
+    if(!listadoEquipos.some(actual => normalizarClaveColor(actual) === clave)) {
+        return notify("⚠️ Ese equipo ya no está disponible");
+    }
+    if(!confirm(`¿Eliminar el equipo "${equipo}"?`)) return;
+
+    const liberarBoton = bloquearBotonActual("REVISANDO...");
+    try {
+        const [usuariosSnapshot, boletasSnapshot, pagosSnapshot] = await Promise.all([
+            db.collection("usuarios").get(),
+            db.collection("boletas").get(),
+            db.collection("configuracion").doc("pagos_lista").get()
+        ]);
+        const usuariosAsignados = usuariosSnapshot.docs.filter(documento => normalizarClaveColor(documento.data().color) === clave);
+        const idsUsuarios = new Set(usuariosAsignados.map(documento => documento.id));
+        const boletasAsignadas = boletasSnapshot.docs.filter(documento => {
+            const datos = documento.data();
+            return idsUsuarios.has(datos.vendedor) || normalizarClaveColor(datos.equipo) === clave;
+        });
+
+        if(usuariosAsignados.length || boletasAsignadas.length) {
+            notify(`⚠️ No se puede eliminar: tiene ${usuariosAsignados.length} usuario(s) y ${boletasAsignadas.length} boleta(s) asociadas. Reasigna primero el personal.`);
+            return;
+        }
+
+        const listaActualizada = listadoEquipos.filter(actual => normalizarClaveColor(actual) !== clave);
+        const contactosBase = normalizarConfiguracionPagosLista(pagosSnapshot.exists ? pagosSnapshot.data() : {}).contactos;
+        const contactosActualizados = obtenerContactosConClaveActualizada(contactosBase, equipo);
+        const batch = db.batch();
+        batch.set(db.collection("configuracion").doc("equipos"), {
+            lista: listaActualizada,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+        batch.set(db.collection("configuracion").doc("pagos_lista"), {
+            contactos: contactosActualizados,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+        batch.set(db.collection("configuracion").doc("contactos_ayuda"), {
+            contactos: contactosActualizados,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+        await batch.commit();
+        notify(`🗑️ Equipo ${equipo} eliminado`);
+    } catch(error) {
+        manejarError(error, "No se pudo eliminar el equipo");
+    } finally {
+        liberarBoton();
+    }
+}
+
 function actualizarDesplegablesEquipos() {
     const selects = document.querySelectorAll('.dynamic-colors');
     selects.forEach(sel => {
@@ -708,7 +1025,8 @@ function actualizarDesplegablesEquipos() {
             const colSegura = escaparHTML(col);
             sel.innerHTML += `<option value="${colSegura}">${colSegura}</option>`;
         });
-        if(currentVal) sel.value = currentVal;
+        if(currentVal && Array.from(sel.options).some(opcion => opcion.value === currentVal)) sel.value = currentVal;
+        else if(isFilter) sel.value = "Todos";
     });
     const container = document.getElementById('com-destinatarios-list');
     if(container) {
@@ -719,7 +1037,10 @@ function actualizarDesplegablesEquipos() {
         });
     }
 
-    if(esAdministradorActual()) renderEditorContactosPago();
+    if(esAdministradorActual()) {
+        renderEditorContactosPago();
+        renderAdministradorEquipos();
+    }
 }
 
 function listenConfiguracionPagosLista() {
@@ -745,10 +1066,6 @@ function obtenerColoresEditorPagos() {
         const etiqueta = String(color || "").trim();
         const clave = normalizarClaveColor(etiqueta);
         if(clave) colores.set(clave, etiqueta);
-    });
-
-    Object.keys(configuracionPagoLista.contactos).forEach(clave => {
-        if(!esEquipoRetirado(clave) && !colores.has(clave)) colores.set(clave, clave.charAt(0).toUpperCase() + clave.slice(1));
     });
 
     return [...colores.entries()];
@@ -1148,6 +1465,7 @@ function loadUser() {
         document.getElementById('admin-payment-settings').style.display = esAdmin ? 'block' : 'none';
         if(esAdmin) {
             cargarFormularioConfiguracionPagos();
+            renderAdministradorEquipos();
             depurarEquiposRetirados();
         }
 

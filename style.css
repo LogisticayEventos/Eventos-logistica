@@ -18,6 +18,9 @@
     --success: #10b981;
     --warning: #f59e0b;
     --danger: #ef4444;
+    --success-text: #34d399;
+    --warning-text: #fbbf24;
+    --danger-text: #f87171;
     --radius-xl: 28px;
     --radius-lg: 20px;
     --radius-md: 14px;
@@ -38,8 +41,8 @@ html[data-theme="dark"] {
 html[data-theme="light"] {
     --primary: #f4f8fc;
     --primary-soft: #e9f1f7;
-    --accent: #008da1;
-    --accent-strong: #036c7b;
+    --accent: #036c7b;
+    --accent-strong: #075b69;
     --accent-deep: #0369a1;
     --accent-blue: #2563eb;
     --accent-glow: rgba(2, 132, 199, 0.2);
@@ -52,6 +55,9 @@ html[data-theme="light"] {
     --text-main: #0f172a;
     --text-soft: #334155;
     --text-muted: #64748b;
+    --success-text: #047857;
+    --warning-text: #a16207;
+    --danger-text: #b91c1c;
     --shadow-main: 0 30px 80px rgba(15, 23, 42, 0.16), 0 0 55px rgba(8, 145, 178, 0.07);
     --shadow-card: 0 16px 38px rgba(15, 23, 42, 0.1);
     --bg-gradient:
@@ -1850,6 +1856,133 @@ tbody tr:hover td {
     font-size: 0.52rem;
 }
 
+.admin-team-manager-card {
+    border-color: rgba(14, 165, 233, 0.34);
+    background:
+        radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.09), transparent 32%),
+        linear-gradient(150deg, rgba(20, 35, 58, 0.76), rgba(4, 10, 19, 0.62));
+}
+
+.admin-team-manager-description {
+    max-width: 700px;
+    margin: -4px auto 16px;
+    color: var(--text-muted);
+    font-size: 0.55rem;
+    line-height: 1.55;
+    text-align: center;
+}
+
+.admin-team-add-form {
+    width: min(100%, 620px);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 10px;
+}
+
+.admin-team-add-field {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.admin-team-add-field > span,
+.admin-team-list-heading > span {
+    color: var(--accent-strong);
+    font-size: 0.49rem;
+    font-weight: 850;
+    letter-spacing: 0.045em;
+    text-transform: uppercase;
+}
+
+.admin-team-add-field input {
+    width: 100%;
+}
+
+.admin-team-add-button {
+    width: auto;
+    min-width: max-content;
+    justify-self: center;
+    white-space: nowrap;
+}
+
+.admin-team-list-heading {
+    margin: 18px auto 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 5px 9px;
+    text-align: center;
+}
+
+.admin-team-list-heading small {
+    color: var(--text-muted);
+    font-size: 0.45rem;
+}
+
+.admin-team-editor-list {
+    width: min(100%, 700px);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.admin-team-editor-row {
+    padding: 9px;
+    display: grid;
+    grid-template-columns: 18px minmax(140px, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    border: 1px solid rgba(255, 255, 255, 0.065);
+    border-radius: 12px;
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.admin-team-color-swatch {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255, 255, 255, 0.68);
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.32), 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.admin-team-editor-row input {
+    min-width: 0;
+    width: 100%;
+}
+
+.admin-team-row-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+}
+
+.admin-team-save-button,
+.admin-team-delete-button {
+    width: auto;
+    min-width: 96px;
+    padding-inline: 13px;
+    white-space: nowrap;
+}
+
+.admin-team-save-button {
+    border-color: rgba(14, 165, 233, 0.38);
+    background: rgba(14, 165, 233, 0.1);
+}
+
+.admin-team-list-empty {
+    margin: 0;
+    padding: 14px;
+    color: var(--text-muted);
+    font-size: 0.55rem;
+    text-align: center;
+}
+
 .admin-payment-settings-card {
     border-color: rgba(16, 185, 129, 0.36);
     background:
@@ -2976,6 +3109,22 @@ html[data-theme="light"] .admin-payment-settings-card {
         linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(239, 247, 251, 0.84));
 }
 
+html[data-theme="light"] .admin-team-manager-card {
+    background:
+        radial-gradient(circle at 0% 0%, rgba(14, 165, 233, 0.11), transparent 32%),
+        linear-gradient(150deg, rgba(255, 255, 255, 0.92), rgba(239, 247, 251, 0.84));
+}
+
+html[data-theme="light"] .admin-team-editor-row {
+    border-color: rgba(15, 23, 42, 0.09);
+    background: rgba(15, 23, 42, 0.035);
+}
+
+html[data-theme="light"] .admin-team-color-swatch {
+    border-color: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2), 0 4px 12px rgba(15, 23, 42, 0.12);
+}
+
 html[data-theme="light"] .admin-payment-qr-area {
     background: rgba(8, 145, 178, 0.035);
 }
@@ -3173,6 +3322,28 @@ html.app-native .toast {
 
     .grid-admin {
         grid-template-columns: 1fr;
+    }
+
+    .admin-team-add-form {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-team-add-button {
+        justify-self: center;
+    }
+
+    .admin-team-editor-row {
+        grid-template-columns: 18px minmax(0, 1fr);
+    }
+
+    .admin-team-row-actions {
+        grid-column: 1 / -1;
+        flex-wrap: wrap;
+    }
+
+    .admin-team-save-button,
+    .admin-team-delete-button {
+        min-width: 112px;
     }
 
     .admin-card.full-width {
@@ -3412,4 +3583,201 @@ html.app-native .toast {
         animation-iteration-count: 1 !important;
         transition-duration: 0.01ms !important;
     }
+}
+
+/* Botones compactos: ocupan solamente el ancho que necesita su contenido. */
+.btn-primary,
+.btn-mini,
+.btn-excel,
+.btn-logout,
+.btn-status,
+.btn-flotante-pago,
+.floating-publish-btn,
+.floating-cancel-btn,
+.floating-list-actions button,
+.user-profile-cancel-button {
+    width: fit-content !important;
+    max-width: 100%;
+    flex: 0 0 auto !important;
+    white-space: normal;
+}
+
+.btn-primary,
+.btn-excel,
+.btn-logout,
+.btn-flotante-pago,
+.admin-payment-save,
+#admin-buyer-sync-button,
+.floating-publish-btn,
+.user-profile-edit-button {
+    margin-right: auto !important;
+    margin-left: auto !important;
+    align-self: center;
+    justify-self: center;
+}
+
+.auth-access-button {
+    width: min(100%, 320px);
+    min-width: 0;
+    margin-right: auto;
+    margin-left: auto;
+}
+
+.admin-payment-save,
+#admin-buyer-sync-button,
+.user-profile-edit-button {
+    width: fit-content !important;
+}
+
+.admin-collapsible-body > .btn-mini,
+.admin-collapsible-body > .btn-excel,
+#admin-pagos-historial-wrapper > .btn-mini,
+.admin-payment-qr-preview .btn-mini {
+    display: flex;
+    margin-right: auto !important;
+    margin-left: auto !important;
+}
+
+.user-profile-edit-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+}
+
+.user-profile-save-button,
+.user-profile-cancel-button {
+    width: fit-content !important;
+    margin: 0 !important;
+}
+
+.floating-publish-btn {
+    padding-right: 24px;
+    padding-left: 24px;
+}
+
+.floating-list-actions {
+    justify-content: center;
+}
+
+.payment-action-row {
+    align-items: center;
+    justify-content: center;
+}
+
+.list-footer-actions .total-count-display,
+.list-footer-actions .btn-flotante-pago {
+    width: fit-content !important;
+}
+
+@media (max-width: 480px) {
+    .inline-action-row .btn-mini {
+        width: fit-content !important;
+        flex: 0 0 auto !important;
+    }
+
+    .list-footer-actions {
+        align-items: center;
+    }
+}
+
+/* Contraste completo del tema claro, incluyendo textos e iconos secundarios. */
+html[data-theme="light"] .auth-access-button > i,
+html[data-theme="light"] .buyer-lookup-heading,
+html[data-theme="light"] .buyer-ticket-help,
+html[data-theme="light"] .lista-payment-title,
+html[data-theme="light"] .admin-payment-field > span,
+html[data-theme="light"] .admin-payment-subheading,
+html[data-theme="light"] #admin-buyer-sync-button {
+    color: #047857;
+}
+
+html[data-theme="light"] .buyer-ticket-help {
+    background: rgba(4, 120, 87, 0.08);
+    border-color: rgba(4, 120, 87, 0.3);
+}
+
+html[data-theme="light"] .buyer-ticket-help small {
+    color: #166534;
+}
+
+html[data-theme="light"] .floating-field > span,
+html[data-theme="light"] .floating-preview-label,
+html[data-theme="light"] .floating-list-expiry,
+html[data-theme="light"] .floating-list-empty,
+html[data-theme="light"] .floating-list-empty i,
+html[data-theme="light"] .floating-input-unit b,
+html[data-theme="light"] .admin-collapsible-action,
+html[data-theme="light"] .card-brand-footer,
+html[data-theme="light"] .com-footer,
+html[data-theme="light"] .buyer-lookup-loading,
+html[data-theme="light"] .buyer-lookup-summary,
+html[data-theme="light"] .buyer-lookup-security-note {
+    color: var(--text-muted);
+}
+
+html[data-theme="light"] .floating-list-status,
+html[data-theme="light"] .floating-admin-counter {
+    color: #047857;
+}
+
+html[data-theme="light"] .floating-admin-counter strong,
+html[data-theme="light"] .floating-list-card-top strong {
+    color: var(--text-main);
+}
+
+html[data-theme="light"] .admin-payment-contact-row > strong,
+html[data-theme="light"] .admin-payment-qr-copy strong,
+html[data-theme="light"] .floating-list-empty p,
+html[data-theme="light"] .floating-list-message,
+html[data-theme="light"] .user-profile-edit-heading h3 {
+    color: var(--text-main);
+}
+
+html[data-theme="light"] .admin-payment-contact-row i,
+html[data-theme="light"] .admin-payment-qr-copy i,
+html[data-theme="light"] .floating-list-signal,
+html[data-theme="light"] .floating-preview-label i,
+html[data-theme="light"] .admin-collapsible-icon,
+html[data-theme="light"] .nav-item i {
+    color: var(--accent-strong);
+}
+
+html[data-theme="light"] .team-mini-badge,
+html[data-theme="light"] .badge-rango,
+html[data-theme="light"] .badge-rango-perfil,
+html[data-theme="light"] .com-tag {
+    color: var(--text-main);
+}
+
+html[data-theme="light"] .user-profile-cancel-button {
+    border-color: rgba(71, 85, 105, 0.28);
+    background: rgba(71, 85, 105, 0.08);
+    color: #334155;
+}
+
+html[data-theme="light"] .btn-mini:not(.btn-delete):not(.btn-add):not(.btn-approve):not(.btn-pending),
+html[data-theme="light"] .btn-excel,
+html[data-theme="light"] .theme-toggle,
+html[data-theme="light"] .auth-access-back {
+    color: var(--accent-strong);
+}
+
+html[data-theme="light"] .close-modal,
+html[data-theme="light"] .del-com-btn,
+html[data-theme="light"] .btn-delete,
+html[data-theme="light"] .floating-action-delete {
+    color: #b91c1c;
+}
+
+html[data-theme="light"] .btn-add,
+html[data-theme="light"] .btn-approve,
+html[data-theme="light"] .floating-action-edit {
+    color: #047857;
+}
+
+html[data-theme="light"] #resultado-busqueda-boleta,
+html[data-theme="light"] #gestion-boletas-render,
+html[data-theme="light"] #carnet-detalle-render {
+    color: var(--text-main);
 }
