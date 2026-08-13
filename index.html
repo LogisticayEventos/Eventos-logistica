@@ -7,8 +7,6 @@
     <meta id="theme-color-meta" name="theme-color" content="#05080f">
     <title>Logistica & Eventos | Control</title>
     <script>
-        document.documentElement.classList.add("app-native");
-
         (() => {
             const temasValidos = ["system", "dark", "light"];
             let preferencia = "system";
@@ -30,17 +28,13 @@
             document.getElementById("theme-color-meta").content = temaResuelto === "dark" ? "#05080f" : "#f4f8fc";
         })();
     </script>
-    <script defer src="vendor/firebase/firebase-app.js"></script>
-    <script defer src="vendor/firebase/firebase-auth.js"></script>
-    <script defer src="vendor/firebase/firebase-firestore.js"></script>
-    <script defer src="vendor/xlsx/xlsx.full.min.js"></script>
-    <link rel="preload" href="vendor/plus-jakarta-sans/files/plus-jakarta-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="vendor/plus-jakarta-sans/files/plus-jakarta-sans-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+    <script defer src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+    <script defer src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="vendor/plus-jakarta-sans/latin-400.css">
-    <link rel="stylesheet" href="vendor/plus-jakarta-sans/latin-700.css">
-    <link rel="stylesheet" href="vendor/plus-jakarta-sans/latin-800.css">
-    <link rel="stylesheet" href="vendor/fontawesome/css/all.min.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div id="toast-container"></div>
