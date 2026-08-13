@@ -1457,6 +1457,32 @@ tbody tr:hover td {
     box-shadow: 0 0 8px rgba(255, 255, 255, 0.35);
 }
 
+.ticket-list-contact {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+.ticket-list-whatsapp {
+    width: 25px;
+    height: 25px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(37, 211, 102, 0.28);
+    border-radius: 50%;
+    background: rgba(37, 211, 102, 0.1);
+    color: #25d366;
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.ticket-list-whatsapp:active {
+    transform: scale(0.94);
+}
+
 .badge-rango {
     padding: 5px 8px;
     border-radius: 999px;

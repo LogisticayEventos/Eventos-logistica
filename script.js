@@ -1721,10 +1721,84 @@ function renderBoletas() {
     if(!currentUserData) return;
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador");
+    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General"), esCoordinador = (r === "Coordinador"), esRecreador = (r === "Recreador");
     
     const filterCol = document.getElementById('filter-color').value;
     const filterEst = document.getElementById('filter-estado').value;
+    const encabezado = document.getElementById('lista-boletas-head-row');
+
+    if(esRecreador) {
+        if(encabezado) {
+            encabezado.innerHTML = `
+                <th>N° Boleta</th>
+                <th>Comprador</th>
+                <th>WhatsApp</th>
+                <th>Estado</th>
+                <th>Fecha</th>`;
+        }
+
+        const boletasPropias = allBoletas.filter(boleta => boleta.vendedor === email);
+        const boletasMostradas = boletasPropias.filter(boleta => {
+            if(filterEst === "Activa") return boleta.estado === "Activa";
+            if(filterEst === "Pendiente") return boleta.estado !== "Activa";
+            return true;
+        });
+        const numerosVendidos = new Set(
+            boletasPropias
+                .map(boleta => String(boleta.n || "").trim())
+                .filter(Boolean)
+        );
+
+        let htmlBoletasPropias = "";
+        boletasMostradas.forEach(boleta => {
+            const numero = escaparHTML(boleta.n || "---");
+            const comprador = escaparHTML(boleta.c || boleta.comprador || "---");
+            const whatsappOriginal = String(boleta.t || boleta.whatsapp || "").trim();
+            const whatsapp = escaparHTML(whatsappOriginal || "---");
+            const enlaceWhatsapp = /^\d{10}$/.test(whatsappOriginal)
+                ? `<a href="https://wa.me/57${whatsappOriginal}" target="_blank" rel="noopener noreferrer" class="ticket-list-whatsapp" aria-label="Escribir al comprador por WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>`
+                : "";
+            const activa = boleta.estado === "Activa";
+            const estado = activa ? "Activa" : "Pendiente";
+            const colorEstado = activa ? "var(--success-text)" : "var(--warning-text)";
+            const fecha = convertirFechaFirestore(boleta.creado)?.toLocaleDateString() || "---";
+
+            htmlBoletasPropias += `
+                <tr>
+                    <td style="font-weight:900; color:var(--accent);">${numero}</td>
+                    <td style="font-weight:800; color:var(--text-main);">${comprador}</td>
+                    <td><span class="ticket-list-contact">${whatsapp}${enlaceWhatsapp}</span></td>
+                    <td style="font-weight:900; color:${colorEstado};">${estado}</td>
+                    <td style="font-size:0.55rem;">${escaparHTML(fecha)}</td>
+                </tr>`;
+        });
+
+        if(!htmlBoletasPropias) {
+            const mensaje = boletasPropias.length
+                ? "No tienes boletas con el estado seleccionado."
+                : "Todavía no tienes boletas registradas.";
+            htmlBoletasPropias = `<tr><td colspan="5" style="padding:24px; color:var(--text-muted); font-weight:800;">${mensaje}</td></tr>`;
+        }
+
+        document.getElementById('lista-boletas-body').innerHTML = htmlBoletasPropias;
+        const conteo = document.getElementById('conteo-boletas-total');
+        if(conteo) conteo.innerText = filterEst === "Todos"
+            ? `Total boletas: ${boletasPropias.length}`
+            : `Boletas mostradas: ${boletasMostradas.length} de ${boletasPropias.length}`;
+        actualizarListaEntregadasVisual(numerosVendidos);
+        return;
+    }
+
+    if(encabezado) {
+        encabezado.innerHTML = `
+            <th>N°</th>
+            <th>Equipo</th>
+            <th>Recreador</th>
+            <th>Entregadas</th>
+            <th>Vendidas</th>
+            <th>Fecha</th>
+            <th>Acción</th>`;
+    }
 
     const mapaColor = {}; 
     const mapaEntregadas = {};
