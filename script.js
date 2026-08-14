@@ -2108,6 +2108,7 @@ function buscarDuenioBoleta() {
 }
 
 async function eliminarTodosRegistrosRecreador(nombreRecreador) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar boletas registradas");
     if (!confirm(`¿Estás seguro de eliminar TODOS los registros de boletas para: ${nombreRecreador}?`)) return;
     
     const boletasABorrar = allBoletas.filter(b => b.recreador === nombreRecreador);
@@ -2138,7 +2139,8 @@ async function eliminarTodosRegistrosRecreador(nombreRecreador) {
 function abrirGestionBoletas(nombreRecreador) {
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (r === "Administrador" || r === "Coordinador General");
+    const esAdmin = r === "Administrador";
+    const puedeCambiarEstado = esAdmin || r === "Coordinador General";
     const render = document.getElementById('gestion-boletas-render');
     const nombreTituloSeguro = escaparHTML(String(nombreRecreador).toUpperCase());
     document.getElementById('modal-gestion-boletas').style.display = 'flex';
@@ -2176,17 +2178,20 @@ function abrirGestionBoletas(nombreRecreador) {
         const colorEstado = b.estado === 'Activa' ? 'var(--success-text)' : 'var(--warning-text)';
         const boletaIdEvento = codificarDatoEvento(b.id);
         let botones = "<td>--</td>";
-        if (esAdmin) {
+        if (puedeCambiarEstado) {
             const nuevoEstado = b.estado === 'Activa' ? 'Pendiente' : 'Activa';
             const icon = b.estado === 'Activa' ? '<i class="fa-solid fa-hourglass-half"></i>' : '<i class="fa-solid fa-check-double"></i>';
+            const botonEliminar = esAdmin
+                ? `<button class="btn-status btn-delete" onclick="eliminarBoleta(decodeURIComponent('${boletaIdEvento}')); cerrarModalGestion();" title="Eliminar boleta registrada" aria-label="Eliminar boleta registrada">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>`
+                : '';
             botones = `
                 <td style="display:flex; gap:5px; justify-content:center;">
                     <button class="btn-status" style="background:rgba(255,255,255,0.1); color:var(--text-main); border:1px solid rgba(255,255,255,0.2);" onclick="cambiarEstado(decodeURIComponent('${boletaIdEvento}'), '${nuevoEstado}'); cerrarModalGestion();">
                         ${icon}
                     </button>
-                    <button class="btn-status btn-delete" onclick="eliminarBoleta(decodeURIComponent('${boletaIdEvento}')); cerrarModalGestion();">
-                        <i class="fa-solid fa-trash"></i>
-                    </button>
+                    ${botonEliminar}
                 </td>`;
         }
         
@@ -2358,6 +2363,7 @@ async function inscribirBoleta() {
 }
 
 async function cambiarEstado(id, est) {
+    if(!puedeGestionarPagosActual()) return notify("⛔ Solo el Coordinador General o el Administrador pueden cambiar el estado de una boleta");
     const liberarBoton = bloquearBotonActual("GUARDANDO...");
     try {
         const boletaRef = db.collection("boletas").doc(id);
@@ -2380,6 +2386,7 @@ async function cambiarEstado(id, est) {
 }
 
 async function eliminarBoleta(id) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar boletas registradas");
     if(!confirm("¿Eliminar registro?")) return;
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
     try {
@@ -3812,11 +3819,31 @@ function verFotoComprobante(id) {
     w.document.body.replaceChildren(imagen);
 }
 
+function obtenerVerificadorPago(pago = {}) {
+    const email = String(pago.verificadoPor || "").trim();
+    const usuario = allUsers.find(actual => actual.id === email);
+    const nombrePerfil = usuario ? obtenerNombreCompletoUsuario(usuario, email) : "";
+    const nombre = String(pago.verificadoPorNombre || nombrePerfil || email || "No registrado").trim();
+    const rango = String(
+        pago.verificadoPorRango
+        || usuario?.rango
+        || (email === ADMIN_EMAIL ? "Administrador" : "")
+    ).trim();
+
+    return { nombre, email, rango };
+}
+
 async function verificarPago(solicitudId, aprobado) {
     if(!puedeGestionarPagosActual()) return notify("⛔ No tienes permiso para aprobar pagos");
 
     if(!confirm(aprobado ? '¿Aprobar comprobante y ACTIVAR estas boletas seleccionadas?' : '¿Rechazar este pago? Las boletas seguirán en estado Pendiente.')) return;
     const liberarBoton = bloquearBotonActual("PROCESANDO...");
+    const datosVerificador = {
+        verificadoPor: auth.currentUser.email,
+        verificadoPorNombre: obtenerNombreCompletoUsuario(currentUserData, auth.currentUser.email),
+        verificadoPorRango: obtenerRangoActual(),
+        fechaVerificacion: fechaServidor()
+    };
 
     try {
         if(aprobado) {
@@ -3861,14 +3888,16 @@ async function verificarPago(solicitudId, aprobado) {
 
             batch.update(solicitudRef, {
                 estado: 'Aprobado',
-                verificadoPor: auth.currentUser.email,
-                fechaVerificacion: fechaServidor()
+                ...datosVerificador
             });
 
             await batch.commit();
             if(typeof notify === "function") notify("✅ Pago aprobado y boletas activadas exitosamente");
         } else {
-            await db.collection("solicitudes_pago").doc(solicitudId).update({ estado: 'Rechazado', verificadoPor: auth.currentUser.email, fechaVerificacion: fechaServidor() });
+            await db.collection("solicitudes_pago").doc(solicitudId).update({
+                estado: 'Rechazado',
+                ...datosVerificador
+            });
             if(typeof notify === "function") notify("❌ Pago rechazado");
         }
     } catch (error) {
@@ -3922,6 +3951,12 @@ function cargarHistorialPagos() {
                 const fechaHistorial = convertirFechaFirestore(d.fechaVerificacion || d.creado);
                 const fechaStr = fechaHistorial ? fechaHistorial.toLocaleString() : '---';
                 const pagoIdEvento = codificarDatoEvento(d.id);
+                const verificador = obtenerVerificadorPago(d);
+                const verificadorNombre = escaparHTML(verificador.nombre);
+                const verificadorDetalle = [
+                    verificador.rango,
+                    verificador.email && verificador.email !== verificador.nombre ? verificador.email : ""
+                ].filter(Boolean).join(" · ");
                 const botonEliminar = esAdmin
                     ? `<button class="btn-mini" style="justify-content:center; background:rgba(239,68,68,0.1); border-color:#ef4444; color:#ef4444;" onclick="borrarPagoHistorial(decodeURIComponent('${pagoIdEvento}'))"><i class="fa-solid fa-trash"></i></button>`
                     : '';
@@ -3933,6 +3968,10 @@ function cargarHistorialPagos() {
                             <span style="font-size: 0.45rem; color: #10b981; border: 1px solid #10b981; border-radius: 4px; padding: 3px 5px; font-weight: 800;">VERIFICADO</span>
                         </div>
                         <p style="margin:0 0 5px 0; font-size:0.5rem; color:#94a3b8;"><i class="fa-regular fa-clock"></i> ${fechaStr}</p>
+                        <p style="margin:0 0 8px 0; padding:7px 9px; border:1px solid rgba(16,185,129,0.22); border-radius:7px; background:rgba(16,185,129,0.07); font-size:0.55rem; color:var(--text-soft);">
+                            <i class="fa-solid fa-user-check" style="color:#10b981;"></i>
+                            Validado por: <b style="color:var(--text-main);">${verificadorNombre}</b>${verificadorDetalle ? ` <span style="color:var(--text-muted);">(${escaparHTML(verificadorDetalle)})</span>` : ''}
+                        </p>
                         <p style="margin:0 0 10px 0; font-size:0.65rem;">Boletas: <b style="color:white;">${escaparHTML(bolStr)}</b></p>
                         
                         <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px; margin-bottom: 10px; font-size: 0.6rem; color: #cbd5e1;">
