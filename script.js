@@ -575,10 +575,28 @@ function programarRenderUsuarios() {
     });
 }
 
+function normalizarEmailCuenta(valor = "") {
+    return String(valor || "").trim().toLowerCase();
+}
+
+function normalizarRangoUsuario(valor = "") {
+    const clave = String(valor || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ");
+
+    if(clave === "administrador") return "Administrador";
+    if(clave === "coordinador general") return "Coordinador General";
+    if(clave === "coordinador") return "Coordinador";
+    return "Recreador";
+}
+
 function obtenerRangoActual() {
-    const email = auth.currentUser ? auth.currentUser.email : "";
-    if(email === ADMIN_EMAIL) return "Administrador";
-    return currentUserData?.rango || "Recreador";
+    const email = normalizarEmailCuenta(auth.currentUser?.email);
+    if(email && email === normalizarEmailCuenta(ADMIN_EMAIL)) return "Administrador";
+    return normalizarRangoUsuario(currentUserData?.rango);
 }
 
 function esAdministradorActual() {
@@ -1406,7 +1424,7 @@ function loadUser() {
             });
         }
 
-        let rango = (email === ADMIN_EMAIL) ? "Administrador" : (d.rango || "Recreador");
+        const rango = obtenerRangoActual();
         document.getElementById('p-full-name').innerText = nombreCompleto.toUpperCase();
         document.getElementById('p-rango-view').innerText = rango.toUpperCase();
         document.getElementById('p-initials').innerText = nombre ? nombre[0].toUpperCase() : "S";
@@ -3839,9 +3857,9 @@ async function verificarPago(solicitudId, aprobado) {
     if(!confirm(aprobado ? '¿Aprobar comprobante y ACTIVAR estas boletas seleccionadas?' : '¿Rechazar este pago? Las boletas seguirán en estado Pendiente.')) return;
     const liberarBoton = bloquearBotonActual("PROCESANDO...");
     const datosVerificador = {
-        verificadoPor: auth.currentUser.email,
-        verificadoPorNombre: obtenerNombreCompletoUsuario(currentUserData, auth.currentUser.email),
-        verificadoPorRango: obtenerRangoActual(),
+        // Conserva exactamente los campos ya autorizados por las reglas de Firebase.
+        // El nombre y el rango se resuelven al mostrar el historial usando este correo.
+        verificadoPor: normalizarEmailCuenta(auth.currentUser?.email),
         fechaVerificacion: fechaServidor()
     };
 
