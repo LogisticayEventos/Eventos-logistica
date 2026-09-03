@@ -1,4 +1,4 @@
-const CLAVE_PREFERENCIA_TEMA = "logistica-eventos-tema";
+const CLAVE_PREFERENCIA_TEMA = "logistica-eventos-tema-v2";
 const ORDEN_TEMAS = Object.freeze(["system", "dark", "light"]);
 const INFORMACION_TEMAS = Object.freeze({
     system: Object.freeze({ nombre: "Sistema", icono: "fa-desktop" }),
@@ -131,7 +131,7 @@ document.addEventListener("visibilitychange", reactivarSincronizacionFirestore, 
 window.addEventListener("online", reactivarSincronizacionFirestore, { passive: true });
 const ADMIN_EMAIL = "franboy1221@gmail.com";
 const EQUIPOS_POR_DEFECTO = Object.freeze(["Verde", "Naranja", "Azul"]);
-const EQUIPOS_RETIRADOS = new Set(["morado", "rojo"]);
+const COLOR_EQUIPO_RESPALDO = "#64748b";
 const COLORES_EQUIPO_VISUALES = Object.freeze({
     amarillo: "#eab308",
     azul: "#2563eb",
@@ -210,10 +210,6 @@ function normalizarClaveColor(valor) {
         .toLowerCase();
 }
 
-function esEquipoRetirado(valor) {
-    return EQUIPOS_RETIRADOS.has(normalizarClaveColor(valor));
-}
-
 function normalizarListaEquiposActivos(lista) {
     const equipos = [];
     const claves = new Set();
@@ -221,12 +217,58 @@ function normalizarListaEquiposActivos(lista) {
     (Array.isArray(lista) ? lista : []).forEach(valor => {
         const equipo = String(valor || "").trim();
         const clave = normalizarClaveColor(equipo);
-        if(!equipo || !clave || EQUIPOS_RETIRADOS.has(clave) || claves.has(clave)) return;
+        if(!equipo || !clave || claves.has(clave)) return;
         claves.add(clave);
         equipos.push(equipo);
     });
 
     return equipos.length ? equipos : [...EQUIPOS_POR_DEFECTO];
+}
+
+function normalizarColorHex(valor, respaldo = "") {
+    const color = String(valor || "").trim().toLowerCase();
+    return /^#[0-9a-f]{6}$/.test(color) ? color : respaldo;
+}
+
+function obtenerColorPredeterminadoEquipo(equipo) {
+    return COLORES_EQUIPO_VISUALES[normalizarClaveColor(equipo)] || COLOR_EQUIPO_RESPALDO;
+}
+
+function normalizarPaletaEquipos(paletaRecibida, equipos = listadoEquipos) {
+    const coloresRecibidos = {};
+
+    if(Array.isArray(paletaRecibida)) {
+        paletaRecibida.forEach(item => {
+            const clave = normalizarClaveColor(item?.nombre || item?.equipo);
+            const color = normalizarColorHex(item?.color);
+            if(clave && color) coloresRecibidos[clave] = color;
+        });
+    } else if(paletaRecibida && typeof paletaRecibida === "object") {
+        Object.entries(paletaRecibida).forEach(([equipo, valor]) => {
+            const clave = normalizarClaveColor(equipo);
+            const color = normalizarColorHex(valor);
+            if(clave && color) coloresRecibidos[clave] = color;
+        });
+    }
+
+    const paletaNormalizada = {};
+    equipos.forEach(equipo => {
+        const clave = normalizarClaveColor(equipo);
+        if(clave) paletaNormalizada[clave] = coloresRecibidos[clave] || obtenerColorPredeterminadoEquipo(equipo);
+    });
+    return paletaNormalizada;
+}
+
+function crearPaletaEquipos(equipos = listadoEquipos, colores = coloresEquipos) {
+    return equipos.map(nombre => ({
+        nombre,
+        color: normalizarColorHex(colores[normalizarClaveColor(nombre)], obtenerColorPredeterminadoEquipo(nombre))
+    }));
+}
+
+function obtenerColorVisualEquipo(equipo, respaldo = COLOR_EQUIPO_RESPALDO) {
+    const clave = normalizarClaveColor(equipo);
+    return normalizarColorHex(coloresEquipos[clave], obtenerColorPredeterminadoEquipo(equipo) || respaldo);
 }
 
 function normalizarNumeroBoletaConsulta(valor) {
@@ -534,8 +576,7 @@ let qrPagoPendiente = "";
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
 let listadoEquipos = [];
-let depuracionEquiposCompletada = false;
-let depuracionEquiposEnCurso = false;
+let coloresEquipos = {};
 let sesionIniciada = false;
 let listenersActivos = false;
 let registroEnCurso = false;
@@ -689,48 +730,17 @@ function listenEquipos() {
     if(unsubscribeEquipos) return;
 
     unsubscribeEquipos = db.collection("configuracion").doc("equipos").onSnapshot(doc => {
-        const listaRecibida = doc.exists ? doc.data().lista : EQUIPOS_POR_DEFECTO;
-        if(Array.isArray(listaRecibida) && listaRecibida.some(esEquipoRetirado)) depuracionEquiposCompletada = false;
+        const datos = doc.exists ? doc.data() : {};
+        const listaRecibida = Array.isArray(datos.lista) ? datos.lista : EQUIPOS_POR_DEFECTO;
         listadoEquipos = normalizarListaEquiposActivos(listaRecibida);
+        coloresEquipos = normalizarPaletaEquipos(datos.paleta || datos.colores, listadoEquipos);
         actualizarDesplegablesEquipos();
-        if(esAdministradorActual()) depurarEquiposRetirados();
     }, error => {
         listadoEquipos = [...EQUIPOS_POR_DEFECTO];
+        coloresEquipos = normalizarPaletaEquipos(null, listadoEquipos);
         actualizarDesplegablesEquipos();
         manejarError(error, "No se pudieron cargar los equipos");
     });
-}
-
-async function depurarEquiposRetirados() {
-    if(!esAdministradorActual() || depuracionEquiposCompletada || depuracionEquiposEnCurso) return;
-    depuracionEquiposEnCurso = true;
-
-    try {
-        const referencia = db.collection("configuracion").doc("equipos");
-        const documento = await referencia.get();
-        const tieneListaConfigurada = documento.exists && Array.isArray(documento.data().lista);
-        const listaOriginal = tieneListaConfigurada
-            ? documento.data().lista
-            : [...EQUIPOS_POR_DEFECTO];
-        const listaActiva = normalizarListaEquiposActivos(listaOriginal);
-        const requiereCambio = !tieneListaConfigurada
-            || listaOriginal.length !== listaActiva.length
-            || listaOriginal.some((equipo, indice) => String(equipo || "").trim() !== listaActiva[indice]);
-
-        if(requiereCambio) {
-            await referencia.set({
-                lista: listaActiva,
-                actualizado: fechaServidor(),
-                actualizadoPor: auth.currentUser.email
-            }, { merge: true });
-        }
-
-        depuracionEquiposCompletada = true;
-    } catch(error) {
-        console.error("No se pudo actualizar la lista de equipos retirados", error);
-    } finally {
-        depuracionEquiposEnCurso = false;
-    }
 }
 
 function normalizarNombreEquipo(valor) {
@@ -750,10 +760,6 @@ function validarNombreEquipo(valor, equipoOriginal = "") {
     }
     if(clave === "todos") {
         notify('⚠️ "Todos" está reservado para los filtros');
-        return "";
-    }
-    if(esEquipoRetirado(nombre)) {
-        notify("⚠️ Ese color fue retirado previamente de los equipos");
         return "";
     }
     if(listadoEquipos.some(equipo => {
@@ -793,6 +799,28 @@ async function ejecutarOperacionesEquiposEnLotes(operaciones) {
     }
 }
 
+function sugerirColorNuevoEquipo() {
+    const nombre = document.getElementById("admin-team-new-name");
+    const selector = document.getElementById("admin-team-new-color");
+    if(!nombre || !selector || selector.dataset.personalizado === "true") return;
+    selector.value = obtenerColorPredeterminadoEquipo(nombre.value);
+}
+
+function marcarColorNuevoEquipoPersonalizado() {
+    const selector = document.getElementById("admin-team-new-color");
+    if(selector) selector.dataset.personalizado = "true";
+}
+
+function reiniciarFormularioNuevoEquipo() {
+    const nombre = document.getElementById("admin-team-new-name");
+    const selector = document.getElementById("admin-team-new-color");
+    if(nombre) nombre.value = "";
+    if(selector) {
+        selector.value = COLOR_EQUIPO_RESPALDO;
+        delete selector.dataset.personalizado;
+    }
+}
+
 function renderAdministradorEquipos() {
     const contenedor = document.getElementById("admin-team-editor-list");
     if(!contenedor) return;
@@ -812,10 +840,12 @@ function renderAdministradorEquipos() {
         const fila = document.createElement("div");
         fila.className = "admin-team-editor-row";
 
-        const muestra = document.createElement("span");
-        muestra.className = "admin-team-color-swatch";
-        muestra.style.background = obtenerColorSeguro(equipo);
-        muestra.setAttribute("aria-hidden", "true");
+        const selectorColor = document.createElement("input");
+        selectorColor.type = "color";
+        selectorColor.className = "admin-team-color-picker";
+        selectorColor.value = obtenerColorVisualEquipo(equipo);
+        selectorColor.setAttribute("aria-label", `Color visual del equipo ${equipo}`);
+        selectorColor.title = `Cambiar el color del círculo de ${equipo}`;
 
         const input = document.createElement("input");
         input.type = "text";
@@ -831,7 +861,7 @@ function renderAdministradorEquipos() {
         guardar.className = "btn-mini admin-team-save-button";
         guardar.innerHTML = '<i class="fa-solid fa-floppy-disk"></i><span>Guardar</span>';
         guardar.setAttribute("aria-label", `Guardar cambios del equipo ${equipo}`);
-        guardar.addEventListener("click", () => renombrarEquipo(equipo, input.value));
+        guardar.addEventListener("click", () => renombrarEquipo(equipo, input.value, selectorColor.value));
 
         const eliminar = document.createElement("button");
         eliminar.type = "button";
@@ -849,7 +879,7 @@ function renderAdministradorEquipos() {
         });
 
         acciones.append(guardar, eliminar);
-        fila.append(muestra, input, acciones);
+        fila.append(selectorColor, input, acciones);
         contenedor.appendChild(fila);
     });
 }
@@ -859,17 +889,22 @@ async function agregarEquipo(evento) {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede gestionar los equipos");
 
     const input = document.getElementById("admin-team-new-name");
+    const selectorColor = document.getElementById("admin-team-new-color");
     const nombre = validarNombreEquipo(input?.value || "");
     if(!nombre) return;
+    const color = normalizarColorHex(selectorColor?.value, obtenerColorPredeterminadoEquipo(nombre));
+    const listaActualizada = [...listadoEquipos, nombre];
+    const coloresActualizados = { ...coloresEquipos, [normalizarClaveColor(nombre)]: color };
 
     const liberarBoton = bloquearBotonActual("AGREGANDO...");
     try {
         await db.collection("configuracion").doc("equipos").set({
-            lista: [...listadoEquipos, nombre],
+            lista: listaActualizada,
+            paleta: crearPaletaEquipos(listaActualizada, coloresActualizados),
             actualizado: fechaServidor(),
             actualizadoPor: auth.currentUser.email
         }, { merge: true });
-        if(input) input.value = "";
+        reiniciarFormularioNuevoEquipo();
         notify(`✅ Equipo ${nombre} agregado`);
     } catch(error) {
         manejarError(error, "No se pudo agregar el equipo");
@@ -878,7 +913,7 @@ async function agregarEquipo(evento) {
     }
 }
 
-async function renombrarEquipo(equipoOriginal, valorNuevo) {
+async function renombrarEquipo(equipoOriginal, valorNuevo, valorColor) {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede gestionar los equipos");
 
     const claveOriginal = normalizarClaveColor(equipoOriginal);
@@ -887,11 +922,36 @@ async function renombrarEquipo(equipoOriginal, valorNuevo) {
 
     const nombreNuevo = validarNombreEquipo(valorNuevo, equipoOriginal);
     if(!nombreNuevo) return;
-    if(nombreNuevo === listadoEquipos[indice]) return notify("ℹ️ El nombre del equipo no cambió");
-    if(!confirm(`¿Cambiar el equipo "${listadoEquipos[indice]}" por "${nombreNuevo}"? También se actualizarán sus registros asociados.`)) return;
+    const colorAnterior = obtenerColorVisualEquipo(equipoOriginal);
+    const colorNuevo = normalizarColorHex(valorColor, colorAnterior);
+    const cambioNombre = nombreNuevo !== listadoEquipos[indice];
+    const cambioColor = colorNuevo !== colorAnterior;
+    if(!cambioNombre && !cambioColor) return notify("ℹ️ El nombre y el color del equipo no cambiaron");
+
+    const confirmacion = cambioNombre
+        ? `¿Cambiar el equipo "${listadoEquipos[indice]}" por "${nombreNuevo}"? También se actualizarán sus registros asociados y el color de su círculo.`
+        : `¿Cambiar el color del círculo del equipo "${equipoOriginal}"?`;
+    if(!confirm(confirmacion)) return;
 
     const liberarBoton = bloquearBotonActual("GUARDANDO...");
     try {
+        const listaActualizada = [...listadoEquipos];
+        listaActualizada[indice] = nombreNuevo;
+        const coloresActualizados = { ...coloresEquipos };
+        delete coloresActualizados[claveOriginal];
+        coloresActualizados[normalizarClaveColor(nombreNuevo)] = colorNuevo;
+
+        if(!cambioNombre) {
+            await db.collection("configuracion").doc("equipos").set({
+                lista: listaActualizada,
+                paleta: crearPaletaEquipos(listaActualizada, coloresActualizados),
+                actualizado: fechaServidor(),
+                actualizadoPor: auth.currentUser.email
+            }, { merge: true });
+            notify(`✅ Color del equipo ${equipoOriginal} actualizado`);
+            return;
+        }
+
         const [usuariosSnapshot, boletasSnapshot, solicitudesSnapshot, comunicadosSnapshot, pagosSnapshot] = await Promise.all([
             db.collection("usuarios").get(),
             db.collection("boletas").get(),
@@ -941,8 +1001,6 @@ async function renombrarEquipo(equipoOriginal, valorNuevo) {
             operaciones.push({ tipo: "set", referencia: referenciaConsulta, datos: datosConsulta, merge: false });
         }
 
-        const listaActualizada = [...listadoEquipos];
-        listaActualizada[indice] = nombreNuevo;
         const contactosBase = normalizarConfiguracionPagosLista(pagosSnapshot.exists ? pagosSnapshot.data() : {}).contactos;
         const contactosActualizados = obtenerContactosConClaveActualizada(contactosBase, equipoOriginal, nombreNuevo);
 
@@ -960,7 +1018,12 @@ async function renombrarEquipo(equipoOriginal, valorNuevo) {
             {
                 tipo: "set",
                 referencia: db.collection("configuracion").doc("equipos"),
-                datos: { lista: listaActualizada, actualizado: fechaServidor(), actualizadoPor: auth.currentUser.email }
+                datos: {
+                    lista: listaActualizada,
+                    paleta: crearPaletaEquipos(listaActualizada, coloresActualizados),
+                    actualizado: fechaServidor(),
+                    actualizadoPor: auth.currentUser.email
+                }
             }
         );
 
@@ -1003,11 +1066,14 @@ async function eliminarEquipo(equipo) {
         }
 
         const listaActualizada = listadoEquipos.filter(actual => normalizarClaveColor(actual) !== clave);
+        const coloresActualizados = { ...coloresEquipos };
+        delete coloresActualizados[clave];
         const contactosBase = normalizarConfiguracionPagosLista(pagosSnapshot.exists ? pagosSnapshot.data() : {}).contactos;
         const contactosActualizados = obtenerContactosConClaveActualizada(contactosBase, equipo);
         const batch = db.batch();
         batch.set(db.collection("configuracion").doc("equipos"), {
             lista: listaActualizada,
+            paleta: crearPaletaEquipos(listaActualizada, coloresActualizados),
             actualizado: fechaServidor(),
             actualizadoPor: auth.currentUser.email
         }, { merge: true });
@@ -1234,8 +1300,9 @@ async function guardarConfiguracionPagosLista() {
     }
 
     const contactos = {};
+    const clavesEquiposActivos = new Set(listadoEquipos.map(normalizarClaveColor));
     Object.entries(configuracionPagoLista.contactos).forEach(([clave, contacto]) => {
-        if(esEquipoRetirado(clave)) contactos[clave] = contacto;
+        if(!clavesEquiposActivos.has(normalizarClaveColor(clave))) contactos[normalizarClaveColor(clave)] = contacto;
     });
     const filas = document.querySelectorAll("#admin-pago-contactos .admin-payment-contact-row");
     for(const fila of filas) {
@@ -1484,7 +1551,6 @@ function loadUser() {
         if(esAdmin) {
             cargarFormularioConfiguracionPagos();
             renderAdministradorEquipos();
-            depurarEquiposRetirados();
         }
 
         const panelPagos = document.getElementById('admin-pagos-list')?.closest('.admin-card');
@@ -1886,7 +1952,7 @@ function renderBoletas() {
         const nombreSeguro = escaparHTML(String(nombre).toUpperCase());
         const nombreEvento = codificarDatoEvento(nombre);
         const colorTextoSeguro = escaparHTML(data.color);
-        const colorVisualSeguro = obtenerColorSeguro(data.color);
+        const colorVisualSeguro = obtenerColorVisualEquipo(data.color);
         const fechaVentaSegura = escaparHTML(data.fechaVenta);
 
         const accionHtml = (esAdmin) 
@@ -1988,7 +2054,7 @@ function renderUsuarios() {
         const documentoSeguro = escaparHTML(docTxt);
         const telefonoSeguro = escaparHTML(telTxt);
         const colorTextoSeguro = escaparHTML(String(col).toUpperCase());
-        const colorVisualSeguro = obtenerColorSeguro(col);
+        const colorVisualSeguro = obtenerColorVisualEquipo(col);
         const rangoSeguro = escaparHTML(rangoTxt);
         
         const btnWa = /^\d{10}$/.test(String(u.tel || "")) ? `<a href="https://wa.me/57${u.tel}" target="_blank" rel="noopener noreferrer" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';

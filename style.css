@@ -1899,15 +1899,16 @@ tbody tr:hover td {
 }
 
 .admin-team-add-form {
-    width: min(100%, 620px);
+    width: min(100%, 700px);
     margin: 0 auto;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: end;
     gap: 10px;
 }
 
-.admin-team-add-field {
+.admin-team-add-field,
+.admin-team-color-field {
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -1915,6 +1916,7 @@ tbody tr:hover td {
 }
 
 .admin-team-add-field > span,
+.admin-team-color-field > span,
 .admin-team-list-heading > span {
     color: var(--accent-strong);
     font-size: 0.49rem;
@@ -1925,6 +1927,42 @@ tbody tr:hover td {
 
 .admin-team-add-field input {
     width: 100%;
+}
+
+.admin-team-color-field {
+    align-items: center;
+}
+
+input.admin-team-color-picker[type="color"] {
+    width: 42px;
+    height: 42px;
+    min-width: 42px;
+    padding: 0;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.68);
+    border-radius: 50%;
+    background: transparent;
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.34), 0 6px 16px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+}
+
+input.admin-team-color-picker[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input.admin-team-color-picker[type="color"]::-webkit-color-swatch {
+    border: 0;
+    border-radius: 50%;
+}
+
+input.admin-team-color-picker[type="color"]::-moz-color-swatch {
+    border: 0;
+    border-radius: 50%;
+}
+
+input.admin-team-color-picker[type="color"]:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 52%, transparent);
+    outline-offset: 3px;
 }
 
 .admin-team-add-button {
@@ -1960,7 +1998,7 @@ tbody tr:hover td {
 .admin-team-editor-row {
     padding: 9px;
     display: grid;
-    grid-template-columns: 18px minmax(140px, 1fr) auto;
+    grid-template-columns: 42px minmax(140px, 1fr) auto;
     align-items: center;
     gap: 10px;
     border: 1px solid rgba(255, 255, 255, 0.065);
@@ -1968,16 +2006,11 @@ tbody tr:hover td {
     background: rgba(0, 0, 0, 0.15);
 }
 
-.admin-team-color-swatch {
-    width: 16px;
-    height: 16px;
-    border: 2px solid rgba(255, 255, 255, 0.68);
-    border-radius: 50%;
-    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.32), 0 4px 12px rgba(0, 0, 0, 0.2);
-}
-
 .admin-team-editor-row input {
     min-width: 0;
+}
+
+.admin-team-editor-row input[type="text"] {
     width: 100%;
 }
 
@@ -3146,9 +3179,9 @@ html[data-theme="light"] .admin-team-editor-row {
     background: rgba(15, 23, 42, 0.035);
 }
 
-html[data-theme="light"] .admin-team-color-swatch {
-    border-color: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.2), 0 4px 12px rgba(15, 23, 42, 0.12);
+html[data-theme="light"] input.admin-team-color-picker[type="color"] {
+    border-color: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.22), 0 5px 14px rgba(15, 23, 42, 0.16);
 }
 
 html[data-theme="light"] .admin-payment-qr-area {
@@ -3359,7 +3392,7 @@ html.app-native .toast {
     }
 
     .admin-team-editor-row {
-        grid-template-columns: 18px minmax(0, 1fr);
+        grid-template-columns: 42px minmax(0, 1fr);
     }
 
     .admin-team-row-actions {

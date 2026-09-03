@@ -12,7 +12,7 @@
             let preferencia = "system";
 
             try {
-                const guardada = localStorage.getItem("logistica-eventos-tema");
+                const guardada = localStorage.getItem("logistica-eventos-tema-v2");
                 if(temasValidos.includes(guardada)) preferencia = guardada;
             } catch(error) {
                 console.warn("No fue posible leer la preferencia visual guardada", error);
@@ -512,19 +512,23 @@
 
                         <div id="admin-team-manager-card" class="admin-card full-width admin-team-manager-card">
                             <p class="admin-card-title"><i class="fa-solid fa-palette"></i> COLORES DE EQUIPO</p>
-                            <p class="admin-team-manager-description">Agrega nuevos equipos o cambia el nombre de los existentes. Para proteger la información, solo se pueden eliminar colores que no tengan personal ni boletas asignadas.</p>
+                            <p class="admin-team-manager-description">Agrega equipos y elige el color exacto de su círculo. También puedes cambiar el nombre o el color de los existentes. Para proteger la información, solo se pueden eliminar equipos que no tengan personal ni boletas asignadas.</p>
 
                             <form class="admin-team-add-form" onsubmit="agregarEquipo(event)">
                                 <label class="admin-team-add-field" for="admin-team-new-name">
-                                    <span>Nuevo color de equipo</span>
-                                    <input id="admin-team-new-name" type="text" maxlength="30" autocomplete="off" placeholder="Ejemplo: Amarillo">
+                                    <span>Nombre del equipo</span>
+                                    <input id="admin-team-new-name" type="text" maxlength="30" autocomplete="off" placeholder="Ejemplo: Rojo" oninput="sugerirColorNuevoEquipo()">
+                                </label>
+                                <label class="admin-team-color-field" for="admin-team-new-color">
+                                    <span>Color del círculo</span>
+                                    <input id="admin-team-new-color" class="admin-team-color-picker" type="color" value="#64748b" oninput="marcarColorNuevoEquipoPersonalizado()" aria-label="Elegir el color visual del nuevo equipo">
                                 </label>
                                 <button class="btn-mini btn-add admin-team-add-button" type="submit"><i class="fa-solid fa-plus"></i> AGREGAR EQUIPO</button>
                             </form>
 
                             <div class="admin-team-list-heading">
                                 <span><i class="fa-solid fa-pen-to-square"></i> EQUIPOS ACTUALES</span>
-                                <small>Edita el nombre y pulsa Guardar.</small>
+                                <small>Edita el nombre o pulsa el círculo para cambiar su color.</small>
                             </div>
                             <div id="admin-team-editor-list" class="admin-team-editor-list" aria-live="polite"></div>
                         </div>
