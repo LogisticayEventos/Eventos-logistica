@@ -165,9 +165,14 @@ const CONFIGURACION_PAGOS_POR_DEFECTO = Object.freeze({
 });
 const CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO = Object.freeze({
     habilitado: false,
-    ronda: 1,
+    ciclo: 1,
+    ronda: 0,
     total: 0,
     asignadas: 0,
+    entregasTotales: 0,
+    catalogoIds: Object.freeze([]),
+    disponiblesIds: Object.freeze([]),
+    indiceVersion: 0,
     equiposPermitidos: Object.freeze(["Todos"])
 });
 const COLECCION_BOLETAS_VIRTUALES = "boletas_virtuales";
@@ -500,9 +505,26 @@ function esComprobanteSeguro(valor) {
 }
 
 function normalizarConfiguracionBoletasVirtuales(datos = {}) {
-    const ronda = Math.max(1, Math.floor(Number(datos.ronda) || 1));
+    const ciclo = Math.max(1, Math.floor(Number(datos.ciclo) || 1));
     const total = Math.max(0, Math.floor(Number(datos.total) || 0));
+    const rondaBase = Math.max(0, Math.floor(Number(datos.ronda) || 0));
+    const ronda = total === 0 ? 0 : Math.max(1, rondaBase);
     const asignadas = Math.min(total, Math.max(0, Math.floor(Number(datos.asignadas) || 0)));
+    const entregasTotales = Math.max(asignadas, Math.floor(Number(datos.entregasTotales) || asignadas));
+    const normalizarIds = lista => {
+        const ids = [];
+        const unicos = new Set();
+        (Array.isArray(lista) ? lista : []).forEach(valor => {
+            const id = String(valor || "").trim();
+            if(!id || id.length > 180 || unicos.has(id)) return;
+            unicos.add(id);
+            ids.push(id);
+        });
+        return ids;
+    };
+    const catalogoIds = normalizarIds(datos.catalogoIds);
+    const idsCatalogo = new Set(catalogoIds);
+    const disponiblesIds = normalizarIds(datos.disponiblesIds).filter(id => idsCatalogo.has(id));
     const origenEquipos = Array.isArray(datos.equiposPermitidos)
         ? datos.equiposPermitidos
         : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO.equiposPermitidos;
@@ -521,11 +543,43 @@ function normalizarConfiguracionBoletasVirtuales(datos = {}) {
 
     return {
         habilitado: datos.habilitado === true,
+        ciclo,
         ronda,
         total,
         asignadas,
+        entregasTotales,
+        catalogoIds,
+        disponiblesIds,
+        indiceVersion: Math.max(0, Math.floor(Number(datos.indiceVersion) || 0)),
         equiposPermitidos
     };
+}
+
+function usuarioTieneBoletaVirtualEnCiclo(usuario = {}, configuracion = configuracionBoletasVirtuales) {
+    if(!usuario.boletaVirtualId) return false;
+    const cicloUsuario = Math.max(0, Math.floor(Number(usuario.boletaVirtualCiclo) || 0));
+    if(cicloUsuario === configuracion.ciclo) return true;
+
+    // Compatibilidad con las boletas entregadas antes de existir el contador de ciclo.
+    return configuracion.ciclo === 1
+        && cicloUsuario === 0
+        && Math.floor(Number(usuario.boletaVirtualRonda) || 0) > 0;
+}
+
+function indiceAleatorioSeguro(limite) {
+    if(!Number.isSafeInteger(limite) || limite < 1) {
+        throw crearErrorBoletaVirtual("virtual-ticket-sold-out", "No hay imágenes disponibles");
+    }
+    if(!globalThis.crypto?.getRandomValues) {
+        throw crearErrorBoletaVirtual("virtual-ticket-random-unavailable", "Este dispositivo no permite realizar una selección aleatoria segura");
+    }
+
+    const rango = 0x100000000;
+    const maximoAceptado = rango - (rango % limite);
+    const valor = new Uint32Array(1);
+    do globalThis.crypto.getRandomValues(valor);
+    while(valor[0] >= maximoAceptado);
+    return valor[0] % limite;
 }
 
 function equipoPuedeRecibirBoletaVirtual(usuario = {}, configuracion = configuracionBoletasVirtuales) {
@@ -622,6 +676,8 @@ let qrPagoPendiente = "";
 let configuracionBoletasVirtuales = normalizarConfiguracionBoletasVirtuales(CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO);
 let catalogoBoletasVirtuales = [];
 let boletaVirtualActual = null;
+let sincronizacionCatalogoVirtualEnCurso = null;
+let eliminacionCatalogoVirtualEnCurso = false;
 
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
@@ -1259,8 +1315,7 @@ function actualizarPanelBoletaVirtualUsuario() {
     if(!tarjeta || !boton || !mensaje || !resultado) return;
 
     const configuracion = configuracionBoletasVirtuales;
-    const asignacionActual = Number(currentUserData?.boletaVirtualRonda) === configuracion.ronda
-        && Boolean(currentUserData?.boletaVirtualId);
+    const asignacionActual = usuarioTieneBoletaVirtualEnCiclo(currentUserData, configuracion);
     const equipoHabilitado = equipoPuedeRecibirBoletaVirtual(currentUserData, configuracion);
 
     tarjeta.style.display = auth.currentUser && currentUserData
@@ -1274,28 +1329,32 @@ function actualizarPanelBoletaVirtualUsuario() {
     }
 
     if(asignacionActual) {
+        const rondaAsignacion = Math.max(1, Math.floor(Number(currentUserData.boletaVirtualRonda) || 1));
         boton.disabled = false;
         boton.innerHTML = '<i class="fa-solid fa-eye"></i> VER MI BOLETA VIRTUAL';
         mensaje.textContent = configuracion.habilitado
-            ? "Ya tienes una boleta asignada en esta ronda. Siempre verás la misma imagen."
-            : "La entrega está cerrada, pero tu boleta ya asignada sigue disponible.";
+            ? `Ya recibiste tu única boleta en la ronda ${rondaAsignacion}. Siempre podrás ver y descargar la misma imagen.`
+            : `La entrega está cerrada, pero tu boleta de la ronda ${rondaAsignacion} sigue disponible.`;
     } else if(configuracion.total === 0) {
         boton.disabled = true;
         boton.innerHTML = '<i class="fa-regular fa-images"></i> SIN IMÁGENES DISPONIBLES';
         mensaje.textContent = "El administrador todavía no ha cargado boletas virtuales.";
-    } else if(configuracion.asignadas >= configuracion.total) {
-        boton.disabled = true;
-        boton.innerHTML = '<i class="fa-solid fa-hourglass-end"></i> BOLETAS AGOTADAS';
-        mensaje.textContent = "Todas las boletas virtuales de esta ronda ya fueron entregadas.";
     } else {
         boton.disabled = false;
-        boton.innerHTML = '<i class="fa-solid fa-wand-magic-sparkles"></i> OBTENER BOLETA VIRTUAL';
-        mensaje.textContent = "Cada cuenta puede recibir una sola imagen durante esta ronda.";
+        const rondaAgotada = configuracion.indiceVersion >= 1
+            ? configuracion.disponiblesIds.length === 0
+            : configuracion.asignadas >= configuracion.total;
+        boton.innerHTML = rondaAgotada
+            ? '<i class="fa-solid fa-shuffle"></i> OBTENER BOLETA · NUEVA RONDA'
+            : '<i class="fa-solid fa-wand-magic-sparkles"></i> OBTENER BOLETA VIRTUAL';
+        mensaje.textContent = rondaAgotada
+            ? "El catálogo se repetirá automáticamente y recibirás una imagen completamente al azar."
+            : "Cada cuenta puede recibir una sola imagen, elegida completamente al azar.";
     }
 
     const coincideImagenMostrada = asignacionActual
         && boletaVirtualActual?.id === currentUserData.boletaVirtualId
-        && boletaVirtualActual?.ronda === configuracion.ronda;
+        && boletaVirtualActual?.ciclo === configuracion.ciclo;
     resultado.style.display = coincideImagenMostrada ? "flex" : "none";
     boton.style.display = coincideImagenMostrada ? "none" : "inline-flex";
 }
@@ -1304,11 +1363,11 @@ function renderAdministradorBoletasVirtuales() {
     if(!esAdministradorActual()) return;
 
     const configuracion = configuracionBoletasVirtuales;
-    const disponibles = Math.max(0, configuracion.total - configuracion.asignadas);
-    const agotadas = configuracion.total > 0 && configuracion.asignadas >= configuracion.total;
+    const disponibles = configuracion.indiceVersion >= 1
+        ? configuracion.disponiblesIds.length
+        : Math.max(0, configuracion.total - configuracion.asignadas);
     const interruptor = document.getElementById("admin-virtual-ticket-enabled");
     const estadoInterruptor = document.getElementById("admin-virtual-ticket-switch-status");
-    const botonReinicio = document.getElementById("admin-virtual-ticket-reset");
     const botonEliminarTodas = document.getElementById("admin-virtual-ticket-delete-all");
     const ayudaReinicio = document.getElementById("admin-virtual-ticket-reset-help");
 
@@ -1319,15 +1378,17 @@ function renderAdministradorBoletasVirtuales() {
         estadoInterruptor.classList.toggle("is-enabled", configuracion.habilitado);
     }
     if(document.getElementById("admin-virtual-ticket-total")) document.getElementById("admin-virtual-ticket-total").textContent = configuracion.total;
-    if(document.getElementById("admin-virtual-ticket-assigned")) document.getElementById("admin-virtual-ticket-assigned").textContent = configuracion.asignadas;
+    if(document.getElementById("admin-virtual-ticket-assigned")) document.getElementById("admin-virtual-ticket-assigned").textContent = configuracion.entregasTotales;
     if(document.getElementById("admin-virtual-ticket-available")) document.getElementById("admin-virtual-ticket-available").textContent = disponibles;
     if(document.getElementById("admin-virtual-ticket-round")) document.getElementById("admin-virtual-ticket-round").textContent = configuracion.ronda;
-    if(botonReinicio) botonReinicio.disabled = !agotadas;
     if(botonEliminarTodas) botonEliminarTodas.disabled = configuracion.total === 0 && catalogoBoletasVirtuales.length === 0;
     if(ayudaReinicio) {
-        ayudaReinicio.textContent = agotadas
-            ? "Todas fueron entregadas. Ya puedes iniciar una nueva ronda con las mismas imágenes."
-            : "La nueva ronda se habilita únicamente cuando todas las imágenes estén entregadas.";
+        const repeticiones = Math.max(0, configuracion.ronda - 1);
+        ayudaReinicio.textContent = configuracion.total === 0
+            ? "Todos los contadores están en 0. La ronda 1 comenzará cuando cargues el nuevo catálogo."
+            : repeticiones === 0
+            ? "Ronda 1: se está usando el catálogo original sin repeticiones."
+            : `Ronda ${configuracion.ronda}: las imágenes se han reutilizado ${repeticiones} ${repeticiones === 1 ? "vez" : "veces"}.`;
     }
 
     const contenedor = document.getElementById("admin-virtual-ticket-list");
@@ -1344,7 +1405,10 @@ function renderAdministradorBoletasVirtuales() {
 
     catalogoBoletasVirtuales.forEach(boleta => {
         const datos = boleta.datos;
-        const asignadaEnRonda = Number(datos.asignadaRonda) === configuracion.ronda;
+        const cicloAsignado = Math.max(0, Math.floor(Number(datos.asignadaCiclo) || 0));
+        const asignadaEnCiclo = cicloAsignado === configuracion.ciclo
+            || (configuracion.ciclo === 1 && cicloAsignado === 0 && Number(datos.asignadaRonda) > 0);
+        const asignadaEnRonda = asignadaEnCiclo && Number(datos.asignadaRonda) === configuracion.ronda;
         const tarjeta = document.createElement("article");
         tarjeta.className = "admin-virtual-ticket-item";
 
@@ -1360,7 +1424,9 @@ function renderAdministradorBoletasVirtuales() {
         const persona = document.createElement("small");
         persona.textContent = asignadaEnRonda
             ? `${datos.asignadaNombre || "Usuario"} · ${datos.asignadaA || "sin correo"}`
-            : "Lista para entregar";
+            : asignadaEnCiclo
+                ? `Disponible otra vez · usada en ronda ${datos.asignadaRonda}`
+                : "Lista para entregar";
         informacion.append(nombre, persona);
 
         const estado = document.createElement("span");
@@ -1370,10 +1436,10 @@ function renderAdministradorBoletasVirtuales() {
         const eliminar = document.createElement("button");
         eliminar.type = "button";
         eliminar.className = "btn-mini btn-delete";
-        eliminar.disabled = asignadaEnRonda;
+        eliminar.disabled = asignadaEnCiclo;
         eliminar.innerHTML = '<i class="fa-solid fa-trash-can"></i> ELIMINAR';
-        eliminar.title = asignadaEnRonda
-            ? "No se puede eliminar mientras esté asignada en la ronda actual"
+        eliminar.title = asignadaEnCiclo
+            ? "No se puede eliminar porque un usuario conserva esta imagen"
             : "Eliminar esta imagen";
         eliminar.addEventListener("click", () => eliminarBoletaVirtual(boleta.id, datos.nombreArchivo || "esta imagen"));
 
@@ -1410,11 +1476,82 @@ function listenCatalogoBoletasVirtuales() {
         .onSnapshot(snapshot => {
             catalogoBoletasVirtuales = snapshot.docs.map(documento => ({ id: documento.id, datos: documento.data() }));
             renderAdministradorBoletasVirtuales();
+            const idsConfigurados = new Set(configuracionBoletasVirtuales.catalogoIds);
+            const indiceDesactualizado = configuracionBoletasVirtuales.indiceVersion < 1
+                || idsConfigurados.size !== snapshot.size
+                || snapshot.docs.some(documento => !idsConfigurados.has(documento.id));
+            if(indiceDesactualizado && !eliminacionCatalogoVirtualEnCurso) {
+                sincronizarIndiceCatalogoBoletasVirtuales(true).catch(error => {
+                    manejarError(error, "No se pudo preparar el catálogo para la entrega aleatoria");
+                });
+            }
         }, error => {
             catalogoBoletasVirtuales = [];
             renderAdministradorBoletasVirtuales();
             manejarError(error, "No se pudieron cargar las imágenes de boletas virtuales");
         });
+}
+
+async function sincronizarIndiceCatalogoBoletasVirtuales(forzar = false) {
+    if(!esAdministradorActual()) {
+        throw crearErrorBoletaVirtual("virtual-ticket-admin-required", "Solo el administrador puede preparar el catálogo");
+    }
+    if(!forzar && configuracionBoletasVirtuales.indiceVersion >= 1) return configuracionBoletasVirtuales;
+    if(sincronizacionCatalogoVirtualEnCurso) return sincronizacionCatalogoVirtualEnCurso;
+
+    sincronizacionCatalogoVirtualEnCurso = (async () => {
+        const configuracionRef = referenciaConfiguracionBoletasVirtuales();
+        const [configuracionDoc, imagenesSnapshot, usuariosSnapshot] = await Promise.all([
+            configuracionRef.get({ source: "server" }),
+            db.collection(COLECCION_BOLETAS_VIRTUALES).get({ source: "server" }),
+            db.collection("usuarios").get({ source: "server" })
+        ]);
+        const configuracion = normalizarConfiguracionBoletasVirtuales(
+            configuracionDoc.exists ? configuracionDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
+        );
+        const catalogoIds = imagenesSnapshot.docs.map(documento => documento.id);
+        const rondaPreparada = catalogoIds.length > 0 ? Math.max(1, configuracion.ronda) : 0;
+        const disponiblesIds = imagenesSnapshot.docs
+            .filter(documento => {
+                const imagen = documento.data();
+                const cicloImagen = Math.max(0, Math.floor(Number(imagen.asignadaCiclo) || 0));
+                const perteneceAlCiclo = cicloImagen === configuracion.ciclo
+                    || (configuracion.ciclo === 1 && cicloImagen === 0);
+                return !(perteneceAlCiclo && Number(imagen.asignadaRonda) === rondaPreparada);
+            })
+            .map(documento => documento.id);
+        const entregasTotales = usuariosSnapshot.docs.reduce((total, documento) => (
+            total + (usuarioTieneBoletaVirtualEnCiclo(documento.data(), configuracion) ? 1 : 0)
+        ), 0);
+
+        await configuracionRef.set({
+            ciclo: configuracion.ciclo,
+            ronda: rondaPreparada,
+            total: catalogoIds.length,
+            asignadas: catalogoIds.length - disponiblesIds.length,
+            entregasTotales,
+            catalogoIds,
+            disponiblesIds,
+            indiceVersion: 1,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+
+        return normalizarConfiguracionBoletasVirtuales({
+            ...configuracion,
+            ronda: rondaPreparada,
+            total: catalogoIds.length,
+            asignadas: catalogoIds.length - disponiblesIds.length,
+            entregasTotales,
+            catalogoIds,
+            disponiblesIds,
+            indiceVersion: 1
+        });
+    })().finally(() => {
+        sincronizacionCatalogoVirtualEnCurso = null;
+    });
+
+    return sincronizacionCatalogoVirtualEnCurso;
 }
 
 function detenerCatalogoBoletasVirtuales() {
@@ -1520,6 +1657,15 @@ async function agregarBoletasVirtuales(listaArchivos) {
         return notify(`⚠️ Selecciona máximo ${MAXIMO_ARCHIVOS_BOLETAS_VIRTUALES} imágenes por vez`);
     }
 
+    try {
+        if(configuracionBoletasVirtuales.indiceVersion < 1) {
+            await sincronizarIndiceCatalogoBoletasVirtuales();
+        }
+    } catch(error) {
+        if(input) input.value = "";
+        return manejarError(error, "No se pudo preparar el catálogo antes de agregar las imágenes");
+    }
+
     const ayuda = document.getElementById("admin-virtual-ticket-reset-help");
     if(input) input.disabled = true;
     let guardadas = 0;
@@ -1537,10 +1683,13 @@ async function agregarBoletasVirtuales(listaArchivos) {
                 const configuracion = normalizarConfiguracionBoletasVirtuales(
                     configuracionDoc.exists ? configuracionDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
                 );
+                const catalogoIds = Array.from(new Set([...configuracion.catalogoIds, imagenRef.id]));
+                const disponiblesIds = Array.from(new Set([...configuracion.disponiblesIds, imagenRef.id]));
 
                 transaction.set(imagenRef, {
                     imagen,
                     nombreArchivo: String(archivo.name || `boleta-${Date.now()}`).slice(0, 120),
+                    asignadaCiclo: 0,
                     asignadaRonda: 0,
                     asignadaA: "",
                     asignadaNombre: "",
@@ -1549,9 +1698,14 @@ async function agregarBoletasVirtuales(listaArchivos) {
                 });
                 transaction.set(configuracionRef, {
                     habilitado: configuracion.habilitado,
-                    ronda: configuracion.ronda,
-                    total: configuracion.total + 1,
-                    asignadas: configuracion.asignadas,
+                    ciclo: configuracion.ciclo,
+                    ronda: configuracion.total === 0 ? 1 : Math.max(1, configuracion.ronda),
+                    total: catalogoIds.length,
+                    asignadas: catalogoIds.length - disponiblesIds.length,
+                    entregasTotales: configuracion.entregasTotales,
+                    catalogoIds,
+                    disponiblesIds,
+                    indiceVersion: 1,
                     actualizado: fechaServidor(),
                     actualizadoPor: auth.currentUser.email
                 }, { merge: true });
@@ -1592,14 +1746,23 @@ async function eliminarBoletaVirtual(id, nombre) {
                 configuracionDoc.exists ? configuracionDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
             );
             const imagen = imagenDoc.data();
-            if(Number(imagen.asignadaRonda) === configuracion.ronda) {
-                throw crearErrorBoletaVirtual("virtual-ticket-assigned", "No puedes eliminar una imagen entregada en la ronda actual");
+            const cicloImagen = Math.max(0, Math.floor(Number(imagen.asignadaCiclo) || 0));
+            const asignadaEnCiclo = cicloImagen === configuracion.ciclo
+                || (configuracion.ciclo === 1 && cicloImagen === 0 && Number(imagen.asignadaRonda) > 0);
+            if(asignadaEnCiclo) {
+                throw crearErrorBoletaVirtual("virtual-ticket-assigned", "No puedes eliminar una imagen que ya fue entregada en la distribución actual");
             }
+
+            const catalogoIds = configuracion.catalogoIds.filter(imagenId => imagenId !== id);
+            const disponiblesIds = configuracion.disponiblesIds.filter(imagenId => imagenId !== id);
 
             transaction.delete(imagenRef);
             transaction.set(configuracionRef, {
-                total: Math.max(0, configuracion.total - 1),
-                asignadas: Math.min(configuracion.asignadas, Math.max(0, configuracion.total - 1)),
+                total: catalogoIds.length,
+                asignadas: catalogoIds.length - disponiblesIds.length,
+                catalogoIds,
+                disponiblesIds,
+                indiceVersion: 1,
                 actualizado: fechaServidor(),
                 actualizadoPor: auth.currentUser.email
             }, { merge: true });
@@ -1627,13 +1790,14 @@ async function eliminarTodasBoletasVirtuales() {
     const totalImagenes = snapshot.size;
     const confirmado = confirm(
         `¿Eliminar definitivamente las ${totalImagenes} imágenes de boletas virtuales?\n\n` +
-        "La entrega se desactivará y se iniciará una ronda vacía. Esta acción no se puede deshacer."
+        "La entrega se desactivará y se iniciará una distribución nueva y vacía. Esta acción no se puede deshacer."
     );
     if(!confirmado) return;
 
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
     const configuracionRef = referenciaConfiguracionBoletasVirtuales();
     const ayuda = document.getElementById("admin-virtual-ticket-reset-help");
+    eliminacionCatalogoVirtualEnCurso = true;
 
     try {
         const configuracionDoc = await configuracionRef.get({ source: "server" });
@@ -1652,9 +1816,16 @@ async function eliminarTodasBoletasVirtuales() {
 
         await configuracionRef.set({
             habilitado: false,
-            ronda: configuracion.ronda + 1,
+            ciclo: configuracion.ciclo + 1,
+            ronda: 0,
             total: 0,
             asignadas: 0,
+            entregasTotales: 0,
+            catalogoIds: [],
+            disponiblesIds: [],
+            indiceVersion: 1,
+            ultimaAsignacion: firebase.firestore.FieldValue.delete(),
+            ultimaRonda: firebase.firestore.FieldValue.delete(),
             actualizado: fechaServidor(),
             actualizadoPor: auth.currentUser.email
         }, { merge: true });
@@ -1667,53 +1838,21 @@ async function eliminarTodasBoletasVirtuales() {
     } catch(error) {
         manejarError(error, "No se pudieron eliminar todas las imágenes");
     } finally {
+        eliminacionCatalogoVirtualEnCurso = false;
         liberarBoton();
     }
 }
 
-async function reiniciarRondaBoletasVirtuales() {
-    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede iniciar una nueva ronda");
-    if(!confirm("¿Iniciar una nueva ronda? Todos los usuarios podrán recibir nuevamente una boleta virtual.")) return;
-
-    const liberarBoton = bloquearBotonActual("REINICIANDO...");
-    try {
-        const nuevaRonda = await db.runTransaction(async transaction => {
-            const configuracionRef = referenciaConfiguracionBoletasVirtuales();
-            const documento = await transaction.get(configuracionRef);
-            const configuracion = normalizarConfiguracionBoletasVirtuales(
-                documento.exists ? documento.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
-            );
-            if(configuracion.total === 0 || configuracion.asignadas < configuracion.total) {
-                throw crearErrorBoletaVirtual("virtual-ticket-not-empty", "La ronda solo puede reiniciarse cuando todas las imágenes estén entregadas");
-            }
-
-            transaction.set(configuracionRef, {
-                ronda: configuracion.ronda + 1,
-                asignadas: 0,
-                actualizado: fechaServidor(),
-                actualizadoPor: auth.currentUser.email
-            }, { merge: true });
-            return configuracion.ronda + 1;
-        });
-        boletaVirtualActual = null;
-        notify(`✅ Ronda ${nuevaRonda} iniciada. Todas las imágenes vuelven a estar disponibles.`);
-    } catch(error) {
-        if(error?.code === "virtual-ticket-not-empty") notify(`⚠️ ${error.message}`);
-        else manejarError(error, "No se pudo iniciar la nueva ronda");
-    } finally {
-        liberarBoton();
-    }
-}
-
-async function cargarBoletaVirtualAsignada(id, ronda) {
+async function cargarBoletaVirtualAsignada(id, ronda, ciclo) {
     if(!id) throw crearErrorBoletaVirtual("virtual-ticket-missing", "No se encontró la boleta asignada");
     const documento = await db.collection(COLECCION_BOLETAS_VIRTUALES).doc(id).get({ source: "server" });
     if(!documento.exists || !esComprobanteSeguro(documento.data().imagen)) {
         throw crearErrorBoletaVirtual("virtual-ticket-missing", "La imagen asignada ya no está disponible");
     }
 
-    boletaVirtualActual = { id: documento.id, ronda, ...documento.data() };
+    boletaVirtualActual = { id: documento.id, ronda, ciclo, ...documento.data() };
     if(currentUserData) {
+        currentUserData.boletaVirtualCiclo = ciclo;
         currentUserData.boletaVirtualRonda = ronda;
         currentUserData.boletaVirtualId = documento.id;
     }
@@ -1727,8 +1866,7 @@ function confirmarObtencionBoletaVirtual() {
         return notify("⚠️ Inicia sesión para obtener tu boleta virtual");
     }
 
-    const yaTieneBoleta = Number(currentUserData.boletaVirtualRonda) === configuracionBoletasVirtuales.ronda
-        && Boolean(currentUserData.boletaVirtualId);
+    const yaTieneBoleta = usuarioTieneBoletaVirtualEnCiclo(currentUserData, configuracionBoletasVirtuales);
 
     if(!yaTieneBoleta) {
         const confirmado = confirm(
@@ -1749,94 +1887,100 @@ async function obtenerBoletaVirtual() {
         const email = auth.currentUser.email;
         const usuarioRef = db.collection("usuarios").doc(email);
         const configuracionRef = referenciaConfiguracionBoletasVirtuales();
-        const [configuracionDoc, usuarioDoc] = await Promise.all([
-            configuracionRef.get({ source: "server" }),
-            usuarioRef.get({ source: "server" })
-        ]);
-        const configuracion = normalizarConfiguracionBoletasVirtuales(
-            configuracionDoc.exists ? configuracionDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
-        );
-        const datosUsuario = usuarioDoc.exists ? usuarioDoc.data() : {};
-        if(Number(datosUsuario.boletaVirtualRonda) === configuracion.ronda && datosUsuario.boletaVirtualId) {
-            await cargarBoletaVirtualAsignada(datosUsuario.boletaVirtualId, configuracion.ronda);
-            return;
-        }
-        if(!configuracion.habilitado) throw crearErrorBoletaVirtual("virtual-ticket-disabled", "La entrega está desactivada por el administrador");
-        if(!equipoPuedeRecibirBoletaVirtual(datosUsuario, configuracion)) {
-            throw crearErrorBoletaVirtual("virtual-ticket-team-disabled", "Tu equipo no está habilitado para recibir boletas virtuales");
-        }
-        if(configuracion.total === 0 || configuracion.asignadas >= configuracion.total) {
-            throw crearErrorBoletaVirtual("virtual-ticket-sold-out", "Todas las boletas virtuales de esta ronda están agotadas");
-        }
+        const asignacion = await db.runTransaction(async transaction => {
+            const [configuracionDoc, usuarioDoc] = await Promise.all([
+                transaction.get(configuracionRef),
+                transaction.get(usuarioRef)
+            ]);
+            const configuracion = normalizarConfiguracionBoletasVirtuales(
+                configuracionDoc.exists ? configuracionDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
+            );
+            const usuario = usuarioDoc.exists ? usuarioDoc.data() : {};
 
-        let imagenId = "";
-        for(let intento = 0; intento < 6 && !imagenId; intento += 1) {
-            const disponibles = await db.collection(COLECCION_BOLETAS_VIRTUALES)
-                .where("asignadaRonda", "<", configuracion.ronda)
-                .limit(12)
-                .get({ source: "server" });
-            if(disponibles.empty) break;
-
-            const candidatas = [...disponibles.docs].sort(() => Math.random() - 0.5);
-            for(const candidata of candidatas) {
-                try {
-                    imagenId = await db.runTransaction(async transaction => {
-                        const imagenRef = candidata.ref;
-                        const [configuracionActualDoc, usuarioActualDoc, imagenActualDoc] = await Promise.all([
-                            transaction.get(configuracionRef),
-                            transaction.get(usuarioRef),
-                            transaction.get(imagenRef)
-                        ]);
-                        const configuracionActual = normalizarConfiguracionBoletasVirtuales(
-                            configuracionActualDoc.exists ? configuracionActualDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
-                        );
-                        if(!configuracionActual.habilitado) throw crearErrorBoletaVirtual("virtual-ticket-disabled", "La entrega fue desactivada");
-
-                        const usuarioActual = usuarioActualDoc.exists ? usuarioActualDoc.data() : {};
-                        if(Number(usuarioActual.boletaVirtualRonda) === configuracionActual.ronda && usuarioActual.boletaVirtualId) {
-                            return usuarioActual.boletaVirtualId;
-                        }
-                        if(!equipoPuedeRecibirBoletaVirtual(usuarioActual, configuracionActual)) {
-                            throw crearErrorBoletaVirtual("virtual-ticket-team-disabled", "Tu equipo dejó de estar habilitado");
-                        }
-                        if(configuracionActual.ronda !== configuracion.ronda) {
-                            throw crearErrorBoletaVirtual("virtual-ticket-round-changed", "La ronda cambió mientras se asignaba la imagen");
-                        }
-                        if(!imagenActualDoc.exists || Number(imagenActualDoc.data().asignadaRonda) >= configuracionActual.ronda) {
-                            throw crearErrorBoletaVirtual("virtual-ticket-taken", "La imagen acaba de ser asignada a otra cuenta");
-                        }
-                        if(configuracionActual.asignadas >= configuracionActual.total) {
-                            throw crearErrorBoletaVirtual("virtual-ticket-sold-out", "Todas las boletas virtuales están agotadas");
-                        }
-
-                        const nombreUsuario = obtenerNombreCompletoUsuario(usuarioActual, email);
-                        transaction.update(imagenRef, {
-                            asignadaRonda: configuracionActual.ronda,
-                            asignadaA: email,
-                            asignadaNombre: nombreUsuario,
-                            asignadaEn: fechaServidor()
-                        });
-                        transaction.set(usuarioRef, {
-                            boletaVirtualRonda: configuracionActual.ronda,
-                            boletaVirtualId: imagenRef.id,
-                            boletaVirtualAsignadaEn: fechaServidor()
-                        }, { merge: true });
-                        transaction.set(configuracionRef, {
-                            asignadas: Math.min(configuracionActual.total, configuracionActual.asignadas + 1),
-                            ultimaAsignacion: fechaServidor()
-                        }, { merge: true });
-                        return imagenRef.id;
-                    });
-                    if(imagenId) break;
-                } catch(error) {
-                    if(error?.code !== "virtual-ticket-taken") throw error;
-                }
+            if(usuarioTieneBoletaVirtualEnCiclo(usuario, configuracion)) {
+                const cicloUsuario = Math.max(0, Math.floor(Number(usuario.boletaVirtualCiclo) || 0)) || configuracion.ciclo;
+                return {
+                    id: usuario.boletaVirtualId,
+                    ronda: Math.max(1, Math.floor(Number(usuario.boletaVirtualRonda) || 1)),
+                    ciclo: cicloUsuario,
+                    nueva: false
+                };
             }
-        }
+            if(!configuracion.habilitado) {
+                throw crearErrorBoletaVirtual("virtual-ticket-disabled", "La entrega está desactivada por el administrador");
+            }
+            if(!equipoPuedeRecibirBoletaVirtual(usuario, configuracion)) {
+                throw crearErrorBoletaVirtual("virtual-ticket-team-disabled", "Tu equipo no está habilitado para recibir boletas virtuales");
+            }
+            if(configuracion.indiceVersion < 1) {
+                throw crearErrorBoletaVirtual("virtual-ticket-catalog-pending", "El administrador debe abrir Administración una vez para preparar el catálogo");
+            }
 
-        if(!imagenId) throw crearErrorBoletaVirtual("virtual-ticket-sold-out", "Todas las boletas virtuales de esta ronda están agotadas");
-        await cargarBoletaVirtualAsignada(imagenId, configuracion.ronda);
-        notify("✅ Tu boleta virtual fue asignada y quedó guardada en tu cuenta");
+            const catalogoIds = configuracion.catalogoIds;
+            if(!catalogoIds.length || configuracion.total === 0) {
+                throw crearErrorBoletaVirtual("virtual-ticket-sold-out", "No hay imágenes de boletas virtuales cargadas");
+            }
+
+            let rondaEntrega = configuracion.ronda;
+            let disponiblesIds = [...configuracion.disponiblesIds];
+            let inicioNuevaRonda = false;
+            if(disponiblesIds.length === 0) {
+                rondaEntrega += 1;
+                disponiblesIds = [...catalogoIds];
+                inicioNuevaRonda = true;
+            }
+
+            const indice = indiceAleatorioSeguro(disponiblesIds.length);
+            const imagenId = disponiblesIds[indice];
+            const imagenRef = db.collection(COLECCION_BOLETAS_VIRTUALES).doc(imagenId);
+            const imagenDoc = await transaction.get(imagenRef);
+            if(!imagenDoc.exists || !esComprobanteSeguro(imagenDoc.data().imagen)) {
+                throw crearErrorBoletaVirtual("virtual-ticket-catalog-invalid", "El catálogo contiene una imagen no disponible; avisa al administrador");
+            }
+
+            disponiblesIds.splice(indice, 1);
+            const ahora = fechaServidor();
+            const nombreUsuario = obtenerNombreCompletoUsuario(usuario, email);
+            transaction.update(imagenRef, {
+                asignadaCiclo: configuracion.ciclo,
+                asignadaRonda: rondaEntrega,
+                asignadaA: email,
+                asignadaNombre: nombreUsuario,
+                asignadaEn: ahora
+            });
+            transaction.set(usuarioRef, {
+                boletaVirtualCiclo: configuracion.ciclo,
+                boletaVirtualRonda: rondaEntrega,
+                boletaVirtualId: imagenId,
+                boletaVirtualAsignadaEn: ahora
+            }, { merge: true });
+
+            const cambiosConfiguracion = {
+                ciclo: configuracion.ciclo,
+                ronda: rondaEntrega,
+                total: catalogoIds.length,
+                asignadas: catalogoIds.length - disponiblesIds.length,
+                entregasTotales: configuracion.entregasTotales + 1,
+                catalogoIds,
+                disponiblesIds,
+                indiceVersion: 1,
+                ultimaAsignacion: ahora
+            };
+            if(inicioNuevaRonda) cambiosConfiguracion.ultimaRonda = ahora;
+            transaction.set(configuracionRef, cambiosConfiguracion, { merge: true });
+
+            return {
+                id: imagenId,
+                ronda: rondaEntrega,
+                ciclo: configuracion.ciclo,
+                nueva: true
+            };
+        });
+
+        await cargarBoletaVirtualAsignada(asignacion.id, asignacion.ronda, asignacion.ciclo);
+        if(asignacion.nueva) {
+            notify(`✅ Tu boleta virtual fue asignada al azar en la ronda ${asignacion.ronda}`);
+        }
     } catch(error) {
         if(String(error?.code || "").startsWith("virtual-ticket-")) notify(`⚠️ ${error.message}`);
         else manejarError(error, "No se pudo obtener la boleta virtual");
@@ -1852,7 +1996,7 @@ function descargarBoletaVirtual() {
     const extension = tipo === "jpeg" ? "jpg" : tipo;
     const enlace = document.createElement("a");
     enlace.href = boletaVirtualActual.imagen;
-    enlace.download = `boleta-virtual-ronda-${boletaVirtualActual.ronda}.${extension}`;
+    enlace.download = `boleta-virtual-${boletaVirtualActual.ciclo}-ronda-${boletaVirtualActual.ronda}.${extension}`;
     document.body.appendChild(enlace);
     enlace.click();
     enlace.remove();
@@ -2330,6 +2474,11 @@ function loadUser() {
             cargarFormularioConfiguracionPagos();
             renderAdministradorEquipos();
             renderAdministradorBoletasVirtuales();
+            if(configuracionBoletasVirtuales.indiceVersion < 1) {
+                sincronizarIndiceCatalogoBoletasVirtuales().catch(error => {
+                    manejarError(error, "No se pudo preparar el catálogo para la entrega aleatoria");
+                });
+            }
         }
 
         const panelPagos = document.getElementById('admin-pagos-list')?.closest('.admin-card');

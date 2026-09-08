@@ -200,7 +200,7 @@
                             <span class="virtual-ticket-user-icon"><i class="fa-solid fa-ticket"></i></span>
                             <div>
                                 <h3>BOLETA VIRTUAL</h3>
-                                <p id="virtual-ticket-user-message">Cada cuenta puede recibir una imagen durante esta ronda.</p>
+                                <p id="virtual-ticket-user-message">Cada cuenta puede recibir una sola imagen.</p>
                             </div>
                         </div>
                         <button id="virtual-ticket-user-button" class="btn-primary virtual-ticket-user-button" type="button" onclick="confirmarObtencionBoletaVirtual()">
@@ -555,7 +555,7 @@
 
                         <div id="admin-virtual-ticket-card" class="admin-card full-width admin-virtual-ticket-card">
                             <p class="admin-card-title"><i class="fa-solid fa-ticket"></i> BOLETAS VIRTUALES</p>
-                            <p class="admin-virtual-ticket-description">Carga hasta 100 imágenes por selección para entregarlas automáticamente. Cada usuario recibe una sola por ronda y conserva siempre la misma.</p>
+                            <p class="admin-virtual-ticket-description">Carga hasta 100 imágenes por selección. Cada usuario recibe una sola boleta; cuando se agota el catálogo, las imágenes se reutilizan al azar únicamente para quienes todavía no han recibido.</p>
 
                             <div class="admin-virtual-ticket-toolbar">
                                 <div class="admin-virtual-ticket-switch-copy">
@@ -582,10 +582,10 @@
                             </div>
 
                             <div class="admin-virtual-ticket-stats" aria-live="polite">
-                                <div><small>TOTAL</small><strong id="admin-virtual-ticket-total">0</strong></div>
-                                <div><small>ENTREGADAS</small><strong id="admin-virtual-ticket-assigned">0</strong></div>
-                                <div><small>DISPONIBLES</small><strong id="admin-virtual-ticket-available">0</strong></div>
-                                <div><small>RONDA</small><strong id="admin-virtual-ticket-round">1</strong></div>
+                                <div><small>IMÁGENES</small><strong id="admin-virtual-ticket-total">0</strong></div>
+                                <div><small>USUARIOS</small><strong id="admin-virtual-ticket-assigned">0</strong></div>
+                                <div><small>DISPONIBLES EN RONDA</small><strong id="admin-virtual-ticket-available">0</strong></div>
+                                <div><small>RONDA</small><strong id="admin-virtual-ticket-round">0</strong></div>
                             </div>
 
                             <div class="admin-virtual-ticket-actions">
@@ -593,15 +593,12 @@
                                     <i class="fa-solid fa-images"></i> AGREGAR IMÁGENES
                                     <input id="admin-virtual-ticket-files" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="agregarBoletasVirtuales(this.files)">
                                 </label>
-                                <button id="admin-virtual-ticket-reset" class="btn-mini" type="button" onclick="reiniciarRondaBoletasVirtuales()" disabled>
-                                    <i class="fa-solid fa-rotate"></i> INICIAR NUEVA RONDA
-                                </button>
                                 <button id="admin-virtual-ticket-delete-all" class="btn-mini btn-delete" type="button" onclick="eliminarTodasBoletasVirtuales()" disabled>
                                     <i class="fa-solid fa-trash-can"></i> ELIMINAR TODAS
                                 </button>
                             </div>
 
-                            <p id="admin-virtual-ticket-reset-help" class="admin-virtual-ticket-reset-help">La nueva ronda se habilita únicamente cuando todas las imágenes estén entregadas.</p>
+                            <p id="admin-virtual-ticket-reset-help" class="admin-virtual-ticket-reset-help">Todos los contadores comienzan en 0. La ronda 1 empieza al cargar el catálogo.</p>
                             <div id="admin-virtual-ticket-list" class="admin-virtual-ticket-list" aria-live="polite">
                                 <p class="admin-virtual-ticket-empty"><i class="fa-regular fa-images"></i> Todavía no has agregado imágenes.</p>
                             </div>
