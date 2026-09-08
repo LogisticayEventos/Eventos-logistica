@@ -3896,7 +3896,8 @@ html[data-theme="light"] #carnet-detalle-render {
 }
 
 .virtual-ticket-user-button:disabled,
-#admin-virtual-ticket-reset:disabled {
+#admin-virtual-ticket-reset:disabled,
+#admin-virtual-ticket-delete-all:disabled {
     cursor: not-allowed;
     filter: grayscale(0.65);
     opacity: 0.48;
@@ -3924,11 +3925,22 @@ html[data-theme="light"] #carnet-detalle-render {
 
 .virtual-ticket-user-actions,
 .admin-virtual-ticket-actions {
+    width: 100%;
+    margin-right: auto;
+    margin-left: auto;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-wrap: wrap;
     gap: 9px;
+    text-align: center;
+}
+
+.admin-virtual-ticket-actions > .btn-mini,
+.admin-virtual-ticket-actions > .admin-virtual-ticket-upload {
+    margin: 0 !important;
+    align-self: center;
+    justify-self: center;
 }
 
 .admin-virtual-ticket-card {
@@ -4270,6 +4282,8 @@ html[data-theme="light"] #carnet-detalle-render {
 
 .admin-virtual-ticket-item .btn-delete {
     align-self: center;
+    margin-right: auto !important;
+    margin-left: auto !important;
 }
 
 .admin-virtual-ticket-empty {

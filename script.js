@@ -171,7 +171,7 @@ const CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO = Object.freeze({
     equiposPermitidos: Object.freeze(["Todos"])
 });
 const COLECCION_BOLETAS_VIRTUALES = "boletas_virtuales";
-const MAXIMO_ARCHIVOS_BOLETAS_VIRTUALES = 50;
+const MAXIMO_ARCHIVOS_BOLETAS_VIRTUALES = 100;
 const MAXIMO_BYTES_ARCHIVO_BOLETA_VIRTUAL = 15 * 1024 * 1024;
 const MAXIMO_CARACTERES_IMAGEN_BOLETA_VIRTUAL = 820000;
 
@@ -1309,6 +1309,7 @@ function renderAdministradorBoletasVirtuales() {
     const interruptor = document.getElementById("admin-virtual-ticket-enabled");
     const estadoInterruptor = document.getElementById("admin-virtual-ticket-switch-status");
     const botonReinicio = document.getElementById("admin-virtual-ticket-reset");
+    const botonEliminarTodas = document.getElementById("admin-virtual-ticket-delete-all");
     const ayudaReinicio = document.getElementById("admin-virtual-ticket-reset-help");
 
     if(interruptor) interruptor.checked = configuracion.habilitado;
@@ -1322,6 +1323,7 @@ function renderAdministradorBoletasVirtuales() {
     if(document.getElementById("admin-virtual-ticket-available")) document.getElementById("admin-virtual-ticket-available").textContent = disponibles;
     if(document.getElementById("admin-virtual-ticket-round")) document.getElementById("admin-virtual-ticket-round").textContent = configuracion.ronda;
     if(botonReinicio) botonReinicio.disabled = !agotadas;
+    if(botonEliminarTodas) botonEliminarTodas.disabled = configuracion.total === 0 && catalogoBoletasVirtuales.length === 0;
     if(ayudaReinicio) {
         ayudaReinicio.textContent = agotadas
             ? "Todas fueron entregadas. Ya puedes iniciar una nueva ronda con las mismas imágenes."
@@ -1606,6 +1608,64 @@ async function eliminarBoletaVirtual(id, nombre) {
     } catch(error) {
         if(String(error?.code || "").startsWith("virtual-ticket-")) notify(`⚠️ ${error.message}`);
         else manejarError(error, "No se pudo eliminar la imagen");
+    } finally {
+        liberarBoton();
+    }
+}
+
+async function eliminarTodasBoletasVirtuales() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar todas las imágenes");
+
+    let snapshot;
+    try {
+        snapshot = await db.collection(COLECCION_BOLETAS_VIRTUALES).get({ source: "server" });
+    } catch(error) {
+        return manejarError(error, "No se pudo consultar el catálogo de imágenes");
+    }
+
+    if(snapshot.empty) return notify("ℹ️ No hay imágenes para eliminar");
+    const totalImagenes = snapshot.size;
+    const confirmado = confirm(
+        `¿Eliminar definitivamente las ${totalImagenes} imágenes de boletas virtuales?\n\n` +
+        "La entrega se desactivará y se iniciará una ronda vacía. Esta acción no se puede deshacer."
+    );
+    if(!confirmado) return;
+
+    const liberarBoton = bloquearBotonActual("ELIMINANDO...");
+    const configuracionRef = referenciaConfiguracionBoletasVirtuales();
+    const ayuda = document.getElementById("admin-virtual-ticket-reset-help");
+
+    try {
+        const configuracionDoc = await configuracionRef.get({ source: "server" });
+        const configuracion = normalizarConfiguracionBoletasVirtuales(
+            configuracionDoc.exists ? configuracionDoc.data() : CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO
+        );
+
+        await configuracionRef.set({
+            habilitado: false,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+
+        if(ayuda) ayuda.textContent = `Eliminando ${totalImagenes} imágenes...`;
+        await eliminarReferenciasFirestoreEnLotes(snapshot.docs.map(documento => documento.ref), 400);
+
+        await configuracionRef.set({
+            habilitado: false,
+            ronda: configuracion.ronda + 1,
+            total: 0,
+            asignadas: 0,
+            actualizado: fechaServidor(),
+            actualizadoPor: auth.currentUser.email
+        }, { merge: true });
+
+        boletaVirtualActual = null;
+        catalogoBoletasVirtuales = [];
+        actualizarPanelBoletaVirtualUsuario();
+        renderAdministradorBoletasVirtuales();
+        notify(`🗑️ Se eliminaron ${totalImagenes} imágenes y la entrega quedó desactivada`);
+    } catch(error) {
+        manejarError(error, "No se pudieron eliminar todas las imágenes");
     } finally {
         liberarBoton();
     }

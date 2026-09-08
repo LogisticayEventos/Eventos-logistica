@@ -555,7 +555,7 @@
 
                         <div id="admin-virtual-ticket-card" class="admin-card full-width admin-virtual-ticket-card">
                             <p class="admin-card-title"><i class="fa-solid fa-ticket"></i> BOLETAS VIRTUALES</p>
-                            <p class="admin-virtual-ticket-description">Carga las imágenes que se entregarán automáticamente. Cada usuario recibe una sola por ronda y conserva siempre la misma.</p>
+                            <p class="admin-virtual-ticket-description">Carga hasta 100 imágenes por selección para entregarlas automáticamente. Cada usuario recibe una sola por ronda y conserva siempre la misma.</p>
 
                             <div class="admin-virtual-ticket-toolbar">
                                 <div class="admin-virtual-ticket-switch-copy">
@@ -595,6 +595,9 @@
                                 </label>
                                 <button id="admin-virtual-ticket-reset" class="btn-mini" type="button" onclick="reiniciarRondaBoletasVirtuales()" disabled>
                                     <i class="fa-solid fa-rotate"></i> INICIAR NUEVA RONDA
+                                </button>
+                                <button id="admin-virtual-ticket-delete-all" class="btn-mini btn-delete" type="button" onclick="eliminarTodasBoletasVirtuales()" disabled>
+                                    <i class="fa-solid fa-trash-can"></i> ELIMINAR TODAS
                                 </button>
                             </div>
 
