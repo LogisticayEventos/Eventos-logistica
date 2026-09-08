@@ -194,6 +194,26 @@
                         <input type="url" id="com-link-doc" placeholder="Link de documento">
                         <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR</button>
                     </div>
+
+                    <div id="virtual-ticket-user-card" class="virtual-ticket-user-card" style="display:none;">
+                        <div class="virtual-ticket-user-heading">
+                            <span class="virtual-ticket-user-icon"><i class="fa-solid fa-ticket"></i></span>
+                            <div>
+                                <h3>BOLETA VIRTUAL</h3>
+                                <p id="virtual-ticket-user-message">Cada cuenta puede recibir una imagen durante esta ronda.</p>
+                            </div>
+                        </div>
+                        <button id="virtual-ticket-user-button" class="btn-primary virtual-ticket-user-button" type="button" onclick="confirmarObtencionBoletaVirtual()">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> OBTENER BOLETA VIRTUAL
+                        </button>
+                        <div id="virtual-ticket-user-result" class="virtual-ticket-user-result" style="display:none;">
+                            <img id="virtual-ticket-user-image" alt="Boleta virtual asignada a mi cuenta">
+                            <div class="virtual-ticket-user-actions">
+                                <button class="btn-mini" type="button" onclick="abrirBoletaVirtual()"><i class="fa-solid fa-expand"></i> VER COMPLETA</button>
+                                <button class="btn-mini btn-add" type="button" onclick="descargarBoletaVirtual()"><i class="fa-solid fa-download"></i> DESCARGAR</button>
+                            </div>
+                        </div>
+                    </div>
                     <div id="comunicados-list"></div>
                 </section>
 
@@ -531,6 +551,57 @@
                                 <small>Edita el nombre o pulsa el círculo para cambiar su color.</small>
                             </div>
                             <div id="admin-team-editor-list" class="admin-team-editor-list" aria-live="polite"></div>
+                        </div>
+
+                        <div id="admin-virtual-ticket-card" class="admin-card full-width admin-virtual-ticket-card">
+                            <p class="admin-card-title"><i class="fa-solid fa-ticket"></i> BOLETAS VIRTUALES</p>
+                            <p class="admin-virtual-ticket-description">Carga las imágenes que se entregarán automáticamente. Cada usuario recibe una sola por ronda y conserva siempre la misma.</p>
+
+                            <div class="admin-virtual-ticket-toolbar">
+                                <div class="admin-virtual-ticket-switch-copy">
+                                    <strong>Botón para usuarios</strong>
+                                    <small id="admin-virtual-ticket-switch-status">Desactivado</small>
+                                </div>
+                                <label class="toggle-switch" for="admin-virtual-ticket-enabled">
+                                    <input id="admin-virtual-ticket-enabled" type="checkbox" role="switch" aria-label="Activar o desactivar la entrega de boletas virtuales" onchange="cambiarEstadoBoletasVirtuales(this.checked)">
+                                    <span aria-hidden="true"></span>
+                                </label>
+                            </div>
+
+                            <div class="admin-virtual-ticket-audience">
+                                <div class="admin-virtual-ticket-audience-heading">
+                                    <strong><i class="fa-solid fa-users-viewfinder"></i> Mostrar el botón a</strong>
+                                    <small>Selecciona los equipos que podrán solicitar una boleta virtual.</small>
+                                </div>
+                                <div id="admin-virtual-ticket-team-selector" class="admin-virtual-ticket-team-selector" aria-label="Equipos autorizados para recibir boletas virtuales">
+                                    <span class="admin-virtual-ticket-team-loading"><i class="fa-solid fa-spinner fa-spin"></i> Cargando equipos...</span>
+                                </div>
+                                <button id="admin-virtual-ticket-save-teams" class="btn-mini admin-virtual-ticket-save-teams" type="button" onclick="guardarEquiposBoletasVirtuales()">
+                                    <i class="fa-solid fa-floppy-disk"></i> GUARDAR EQUIPOS
+                                </button>
+                            </div>
+
+                            <div class="admin-virtual-ticket-stats" aria-live="polite">
+                                <div><small>TOTAL</small><strong id="admin-virtual-ticket-total">0</strong></div>
+                                <div><small>ENTREGADAS</small><strong id="admin-virtual-ticket-assigned">0</strong></div>
+                                <div><small>DISPONIBLES</small><strong id="admin-virtual-ticket-available">0</strong></div>
+                                <div><small>RONDA</small><strong id="admin-virtual-ticket-round">1</strong></div>
+                            </div>
+
+                            <div class="admin-virtual-ticket-actions">
+                                <label class="btn-mini btn-add admin-virtual-ticket-upload" for="admin-virtual-ticket-files">
+                                    <i class="fa-solid fa-images"></i> AGREGAR IMÁGENES
+                                    <input id="admin-virtual-ticket-files" type="file" accept="image/png,image/jpeg,image/webp" multiple onchange="agregarBoletasVirtuales(this.files)">
+                                </label>
+                                <button id="admin-virtual-ticket-reset" class="btn-mini" type="button" onclick="reiniciarRondaBoletasVirtuales()" disabled>
+                                    <i class="fa-solid fa-rotate"></i> INICIAR NUEVA RONDA
+                                </button>
+                            </div>
+
+                            <p id="admin-virtual-ticket-reset-help" class="admin-virtual-ticket-reset-help">La nueva ronda se habilita únicamente cuando todas las imágenes estén entregadas.</p>
+                            <div id="admin-virtual-ticket-list" class="admin-virtual-ticket-list" aria-live="polite">
+                                <p class="admin-virtual-ticket-empty"><i class="fa-regular fa-images"></i> Todavía no has agregado imágenes.</p>
+                            </div>
                         </div>
 
                         <div id="admin-edit-panel-code" class="admin-card">
