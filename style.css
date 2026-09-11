@@ -1483,6 +1483,57 @@ tbody tr:hover td {
     transform: scale(0.94);
 }
 
+.ticket-list-whatsapp-notice {
+    width: auto;
+    height: auto;
+    min-height: 30px;
+    padding: 6px 10px;
+    gap: 6px;
+    border-radius: 999px;
+    color: var(--success-text);
+    font-family: inherit;
+    font-size: 0.6rem;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    box-shadow: 0 5px 14px rgba(37, 211, 102, 0.16);
+}
+
+.ticket-list-whatsapp-notice small {
+    padding-left: 6px;
+    border-left: 1px solid rgba(37, 211, 102, 0.32);
+    color: inherit;
+    font-size: 0.48rem;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+}
+
+.ticket-list-phone-plain {
+    color: var(--text-soft);
+    font-weight: 700;
+}
+
+.ticket-whatsapp-help {
+    width: fit-content;
+    max-width: 100%;
+    margin: 0 auto 14px;
+    padding: 8px 12px;
+    border: 1px solid rgba(37, 211, 102, 0.22);
+    border-radius: 10px;
+    background: rgba(37, 211, 102, 0.08);
+    color: var(--text-soft);
+    font-size: 0.58rem;
+    font-weight: 700;
+    line-height: 1.45;
+    text-align: center;
+}
+
+.ticket-whatsapp-help i,
+.ticket-whatsapp-help strong {
+    color: var(--success-text);
+}
+
 .badge-rango {
     padding: 5px 8px;
     border-radius: 999px;

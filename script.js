@@ -757,6 +757,13 @@ function puedeGestionarPagosActual() {
     return rango === "Administrador" || rango === "Coordinador General";
 }
 
+function puedeEnviarAvisosWhatsapp() {
+    const rango = obtenerRangoActual();
+    return rango === "Administrador"
+        || rango === "Coordinador General"
+        || rango === "Coordinador";
+}
+
 function detenerEscuchadoresDatos() {
     if(unsubscribeUsuarios) unsubscribeUsuarios();
     if(unsubscribeBoletas) unsubscribeBoletas();
@@ -2734,6 +2741,22 @@ async function registrarConCodigo() {
     }
 }
 
+function crearControlAvisoWhatsappBoleta(boleta = {}) {
+    const telefono = normalizarWhatsappConsulta(boleta.t || boleta.whatsapp);
+    const telefonoVisible = escaparHTML(telefono || boleta.t || boleta.whatsapp || "---");
+    const pendiente = boleta.estado !== "Activa";
+    if(!puedeEnviarAvisosWhatsapp() || !pendiente || !boleta.id || !/^\d{10}$/.test(telefono)) {
+        return `<span class="ticket-list-phone-plain">${telefonoVisible}</span>`;
+    }
+
+    const boletaIdEvento = codificarDatoEvento(boleta.id);
+    return `<button type="button" class="ticket-list-whatsapp ticket-list-whatsapp-notice" onclick="enviarAvisoWhatsappBoletaPendiente(decodeURIComponent('${boletaIdEvento}'))" title="Enviar aviso profesional de pago pendiente" aria-label="Enviar aviso de pago pendiente al WhatsApp ${telefonoVisible}">
+        <i class="fa-brands fa-whatsapp"></i>
+        <span>${telefonoVisible}</span>
+        <small>AVISAR</small>
+    </button>`;
+}
+
 function renderBoletas() {
     if(!currentUserData) return;
     const email = auth.currentUser.email;
@@ -2770,12 +2793,8 @@ function renderBoletas() {
         boletasMostradas.forEach(boleta => {
             const numero = escaparHTML(boleta.n || "---");
             const comprador = escaparHTML(boleta.c || boleta.comprador || "---");
-            const whatsappOriginal = String(boleta.t || boleta.whatsapp || "").trim();
-            const whatsapp = escaparHTML(whatsappOriginal || "---");
-            const enlaceWhatsapp = /^\d{10}$/.test(whatsappOriginal)
-                ? `<a href="https://wa.me/57${whatsappOriginal}" target="_blank" rel="noopener noreferrer" class="ticket-list-whatsapp" aria-label="Escribir al comprador por WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>`
-                : "";
             const activa = boleta.estado === "Activa";
+            const contactoWhatsapp = crearControlAvisoWhatsappBoleta(boleta);
             const estado = activa ? "Activa" : "Pendiente";
             const colorEstado = activa ? "var(--success-text)" : "var(--warning-text)";
             const fecha = convertirFechaFirestore(boleta.creado)?.toLocaleDateString() || "---";
@@ -2784,7 +2803,7 @@ function renderBoletas() {
                 <tr>
                     <td style="font-weight:900; color:var(--accent);">${numero}</td>
                     <td style="font-weight:800; color:var(--text-main);">${comprador}</td>
-                    <td><span class="ticket-list-contact">${whatsapp}${enlaceWhatsapp}</span></td>
+                    <td><span class="ticket-list-contact">${contactoWhatsapp}</span></td>
                     <td style="font-weight:900; color:${colorEstado};">${estado}</td>
                     <td style="font-size:0.55rem;">${escaparHTML(fecha)}</td>
                 </tr>`;
@@ -3153,6 +3172,85 @@ async function eliminarTodosRegistrosRecreador(nombreRecreador) {
     }
 }
 
+function enviarAvisoWhatsappBoletaPendiente(boletaId) {
+    if(!puedeEnviarAvisosWhatsapp()) {
+        return notify("⛔ Solo el Administrador, Coordinador General y Coordinador pueden enviar este aviso");
+    }
+
+    const boleta = allBoletas.find(registro => registro.id === boletaId);
+    if(!boleta) return notify("⚠️ No se encontró la boleta seleccionada");
+    if(boleta.estado === "Activa") return notify("ℹ️ Esta boleta ya se encuentra activa");
+
+    const telefonoComprador = normalizarWhatsappConsulta(boleta.t || boleta.whatsapp);
+    if(!/^\d{10}$/.test(telefonoComprador)) {
+        return notify("⚠️ El WhatsApp del comprador no es válido");
+    }
+
+    const perfilRecreador = allUsers.find(usuario => usuario.id === boleta.vendedor)
+        || (boleta.vendedor === auth.currentUser?.email ? currentUserData : null);
+    const nombreComprador = String(boleta.c || boleta.comprador || "Cliente").trim();
+    const nombreRecreador = perfilRecreador
+        ? obtenerNombreCompletoUsuario(perfilRecreador, boleta.recreador || "Vendedor(a)")
+        : String(boleta.recreador || "Vendedor(a)").trim();
+    const telefonoRecreador = normalizarWhatsappConsulta(perfilRecreador?.tel);
+    const equipo = String(perfilRecreador?.color || boleta.equipo || boleta.color || "").trim();
+    const contactoCoordinacion = configuracionPagoLista.contactos[normalizarClaveColor(equipo)];
+    const nombreCoordinacion = String(contactoCoordinacion?.nombre || "").trim();
+    const telefonoCoordinacion = normalizarWhatsappConsulta(contactoCoordinacion?.numero);
+    const numeroBoleta = normalizarNumeroBoletaGuardada(boleta.n) || String(boleta.n || "---").trim();
+
+    if(!equipo || !nombreCoordinacion || !/^\d{10}$/.test(telefonoCoordinacion)) {
+        return notify(`⚠️ Configura el nombre y WhatsApp de coordinación para el equipo ${equipo || "del recreador"}`);
+    }
+    if(!/^\d{10}$/.test(telefonoRecreador)) {
+        return notify(`⚠️ ${nombreRecreador} no tiene un WhatsApp válido registrado en su perfil`);
+    }
+
+    // Los emojis se construyen con códigos Unicode para impedir que algunos
+    // navegadores Android los conviertan en signos de interrogación.
+    const iconoSaludo = "\uD83D\uDC4B";
+    const iconoAviso = "\u26A0\uFE0F";
+    const iconoBoleta = "\uD83C\uDFAB";
+    const iconoTelefono = "\uD83D\uDCDE";
+    const iconoVendedor = "\uD83D\uDC64";
+    const iconoCoordinacion = "\uD83D\uDEE1\uFE0F";
+    const iconoInformacion = "\uD83D\uDCCC";
+
+    const mensaje = [
+        `${iconoSaludo} *Hola, ${nombreComprador}.*`,
+        "",
+        `Soy *${nombreCoordinacion}*, coordinador(a) del *equipo ${equipo}* de Logística & Eventos.`,
+        "",
+        `${iconoAviso} *AVISO IMPORTANTE*`,
+        `El pago correspondiente a tu boleta todavía no ha sido entregado a nuestra organización por el/la Sr./Sra. *${nombreRecreador}*.`,
+        "",
+        `${iconoBoleta} *DATOS DE LA BOLETA*`,
+        `- Número: *${numeroBoleta}*`,
+        "- Estado: *PENDIENTE DE PAGO*",
+        "- Participación: *NO ENTRARÁ EN JUEGO* mientras el pago continúe pendiente.",
+        "",
+        `${iconoInformacion} Te enviamos este aviso para mantenerte informado(a) y evitar futuros inconvenientes.`,
+        "",
+        `${iconoTelefono} *CONTACTOS PARA MÁS INFORMACIÓN*`,
+        `${iconoVendedor} *Vendedor(a):* ${nombreRecreador}`,
+        `WhatsApp: ${telefonoRecreador}`,
+        "",
+        `${iconoCoordinacion} *Coordinación del equipo ${equipo}:* ${nombreCoordinacion}`,
+        `WhatsApp: ${telefonoCoordinacion}`,
+        "",
+        "Gracias por tu atención.",
+        "*LOGÍSTICA & EVENTOS*"
+    ].join("\n");
+
+    const enlace = document.createElement("a");
+    enlace.href = `https://wa.me/57${telefonoComprador}?text=${encodeURIComponent(mensaje)}`;
+    enlace.target = "_blank";
+    enlace.rel = "noopener noreferrer";
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+}
+
 function abrirGestionBoletas(nombreRecreador) {
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
@@ -3177,7 +3275,9 @@ function abrirGestionBoletas(nombreRecreador) {
         return;
     }
 
-    render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreTituloSeguro}</h3>`;
+    render.innerHTML = `
+        <h3 style="color:var(--accent); text-align:center; margin-bottom:10px;">BOLETAS: ${nombreTituloSeguro}</h3>
+        <p class="ticket-whatsapp-help"><i class="fa-brands fa-whatsapp"></i> Pulsa <strong>AVISAR</strong> en una boleta pendiente para abrir el mensaje.</p>`;
     let htmlTable = `<div class="table-container" style="max-height: 400px; overflow-y: auto;">
                         <table>
                             <thead>
@@ -3216,13 +3316,13 @@ function abrirGestionBoletas(nombreRecreador) {
         const nomComprador = b.c || b.comprador || '--';
         const telComprador = b.t || b.whatsapp || '--';
         
-        const btnWa = /^\d{10}$/.test(String(telComprador)) ? `<a href="https://wa.me/57${telComprador}" target="_blank" rel="noopener noreferrer" style="color:#25D366; font-size:1.1rem; margin-left:5px; text-decoration:none;"><i class="fa-brands fa-whatsapp"></i></a>` : '';
+        const contactoComprador = crearControlAvisoWhatsappBoleta(b);
 
         htmlTable += `
             <tr>
                 <td style="font-weight:800; color:var(--text-main);">${escaparHTML(numBoleta)}</td>
                 <td style="font-size:0.6rem; font-weight:800; color:var(--text-soft);">${escaparHTML(nomComprador)}</td>
-                <td style="font-size:0.6rem; white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${escaparHTML(telComprador)} ${btnWa}</td>
+                <td style="font-size:0.6rem; white-space: nowrap; display:flex; align-items:center; justify-content:center; gap:5px; border-bottom:none;">${contactoComprador}</td>
                 <td style="font-weight:800; color:${colorEstado}">${escaparHTML(b.estado)}</td>
                 ${botones}
             </tr>`;
