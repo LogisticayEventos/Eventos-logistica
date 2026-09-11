@@ -28,13 +28,40 @@
             document.getElementById("theme-color-meta").content = temaResuelto === "dark" ? "#05080f" : "#f4f8fc";
         })();
     </script>
-    <script defer src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
-    <script defer src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
-    <script defer src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script>
+        (() => {
+            const usarRecursosLocales = /Android/i.test(navigator.userAgent) && location.protocol === "file:";
+            const scripts = usarRecursosLocales
+                ? [
+                    "vendor/firebase/firebase-app.js",
+                    "vendor/firebase/firebase-auth.js",
+                    "vendor/firebase/firebase-firestore.js",
+                    "vendor/xlsx/xlsx.full.min.js"
+                ]
+                : [
+                    "https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js",
+                    "https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js",
+                    "https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js",
+                    "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"
+                ];
+
+            const estilos = usarRecursosLocales
+                ? [
+                    "vendor/plus-jakarta-sans/latin-400.css",
+                    "vendor/plus-jakarta-sans/latin-700.css",
+                    "vendor/plus-jakarta-sans/latin-800.css",
+                    "vendor/fontawesome/css/all.min.css"
+                ]
+                : [
+                    "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap",
+                    "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+                ];
+
+            scripts.forEach(src => document.write(`<script defer src="${src}"><\/script>`));
+            estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
+        })();
+    </script>
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700;800&display=swap">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -98,6 +125,17 @@
         </div>
     </div>
 
+    <div id="modal-comprobante-pago" class="modal" role="dialog" aria-modal="true" aria-labelledby="titulo-comprobante-pago" onclick="cerrarComprobantePagoDesdeFondo(event)">
+        <div class="modal-content payment-receipt-modal">
+            <button class="close-modal" type="button" onclick="cerrarComprobantePago()" aria-label="Cerrar comprobante"><i class="fa-solid fa-xmark"></i></button>
+            <p id="titulo-comprobante-pago" class="payment-receipt-title"><i class="fa-solid fa-receipt"></i> COMPROBANTE DE PAGO</p>
+            <div class="payment-receipt-stage">
+                <img id="imagen-comprobante-pago" alt="Comprobante de pago del usuario">
+            </div>
+            <small class="payment-receipt-help">Puedes ampliar la imagen con los dedos para revisar sus datos.</small>
+        </div>
+    </div>
+
     <div class="main-wrapper">
         <div id="view-auth">
             <div class="auth-theme-toolbar">
@@ -135,6 +173,10 @@
                     <input type="password" id="reg-pass" placeholder="Clave (6+ carac.)">
                     <select id="reg-color" class="dynamic-colors">
                         <option value="" disabled selected>Color de Equipo</option>
+                        <option value="Verde">Verde</option>
+                        <option value="Naranja">Naranja</option>
+                        <option value="Azul">Azul</option>
+                        <option value="Rojo">Rojo</option>
                     </select>
                     <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
                     <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
@@ -329,6 +371,7 @@
                             <option value="Verde">Verde</option>
                             <option value="Naranja">Naranja</option>
                             <option value="Azul">Azul</option>
+                            <option value="Rojo">Rojo</option>
                         </select>
                         <button class="btn-primary" onclick="guardarPerfil()">GUARDAR DATOS</button>
                     </div>

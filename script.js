@@ -5,6 +5,13 @@ const INFORMACION_TEMAS = Object.freeze({
     dark: Object.freeze({ nombre: "Oscuro", icono: "fa-moon" }),
     light: Object.freeze({ nombre: "Claro", icono: "fa-sun" })
 });
+const ES_APLICACION_ANDROID = /Android/i.test(navigator.userAgent)
+    && (location.protocol === "file:"
+        || /\bwv\b/i.test(navigator.userAgent)
+        || Boolean(window.Capacitor?.isNativePlatform?.()));
+
+if(ES_APLICACION_ANDROID) document.documentElement.classList.add("app-native");
+
 const consultaTemaOscuroSistema = window.matchMedia("(prefers-color-scheme: dark)");
 
 function normalizarPreferenciaTema(preferencia) {
@@ -130,7 +137,7 @@ function reactivarSincronizacionFirestore() {
 document.addEventListener("visibilitychange", reactivarSincronizacionFirestore, { passive: true });
 window.addEventListener("online", reactivarSincronizacionFirestore, { passive: true });
 const ADMIN_EMAIL = "franboy1221@gmail.com";
-const EQUIPOS_POR_DEFECTO = Object.freeze(["Verde", "Naranja", "Azul"]);
+const EQUIPOS_POR_DEFECTO = Object.freeze(["Verde", "Naranja", "Azul", "Rojo"]);
 const COLOR_EQUIPO_RESPALDO = "#64748b";
 const COLORES_EQUIPO_VISUALES = Object.freeze({
     amarillo: "#eab308",
@@ -179,6 +186,7 @@ const COLECCION_BOLETAS_VIRTUALES = "boletas_virtuales";
 const MAXIMO_ARCHIVOS_BOLETAS_VIRTUALES = 100;
 const MAXIMO_BYTES_ARCHIVO_BOLETA_VIRTUAL = 15 * 1024 * 1024;
 const MAXIMO_CARACTERES_IMAGEN_BOLETA_VIRTUAL = 820000;
+const CLAVE_CACHE_EQUIPOS = "logistica-eventos-equipos-v1";
 
 function fechaServidor() {
     return firebase.firestore.FieldValue.serverTimestamp();
@@ -238,7 +246,31 @@ function normalizarListaEquiposActivos(lista) {
         equipos.push(equipo);
     });
 
-    return equipos.length ? equipos : [...EQUIPOS_POR_DEFECTO];
+    const listaNormalizada = equipos.length ? equipos : [...EQUIPOS_POR_DEFECTO];
+    if(!listaNormalizada.some(equipo => normalizarClaveColor(equipo) === "rojo")) {
+        listaNormalizada.push("Rojo");
+    }
+    return listaNormalizada;
+}
+
+function cargarEquiposGuardados() {
+    try {
+        const datos = JSON.parse(localStorage.getItem(CLAVE_CACHE_EQUIPOS) || "null");
+        return {
+            lista: normalizarListaEquiposActivos(datos?.lista),
+            paleta: datos?.paleta && typeof datos.paleta === "object" ? datos.paleta : null
+        };
+    } catch(error) {
+        return { lista: [...EQUIPOS_POR_DEFECTO], paleta: null };
+    }
+}
+
+function guardarEquiposLocalmente(lista, paleta) {
+    try {
+        localStorage.setItem(CLAVE_CACHE_EQUIPOS, JSON.stringify({ lista, paleta }));
+    } catch(error) {
+        console.warn("No se pudo guardar la lista local de equipos", error);
+    }
 }
 
 function normalizarColorHex(valor, respaldo = "") {
@@ -493,6 +525,41 @@ function obtenerUrlHttpSegura(valor) {
     }
 }
 
+function esUrlWhatsapp(valor) {
+    const url = obtenerUrlHttpSegura(valor);
+    if(!url) return false;
+
+    try {
+        const host = new URL(url).hostname.toLowerCase();
+        return host === "wa.me" || host === "api.whatsapp.com" || host.endsWith(".whatsapp.com");
+    } catch(error) {
+        return false;
+    }
+}
+
+function abrirWhatsappCompatibleAndroid(url) {
+    const urlSegura = obtenerUrlHttpSegura(url);
+    if(!urlSegura || !esUrlWhatsapp(urlSegura)) {
+        notify("⚠️ No se pudo preparar el enlace de WhatsApp");
+        return false;
+    }
+
+    // Los WebView Android de la APK no admiten pestañas nuevas. Navegar en la
+    // misma vista permite que Android entregue el enlace a WhatsApp sin error.
+    window.location.assign(urlSegura);
+    return true;
+}
+
+document.addEventListener("click", evento => {
+    if(!ES_APLICACION_ANDROID) return;
+    const objetivo = evento.target instanceof Element ? evento.target : null;
+    const enlace = objetivo?.closest("a[href]");
+    if(!enlace || !esUrlWhatsapp(enlace.href)) return;
+
+    evento.preventDefault();
+    abrirWhatsappCompatibleAndroid(enlace.href);
+}, true);
+
 function obtenerColorSeguro(valor, respaldo = "#64748b") {
     const color = String(valor ?? "").trim();
     const colorPredefinido = COLORES_EQUIPO_VISUALES[normalizarClaveColor(color)];
@@ -681,8 +748,9 @@ let eliminacionCatalogoVirtualEnCurso = false;
 
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
-let listadoEquipos = [];
-let coloresEquipos = {};
+const equiposGuardadosIniciales = cargarEquiposGuardados();
+let listadoEquipos = equiposGuardadosIniciales.lista;
+let coloresEquipos = normalizarPaletaEquipos(equiposGuardadosIniciales.paleta, listadoEquipos);
 let sesionIniciada = false;
 let listenersActivos = false;
 let registroEnCurso = false;
@@ -851,15 +919,20 @@ auth.onAuthStateChanged(async user => {
 function listenEquipos() {
     if(unsubscribeEquipos) return;
 
+    // El selector debe estar listo aunque Firebase tarde o el teléfono esté
+    // recuperando la conexión. Después se sustituye por la lista más reciente.
+    actualizarDesplegablesEquipos();
+
     unsubscribeEquipos = db.collection("configuracion").doc("equipos").onSnapshot(doc => {
         const datos = doc.exists ? doc.data() : {};
         const listaRecibida = Array.isArray(datos.lista) ? datos.lista : EQUIPOS_POR_DEFECTO;
         listadoEquipos = normalizarListaEquiposActivos(listaRecibida);
         coloresEquipos = normalizarPaletaEquipos(datos.paleta || datos.colores, listadoEquipos);
+        guardarEquiposLocalmente(listadoEquipos, coloresEquipos);
         actualizarDesplegablesEquipos();
     }, error => {
-        listadoEquipos = [...EQUIPOS_POR_DEFECTO];
-        coloresEquipos = normalizarPaletaEquipos(null, listadoEquipos);
+        if(!listadoEquipos.length) listadoEquipos = [...EQUIPOS_POR_DEFECTO];
+        if(!Object.keys(coloresEquipos).length) coloresEquipos = normalizarPaletaEquipos(null, listadoEquipos);
         actualizarDesplegablesEquipos();
         manejarError(error, "No se pudieron cargar los equipos");
     });
@@ -2704,10 +2777,14 @@ async function registrarConCodigo() {
     const a = document.getElementById('reg-apellido').value.trim();
     const e = document.getElementById('reg-email').value.trim().toLowerCase();
     const p = document.getElementById('reg-pass').value;
-    const col = document.getElementById('reg-color').value;
+    const col = String(document.getElementById('reg-color').value || "").trim();
     const c = document.getElementById('reg-invite').value.trim();
 
     if(!n || !a || !e || !p || !col || !c) return notify("⚠️ Completa todos los datos del registro");
+    if(!listadoEquipos.some(equipo => normalizarClaveColor(equipo) === normalizarClaveColor(col))) {
+        actualizarDesplegablesEquipos();
+        return notify("⚠️ Ese equipo ya no está disponible. Selecciona nuevamente el color");
+    }
 
     let credencial = null;
     registroEnCurso = true;
@@ -2715,6 +2792,7 @@ async function registrarConCodigo() {
 
     try {
         credencial = await auth.createUserWithEmailAndPassword(e, p);
+        await credencial.user.getIdToken(true);
         await db.collection("usuarios").doc(credencial.user.email).set({
             nombre: n,
             apellido: a,
@@ -2731,9 +2809,10 @@ async function registrarConCodigo() {
             await credencial.user.delete().catch(errorLimpieza => {
                 console.error("No se pudo revertir el usuario incompleto:", errorLimpieza);
             });
+            if(auth.currentUser) await auth.signOut().catch(() => {});
         }
 
-        if(err.code === 'permission-denied') notify("❌ Código incorrecto, vencido o sin autorización");
+        if(err.code === 'permission-denied') notify("❌ Firebase rechazó el código o el color. Publica las reglas incluidas en esta actualización");
         else manejarError(err, "No se pudo completar el registro");
     } finally {
         registroEnCurso = false;
@@ -4925,15 +5004,32 @@ function verFotoComprobante(id) {
 
     const base64 = comprobantesTemp[id];
     if(!esComprobanteSeguro(base64)) return notify("⚠️ El comprobante no contiene una imagen válida");
-    const w = window.open("");
-    if(!w) return notify("⚠️ El navegador bloqueó la ventana del comprobante");
+    const modal = document.getElementById("modal-comprobante-pago");
+    const imagen = document.getElementById("imagen-comprobante-pago");
+    if(!modal || !imagen) return notify("⚠️ No se pudo abrir el visor del comprobante");
 
-    w.document.body.style.cssText = "margin:0; background:#000; display:flex; justify-content:center; align-items:center; height:100vh;";
-    const imagen = w.document.createElement("img");
+    imagen.onerror = () => {
+        cerrarComprobantePago();
+        notify("⚠️ No se pudo mostrar la imagen del comprobante");
+    };
     imagen.src = base64;
-    imagen.alt = "Comprobante de pago";
-    imagen.style.cssText = "max-width:100%; max-height:100%; border-radius:8px;";
-    w.document.body.replaceChildren(imagen);
+    modal.style.display = "flex";
+    document.body.classList.add("modal-open");
+}
+
+function cerrarComprobantePago() {
+    const modal = document.getElementById("modal-comprobante-pago");
+    const imagen = document.getElementById("imagen-comprobante-pago");
+    if(modal) modal.style.display = "none";
+    if(imagen) {
+        imagen.onerror = null;
+        imagen.removeAttribute("src");
+    }
+    document.body.classList.remove("modal-open");
+}
+
+function cerrarComprobantePagoDesdeFondo(evento) {
+    if(evento?.target?.id === "modal-comprobante-pago") cerrarComprobantePago();
 }
 
 function obtenerVerificadorPago(pago = {}) {

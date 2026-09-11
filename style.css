@@ -2318,6 +2318,61 @@ input.admin-team-color-picker[type="color"]:focus-visible {
     animation: modalEnter 0.22s ease both;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
+.payment-receipt-modal {
+    width: min(96vw, 760px);
+    padding: 20px;
+    overflow: hidden;
+}
+
+.payment-receipt-title {
+    margin: 0 42px 15px;
+    color: var(--accent-strong);
+    font-size: 0.72rem;
+    font-weight: 900;
+    letter-spacing: 0.07em;
+    text-align: center;
+}
+
+.payment-receipt-title i {
+    margin-right: 6px;
+}
+
+.payment-receipt-stage {
+    min-height: 220px;
+    max-height: calc(90dvh - 150px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: auto;
+    border: 1px solid var(--border-strong);
+    border-radius: 16px;
+    background: #020409;
+    overscroll-behavior: contain;
+}
+
+.payment-receipt-stage img {
+    display: block;
+    width: auto;
+    max-width: 100%;
+    height: auto;
+    max-height: calc(90dvh - 152px);
+    object-fit: contain;
+    border-radius: 10px;
+}
+
+.payment-receipt-help {
+    display: block;
+    margin-top: 10px;
+    color: var(--text-muted);
+    font-size: 0.48rem;
+    font-weight: 700;
+    text-align: center;
+}
+
 .user-profile-modal-content {
     width: min(94vw, 720px);
 }
@@ -3634,6 +3689,11 @@ html.app-native .toast {
         width: 96vw;
         padding: 20px 16px;
         border-radius: 20px;
+    }
+
+    .payment-receipt-modal {
+        width: calc(100vw - 16px);
+        padding: 18px 10px 12px;
     }
 }
 
