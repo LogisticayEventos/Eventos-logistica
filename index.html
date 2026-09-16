@@ -592,11 +592,16 @@
                             <button id="admin-pago-guardar" class="btn-primary admin-payment-save" type="button" onclick="guardarConfiguracionPagosLista()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR DATOS DE PAGO</button>
                         </div>
 
-                        <div id="admin-buyer-sync-card" class="admin-card full-width admin-buyer-sync-card">
-                            <p class="admin-card-title"><i class="fa-solid fa-arrows-rotate"></i> CONSULTA DE COMPRADORES</p>
-                            <p class="admin-buyer-sync-description">Actualiza las boletas antiguas para que el comprador pueda ver el WhatsApp del vendedor, el coordinador de su equipo y el estado más reciente.</p>
-                            <button id="admin-buyer-sync-button" class="btn-primary" type="button" onclick="sincronizarConsultaCompradores()"><i class="fa-solid fa-cloud-arrow-up"></i> SINCRONIZAR TELÉFONOS Y BOLETAS</button>
-                            <small id="admin-buyer-sync-status" class="admin-buyer-sync-status">Ejecuta esta sincronización después de actualizar el WhatsApp de un vendedor.</small>
+                        <div id="admin-winning-ticket-card" class="admin-card full-width admin-winning-ticket-card">
+                            <p class="admin-card-title"><i class="fa-solid fa-trophy"></i> BOLETA GANADORA</p>
+                            <p class="admin-buyer-sync-description">Escribe el número ganador y el premio. Cuando actives la publicación, cada comprador verá automáticamente si ganó.</p>
+                            <div class="admin-public-social-form">
+                                <label><span>Número ganador</span><input id="admin-winning-ticket" type="text" maxlength="3" inputmode="numeric" placeholder="000"></label>
+                                <label><span>Premio</span><input id="admin-winning-prize" type="text" maxlength="160" placeholder="Ejemplo: Premio principal"></label>
+                            </div>
+                            <label class="admin-draw-published"><input id="admin-winning-published" type="checkbox"> Mostrar el resultado a los compradores</label>
+                            <button class="btn-primary" type="button" onclick="guardarResultadoSorteo()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR Y ACTUALIZAR RESULTADO</button>
+                            <small id="admin-winning-status" class="admin-public-config-status">El resultado aún no se ha cargado.</small>
                         </div>
 
                         <div id="admin-floating-announcement" class="admin-card full-width floating-admin-card">
@@ -846,19 +851,6 @@
                                 <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarConfiguracionPaginaPublica()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR TODA LA PÁGINA WEB</button>
                             </section>
 
-                            <section class="admin-public-config" aria-labelledby="admin-draw-result-title">
-                                <div class="admin-public-config-heading">
-                                    <i class="fa-solid fa-trophy" aria-hidden="true"></i>
-                                    <div><strong id="admin-draw-result-title">RESULTADO DE LA BOLETA GANADORA</strong><span>Publica el número ganador para que cada comprador pueda saber si ganó.</span></div>
-                                </div>
-                                <div class="admin-public-social-form">
-                                    <label><span>Número ganador</span><input id="admin-winning-ticket" type="text" maxlength="3" inputmode="numeric" placeholder="000"></label>
-                                    <label><span>Premio</span><input id="admin-winning-prize" type="text" maxlength="160" placeholder="Ejemplo: Premio principal"></label>
-                                </div>
-                                <label class="admin-draw-published"><input id="admin-winning-published" type="checkbox"> Mostrar el resultado a los compradores</label>
-                                <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarResultadoSorteo()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR RESULTADO</button>
-                                <small id="admin-winning-status" class="admin-public-config-status">El resultado aún no se ha cargado.</small>
-                            </section>
                         </div>
 
                         <div id="admin-edit-panel-code" class="admin-card">
