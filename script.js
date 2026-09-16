@@ -192,7 +192,10 @@ const COLECCION_GALERIA_PUBLICA = "galeria_publica";
 const MAXIMO_PUBLICACIONES_GALERIA = 24;
 const DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA = "pagina_publica";
 const MAXIMO_ASESORES_PAGINA_PUBLICA = 30;
-const CATEGORIAS_EVENTOS_PUBLICOS = Object.freeze([
+const MAXIMO_CATEGORIAS_EVENTOS_PUBLICOS = 24;
+const MAXIMO_SERVICIOS_PAGINA_PUBLICA = 18;
+const CLAVE_ASESOR_PUBLICO_SELECCIONADO = "logistica-eventos-asesor-publico-v1";
+const CATEGORIAS_EVENTOS_PUBLICOS_POR_DEFECTO = Object.freeze([
     Object.freeze({ clave: "fiestas-infantiles", nombre: "Fiestas infantiles", icono: "fa-children" }),
     Object.freeze({ clave: "15-anos", nombre: "15 años", icono: "fa-crown" }),
     Object.freeze({ clave: "cumpleanos", nombre: "Cumpleaños", icono: "fa-cake-candles" }),
@@ -201,6 +204,36 @@ const CATEGORIAS_EVENTOS_PUBLICOS = Object.freeze([
     Object.freeze({ clave: "eventos-empresariales", nombre: "Eventos empresariales", icono: "fa-briefcase" }),
     Object.freeze({ clave: "turismo", nombre: "Turismo", icono: "fa-umbrella-beach" })
 ]);
+const SERVICIOS_PAGINA_PUBLICA_POR_DEFECTO = Object.freeze([
+    Object.freeze({ titulo: "Recreación y animación", descripcion: "Dinámicas, integración, fiestas, actividades infantiles y experiencias para jóvenes.", icono: "fa-face-laugh-beam" }),
+    Object.freeze({ titulo: "Logística y seguridad", descripcion: "Control de acceso, organización de asistentes, apoyo operativo y acompañamiento.", icono: "fa-shield-halved" }),
+    Object.freeze({ titulo: "Meseros y buffet", descripcion: "Personal de servicio, apoyo de alimentos y atención organizada para tus invitados.", icono: "fa-utensils" }),
+    Object.freeze({ titulo: "DJ y producción", descripcion: "Música, sonido, iluminación y operación técnica según las necesidades del evento.", icono: "fa-music" }),
+    Object.freeze({ titulo: "Turismo y salidas", descripcion: "Apoyo logístico para planes grupales, integración, recorridos y experiencias.", icono: "fa-umbrella-beach" }),
+    Object.freeze({ titulo: "Decoración y shows", descripcion: "Maquillaje, globoflexia, payasos, títeres y ambientación para cada ocasión.", icono: "fa-wand-magic-sparkles" })
+]);
+const CONTENIDO_PAGINA_PUBLICA_POR_DEFECTO = Object.freeze({
+    ubicacion: "Bogotá y alrededores",
+    heroEtiqueta: "LOGÍSTICA · PRODUCCIÓN · EXPERIENCIAS",
+    heroTitulo: "Creamos eventos que la gente recuerda",
+    heroDescripcion: "Personal capacitado para recreación, turismo, seguridad, meseros, DJ, decoración, animación y producción de eventos.",
+    heroInsignia: "Equipo preparado",
+    serviciosEtiqueta: "LO QUE HACEMOS",
+    serviciosTitulo: "Soluciones para cada tipo de evento",
+    serviciosDescripcion: "Organizamos el personal y los servicios necesarios para que tú disfrutes mientras nosotros cuidamos cada detalle.",
+    servicios: SERVICIOS_PAGINA_PUBLICA_POR_DEFECTO,
+    galeriaEtiqueta: "NUESTRO TRABAJO",
+    galeriaTitulo: "Galería por tipo de evento",
+    galeriaDescripcion: "Elige una categoría y conoce cómo son nuestras experiencias, montajes y celebraciones.",
+    capacitacionEtiqueta: "FORMACIÓN DE EQUIPOS",
+    capacitacionTitulo: "Capacitaciones prácticas",
+    capacitacionDescripcion: "Preparamos al personal en atención al público, recreación, turismo, logística, seguridad y trabajo en equipo para responder profesionalmente en cada servicio.",
+    capacitacionEtiquetas: Object.freeze(["Servicio al cliente", "Trabajo en equipo", "Operación de eventos", "Protocolos de seguridad"]),
+    cotizacionEtiqueta: "COTIZA CON NOSOTROS",
+    cotizacionTitulo: "Cuéntanos qué estás planeando",
+    cotizacionDescripcion: "Completa los datos principales. Al enviar, se abrirá WhatsApp con la solicitud organizada para atenderte más rápido.",
+    piePagina: "Organización, talento y experiencias."
+});
 
 function fechaServidor() {
     return firebase.firestore.FieldValue.serverTimestamp();
@@ -762,9 +795,15 @@ let eliminacionCatalogoVirtualEnCurso = false;
 let galeriaPublica = [];
 let cargaGaleriaPublicaEnCurso = null;
 let categoriaGaleriaPublicaActiva = "todos";
-let configuracionPaginaPublica = { instagram: "", tiktok: "", asesores: [] };
+let configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
 let configuracionPaginaPublicaCargada = false;
 let cargaConfiguracionPaginaPublicaEnCurso = null;
+let asesorPaginaPublicaSeleccionado = "";
+let asesorPaginaPublicaEnEdicion = -1;
+let categoriaEventoPublicoEnEdicion = "";
+let categoriasPaginaPublicaPendientes = false;
+let servicioPaginaPublicaEnEdicion = -1;
+let publicacionGaleriaEnEdicionId = "";
 
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
@@ -4021,8 +4060,82 @@ async function eliminarPersonalYBoletasPorCodigo() {
     }
 }
 
+function textoPaginaPublica(valor, respaldo, maximo = 500) {
+    const texto = String(valor ?? "").trim().replace(/\s+/g, " ");
+    return (texto || String(respaldo || "")).slice(0, maximo);
+}
+
+function normalizarIconoPaginaPublica(valor, respaldo = "fa-star") {
+    const icono = String(valor || "").trim();
+    return /^fa-[a-z0-9-]{2,45}$/.test(icono) ? icono : respaldo;
+}
+
+function crearClaveCategoriaPaginaPublica(nombre) {
+    const base = String(nombre || "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 48) || "evento";
+    const existentes = new Set((configuracionPaginaPublica?.categorias || []).map(categoria => categoria.clave));
+    if(!existentes.has(base)) return base;
+    let numero = 2;
+    while(existentes.has(`${base}-${numero}`)) numero += 1;
+    return `${base}-${numero}`;
+}
+
+function normalizarCategoriaPaginaPublica(categoria = {}) {
+    const clave = String(categoria.clave || "").trim().toLowerCase();
+    const nombre = textoPaginaPublica(categoria.nombre, "", 60);
+    if(!/^[a-z0-9][a-z0-9-]{1,59}$/.test(clave) || !nombre) return null;
+    return { clave, nombre, icono: normalizarIconoPaginaPublica(categoria.icono) };
+}
+
+function normalizarServicioPaginaPublica(servicio = {}) {
+    const titulo = textoPaginaPublica(servicio.titulo, "", 80);
+    const descripcion = textoPaginaPublica(servicio.descripcion, "", 300);
+    if(!titulo || !descripcion) return null;
+    return { titulo, descripcion, icono: normalizarIconoPaginaPublica(servicio.icono) };
+}
+
+function normalizarContenidoPaginaPublica(contenido = {}) {
+    const base = CONTENIDO_PAGINA_PUBLICA_POR_DEFECTO;
+    const servicios = (Array.isArray(contenido.servicios) ? contenido.servicios : base.servicios)
+        .slice(0, MAXIMO_SERVICIOS_PAGINA_PUBLICA)
+        .map(normalizarServicioPaginaPublica)
+        .filter(Boolean);
+    const etiquetas = (Array.isArray(contenido.capacitacionEtiquetas) ? contenido.capacitacionEtiquetas : base.capacitacionEtiquetas)
+        .map(valor => textoPaginaPublica(valor, "", 60))
+        .filter(Boolean)
+        .slice(0, 10);
+    return {
+        ubicacion: textoPaginaPublica(contenido.ubicacion, base.ubicacion, 100),
+        heroEtiqueta: textoPaginaPublica(contenido.heroEtiqueta, base.heroEtiqueta, 100),
+        heroTitulo: textoPaginaPublica(contenido.heroTitulo, base.heroTitulo, 140),
+        heroDescripcion: textoPaginaPublica(contenido.heroDescripcion, base.heroDescripcion, 500),
+        heroInsignia: textoPaginaPublica(contenido.heroInsignia, base.heroInsignia, 80),
+        serviciosEtiqueta: textoPaginaPublica(contenido.serviciosEtiqueta, base.serviciosEtiqueta, 100),
+        serviciosTitulo: textoPaginaPublica(contenido.serviciosTitulo, base.serviciosTitulo, 140),
+        serviciosDescripcion: textoPaginaPublica(contenido.serviciosDescripcion, base.serviciosDescripcion, 500),
+        servicios: servicios.length ? servicios : base.servicios.map(servicio => ({ ...servicio })),
+        galeriaEtiqueta: textoPaginaPublica(contenido.galeriaEtiqueta, base.galeriaEtiqueta, 100),
+        galeriaTitulo: textoPaginaPublica(contenido.galeriaTitulo, base.galeriaTitulo, 140),
+        galeriaDescripcion: textoPaginaPublica(contenido.galeriaDescripcion, base.galeriaDescripcion, 500),
+        capacitacionEtiqueta: textoPaginaPublica(contenido.capacitacionEtiqueta, base.capacitacionEtiqueta, 100),
+        capacitacionTitulo: textoPaginaPublica(contenido.capacitacionTitulo, base.capacitacionTitulo, 140),
+        capacitacionDescripcion: textoPaginaPublica(contenido.capacitacionDescripcion, base.capacitacionDescripcion, 500),
+        capacitacionEtiquetas: etiquetas.length ? etiquetas : [...base.capacitacionEtiquetas],
+        cotizacionEtiqueta: textoPaginaPublica(contenido.cotizacionEtiqueta, base.cotizacionEtiqueta, 100),
+        cotizacionTitulo: textoPaginaPublica(contenido.cotizacionTitulo, base.cotizacionTitulo, 140),
+        cotizacionDescripcion: textoPaginaPublica(contenido.cotizacionDescripcion, base.cotizacionDescripcion, 500),
+        piePagina: textoPaginaPublica(contenido.piePagina, base.piePagina, 180)
+    };
+}
+
 function obtenerCategoriaEventoPublico(clave) {
-    return CATEGORIAS_EVENTOS_PUBLICOS.find(categoria => categoria.clave === String(clave || "").trim()) || null;
+    return (configuracionPaginaPublica?.categorias || CATEGORIAS_EVENTOS_PUBLICOS_POR_DEFECTO)
+        .find(categoria => categoria.clave === String(clave || "").trim()) || null;
 }
 
 function normalizarUrlRedSocialPublica(valor, red) {
@@ -4038,8 +4151,8 @@ function normalizarUrlRedSocialPublica(valor, red) {
 }
 
 function normalizarAsesorPaginaPublica(asesor = {}) {
-    const nombre = String(asesor.nombre || "").trim().replace(/\s+/g, " ").slice(0, 80);
-    const coordinador = String(asesor.coordinador || "").trim().replace(/\s+/g, " ").slice(0, 100);
+    const nombre = textoPaginaPublica(asesor.nombre, "", 80);
+    const coordinador = textoPaginaPublica(asesor.coordinador, "", 100);
     const whatsapp = normalizarWhatsappConsulta(asesor.whatsapp);
     if(!nombre || !coordinador || !/^\d{10}$/.test(whatsapp)) return null;
     return { nombre, coordinador, whatsapp };
@@ -4055,11 +4168,122 @@ function normalizarConfiguracionPaginaPublica(datos = {}) {
         nombres.add(clave);
         asesores.push(asesor);
     });
+
+    const categorias = [];
+    const clavesCategorias = new Set();
+    (Array.isArray(datos.categorias) ? datos.categorias : CATEGORIAS_EVENTOS_PUBLICOS_POR_DEFECTO)
+        .slice(0, MAXIMO_CATEGORIAS_EVENTOS_PUBLICOS)
+        .forEach(valor => {
+            const categoria = normalizarCategoriaPaginaPublica(valor);
+            if(!categoria || clavesCategorias.has(categoria.clave)) return;
+            clavesCategorias.add(categoria.clave);
+            categorias.push(categoria);
+        });
+
     return {
         instagram: normalizarUrlRedSocialPublica(datos.instagram, "instagram"),
         tiktok: normalizarUrlRedSocialPublica(datos.tiktok, "tiktok"),
-        asesores
+        asesores,
+        categorias: categorias.length ? categorias : CATEGORIAS_EVENTOS_PUBLICOS_POR_DEFECTO.map(categoria => ({ ...categoria })),
+        contenido: normalizarContenidoPaginaPublica(datos.contenido)
     };
+}
+
+function asignarTextoPaginaPublica(id, valor) {
+    const elemento = document.getElementById(id);
+    if(elemento) elemento.textContent = valor;
+}
+
+function renderContenidoPaginaPublica() {
+    const contenido = configuracionPaginaPublica.contenido;
+    if(!contenido) return;
+    const textos = {
+        "public-location-text": contenido.ubicacion,
+        "public-hero-eyebrow": contenido.heroEtiqueta,
+        "public-site-title": contenido.heroTitulo,
+        "public-hero-description": contenido.heroDescripcion,
+        "public-hero-badge-text": contenido.heroInsignia,
+        "public-services-eyebrow": contenido.serviciosEtiqueta,
+        "public-services-title": contenido.serviciosTitulo,
+        "public-services-description": contenido.serviciosDescripcion,
+        "public-gallery-eyebrow": contenido.galeriaEtiqueta,
+        "public-gallery-title": contenido.galeriaTitulo,
+        "public-gallery-description": contenido.galeriaDescripcion,
+        "public-training-eyebrow": contenido.capacitacionEtiqueta,
+        "public-training-title": contenido.capacitacionTitulo,
+        "public-training-description": contenido.capacitacionDescripcion,
+        "public-quote-eyebrow": contenido.cotizacionEtiqueta,
+        "public-quote-title": contenido.cotizacionTitulo,
+        "public-quote-description": contenido.cotizacionDescripcion,
+        "public-footer-tagline": contenido.piePagina
+    };
+    Object.entries(textos).forEach(([id, valor]) => asignarTextoPaginaPublica(id, valor));
+
+    const servicios = document.getElementById("public-services-grid");
+    if(servicios) {
+        servicios.replaceChildren();
+        contenido.servicios.forEach(servicio => {
+            const tarjeta = document.createElement("article");
+            const icono = document.createElement("i");
+            icono.className = `fa-solid ${servicio.icono}`;
+            const titulo = document.createElement("h3");
+            titulo.textContent = servicio.titulo;
+            const descripcion = document.createElement("p");
+            descripcion.textContent = servicio.descripcion;
+            tarjeta.append(icono, titulo, descripcion);
+            servicios.appendChild(tarjeta);
+        });
+    }
+
+    const etiquetas = document.getElementById("public-training-tags");
+    if(etiquetas) {
+        etiquetas.replaceChildren();
+        contenido.capacitacionEtiquetas.forEach(valor => {
+            const etiqueta = document.createElement("span");
+            etiqueta.textContent = valor;
+            etiquetas.appendChild(etiqueta);
+        });
+    }
+}
+
+function renderSelectoresCategoriasPaginaPublica() {
+    const categoriaMedio = document.getElementById("admin-public-media-category");
+    if(categoriaMedio) {
+        const anterior = categoriaMedio.value;
+        categoriaMedio.replaceChildren();
+        configuracionPaginaPublica.categorias.forEach(categoria => {
+            const opcion = document.createElement("option");
+            opcion.value = categoria.clave;
+            opcion.textContent = categoria.nombre;
+            categoriaMedio.appendChild(opcion);
+        });
+        if(configuracionPaginaPublica.categorias.some(categoria => categoria.clave === anterior)) categoriaMedio.value = anterior;
+    }
+
+    const tipoCotizacion = document.getElementById("public-quote-type");
+    if(tipoCotizacion) {
+        const anterior = tipoCotizacion.value;
+        tipoCotizacion.replaceChildren();
+        const indicacion = document.createElement("option");
+        indicacion.value = "";
+        indicacion.disabled = true;
+        indicacion.textContent = "Selecciona una opción";
+        tipoCotizacion.appendChild(indicacion);
+        configuracionPaginaPublica.categorias.forEach(categoria => {
+            const opcion = document.createElement("option");
+            opcion.value = categoria.nombre;
+            opcion.textContent = categoria.nombre;
+            tipoCotizacion.appendChild(opcion);
+        });
+        ["Capacitación", "Otro"].forEach(valor => {
+            const opcion = document.createElement("option");
+            opcion.value = valor;
+            opcion.textContent = valor;
+            tipoCotizacion.appendChild(opcion);
+        });
+        tipoCotizacion.value = Array.from(tipoCotizacion.options).some(opcion => opcion.value === anterior) ? anterior : "";
+        indicacion.selected = !tipoCotizacion.value;
+    }
 }
 
 function renderRedesSocialesPublicas() {
@@ -4067,12 +4291,7 @@ function renderRedesSocialesPublicas() {
     const instagram = document.getElementById("public-instagram-link");
     const tiktok = document.getElementById("public-tiktok-link");
     if(!contenedor || !instagram || !tiktok) return;
-
-    const redes = [
-        [instagram, configuracionPaginaPublica.instagram],
-        [tiktok, configuracionPaginaPublica.tiktok]
-    ];
-    redes.forEach(([enlace, url]) => {
+    [[instagram, configuracionPaginaPublica.instagram], [tiktok, configuracionPaginaPublica.tiktok]].forEach(([enlace, url]) => {
         enlace.hidden = !url;
         if(url) enlace.href = url;
         else enlace.removeAttribute("href");
@@ -4080,33 +4299,119 @@ function renderRedesSocialesPublicas() {
     contenedor.hidden = !configuracionPaginaPublica.instagram && !configuracionPaginaPublica.tiktok;
 }
 
-function renderSeleccionAsesorCotizacion() {
-    const selector = document.getElementById("public-quote-advisor");
-    if(!selector) return;
-    const valorAnterior = selector.value;
-    selector.replaceChildren();
+function obtenerAsesorPaginaPublicaPorValor(valor) {
+    if(!String(valor || "").startsWith("asesor:")) return null;
+    const indice = Number(String(valor).split(":")[1]);
+    return Number.isInteger(indice) ? configuracionPaginaPublica.asesores[indice] || null : null;
+}
 
+function guardarAsesorPaginaPublicaSeleccionado(nombre) {
+    asesorPaginaPublicaSeleccionado = String(nombre || "");
+    try {
+        if(asesorPaginaPublicaSeleccionado) sessionStorage.setItem(CLAVE_ASESOR_PUBLICO_SELECCIONADO, asesorPaginaPublicaSeleccionado);
+        else sessionStorage.removeItem(CLAVE_ASESOR_PUBLICO_SELECCIONADO);
+    } catch(error) {
+        console.warn("No se pudo recordar el asesor seleccionado", error);
+    }
+    actualizarBotonWhatsappPublico();
+}
+
+function obtenerAsesorPaginaPublicaSeleccionado() {
+    let nombre = asesorPaginaPublicaSeleccionado;
+    if(!nombre) {
+        try { nombre = sessionStorage.getItem(CLAVE_ASESOR_PUBLICO_SELECCIONADO) || ""; } catch(error) { nombre = ""; }
+    }
+    const asesor = configuracionPaginaPublica.asesores.find(valor => normalizarClaveColor(valor.nombre) === normalizarClaveColor(nombre)) || null;
+    if(!asesor && nombre) guardarAsesorPaginaPublicaSeleccionado("");
+    return asesor;
+}
+
+function actualizarBotonWhatsappPublico() {
+    const boton = document.getElementById("public-hero-whatsapp-button");
+    if(!boton) return;
+    const asesor = obtenerAsesorPaginaPublicaSeleccionado();
+    const texto = boton.querySelector("span");
+    if(texto) texto.textContent = asesor ? `HABLAR CON ${asesor.nombre.toUpperCase()}` : "HABLAR POR WHATSAPP";
+}
+
+function crearOpcionesAsesoresPaginaPublica(selector, incluirGeneral = false) {
+    if(!selector) return;
+    const anterior = selector.value;
+    selector.replaceChildren();
     const indicacion = document.createElement("option");
     indicacion.value = "";
     indicacion.disabled = true;
-    indicacion.textContent = "Selecciona el asesor que te está ayudando";
+    indicacion.textContent = configuracionPaginaPublica.asesores.length ? "Selecciona el asesor que te está ayudando" : "No hay asesores configurados";
     selector.appendChild(indicacion);
-
     configuracionPaginaPublica.asesores.forEach((asesor, indice) => {
         const opcion = document.createElement("option");
         opcion.value = `asesor:${indice}`;
         opcion.textContent = `${asesor.nombre} · Coordina ${asesor.coordinador}`;
         selector.appendChild(opcion);
     });
-
-    const general = document.createElement("option");
-    general.value = "general";
-    general.textContent = "Ningún asesor / contacto general";
-    selector.appendChild(general);
-
-    const existeValorAnterior = Array.from(selector.options).some(opcion => opcion.value === valorAnterior);
-    selector.value = existeValorAnterior ? valorAnterior : "";
+    if(incluirGeneral) {
+        const general = document.createElement("option");
+        general.value = "general";
+        general.textContent = "Ningún asesor / contacto general";
+        selector.appendChild(general);
+    }
+    const asesorSeleccionado = obtenerAsesorPaginaPublicaSeleccionado();
+    const indiceSeleccionado = asesorSeleccionado ? configuracionPaginaPublica.asesores.indexOf(asesorSeleccionado) : -1;
+    const valorPreferido = indiceSeleccionado >= 0 ? `asesor:${indiceSeleccionado}` : anterior;
+    selector.value = Array.from(selector.options).some(opcion => opcion.value === valorPreferido) ? valorPreferido : "";
     indicacion.selected = !selector.value;
+}
+
+function renderSeleccionAsesorCotizacion() {
+    crearOpcionesAsesoresPaginaPublica(document.getElementById("public-quote-advisor"), true);
+    crearOpcionesAsesoresPaginaPublica(document.getElementById("public-whatsapp-advisor-select"), false);
+    actualizarBotonWhatsappPublico();
+}
+
+function seleccionarAsesorCotizacionPublica(valor) {
+    const asesor = obtenerAsesorPaginaPublicaPorValor(valor);
+    guardarAsesorPaginaPublicaSeleccionado(asesor?.nombre || "");
+}
+
+function abrirWhatsappPaginaPublica(asesor) {
+    const telefono = asesor?.whatsapp || CONTACTO_PUBLICO_WHATSAPP;
+    const saludo = asesor
+        ? `Hola, elegí al asesor *${asesor.nombre}* y deseo recibir información sobre sus servicios de eventos.`
+        : "Hola, deseo recibir información sobre sus servicios de eventos.";
+    const enlace = document.createElement("a");
+    enlace.href = `https://wa.me/57${telefono}?text=${encodeURIComponent(saludo)}`;
+    enlace.target = "_blank";
+    enlace.rel = "noopener noreferrer";
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+}
+
+function hablarPorWhatsappPublico() {
+    const asesor = obtenerAsesorPaginaPublicaSeleccionado();
+    if(asesor) return abrirWhatsappPaginaPublica(asesor);
+    if(!configuracionPaginaPublica.asesores.length) {
+        notify("ℹ️ Aún no hay asesores configurados. Te dirigiremos al contacto general");
+        return abrirWhatsappPaginaPublica(null);
+    }
+    const modal = document.getElementById("public-advisor-modal");
+    if(modal) modal.hidden = false;
+}
+
+function cerrarSelectorAsesorPublico() {
+    const modal = document.getElementById("public-advisor-modal");
+    if(modal) modal.hidden = true;
+}
+
+function confirmarAsesorWhatsappPublico() {
+    const selector = document.getElementById("public-whatsapp-advisor-select");
+    const asesor = obtenerAsesorPaginaPublicaPorValor(selector?.value);
+    if(!asesor) return notify("⚠️ Selecciona el asesor que te está atendiendo");
+    guardarAsesorPaginaPublicaSeleccionado(asesor.nombre);
+    const selectorCotizacion = document.getElementById("public-quote-advisor");
+    if(selectorCotizacion) selectorCotizacion.value = selector.value;
+    cerrarSelectorAsesorPublico();
+    abrirWhatsappPaginaPublica(asesor);
 }
 
 function renderListaAsesoresPaginaPublica() {
@@ -4116,11 +4421,10 @@ function renderListaAsesoresPaginaPublica() {
     if(!configuracionPaginaPublica.asesores.length) {
         const vacio = document.createElement("p");
         vacio.className = "admin-public-advisors-empty";
-        vacio.textContent = "Todavía no hay asesores configurados. Las cotizaciones usarán el contacto general.";
+        vacio.textContent = "Todavía no hay asesores configurados.";
         contenedor.appendChild(vacio);
         return;
     }
-
     configuracionPaginaPublica.asesores.forEach((asesor, indice) => {
         const fila = document.createElement("article");
         fila.className = "admin-public-advisor-item";
@@ -4130,13 +4434,230 @@ function renderListaAsesoresPaginaPublica() {
         const detalle = document.createElement("span");
         detalle.textContent = `${asesor.coordinador} · ${asesor.whatsapp}`;
         informacion.append(nombre, detalle);
+        const acciones = document.createElement("div");
+        acciones.className = "admin-public-item-actions";
+        const editar = document.createElement("button");
+        editar.type = "button";
+        editar.className = "btn-mini btn-edit";
+        editar.innerHTML = '<i class="fa-solid fa-pen"></i> EDITAR';
+        editar.addEventListener("click", () => editarAsesorPaginaPublica(indice));
         const eliminar = document.createElement("button");
         eliminar.type = "button";
         eliminar.className = "btn-mini btn-delete";
         eliminar.innerHTML = '<i class="fa-solid fa-user-minus"></i> QUITAR';
         eliminar.addEventListener("click", () => eliminarAsesorPaginaPublica(indice));
-        fila.append(informacion, eliminar);
+        acciones.append(editar, eliminar);
+        fila.append(informacion, acciones);
         contenedor.appendChild(fila);
+    });
+}
+
+function renderCategoriasAdministradorPaginaPublica() {
+    const contenedor = document.getElementById("admin-public-categories-list");
+    if(!contenedor || !esAdministradorActual()) return;
+    contenedor.replaceChildren();
+    configuracionPaginaPublica.categorias.forEach(categoria => {
+        const fila = document.createElement("article");
+        fila.className = "admin-public-category-item";
+        const informacion = document.createElement("div");
+        const icono = document.createElement("i");
+        icono.className = `fa-solid ${categoria.icono}`;
+        const nombre = document.createElement("strong");
+        nombre.textContent = categoria.nombre;
+        const cantidad = document.createElement("span");
+        cantidad.textContent = `${galeriaPublica.filter(medio => medio.categoria === categoria.clave).length} publicaciones`;
+        informacion.append(icono, nombre, cantidad);
+        const acciones = document.createElement("div");
+        acciones.className = "admin-public-item-actions";
+        const editar = document.createElement("button");
+        editar.type = "button";
+        editar.className = "btn-mini btn-edit";
+        editar.innerHTML = '<i class="fa-solid fa-pen"></i> EDITAR';
+        editar.addEventListener("click", () => editarCategoriaEventoPublico(categoria.clave));
+        const eliminar = document.createElement("button");
+        eliminar.type = "button";
+        eliminar.className = "btn-mini btn-delete";
+        eliminar.innerHTML = '<i class="fa-solid fa-trash-can"></i> ELIMINAR';
+        eliminar.addEventListener("click", () => eliminarCategoriaEventoPublico(categoria.clave));
+        acciones.append(editar, eliminar);
+        fila.append(informacion, acciones);
+        contenedor.appendChild(fila);
+    });
+}
+
+function cancelarEdicionCategoriaEventoPublico() {
+    categoriaEventoPublicoEnEdicion = "";
+    const nombre = document.getElementById("admin-public-category-name");
+    const icono = document.getElementById("admin-public-category-icon");
+    const guardar = document.getElementById("admin-public-category-save");
+    const cancelar = document.getElementById("admin-public-category-cancel");
+    if(nombre) nombre.value = "";
+    if(icono) icono.value = "fa-star";
+    if(guardar) guardar.innerHTML = '<i class="fa-solid fa-plus"></i> AGREGAR TIPO';
+    if(cancelar) cancelar.hidden = true;
+}
+
+function editarCategoriaEventoPublico(clave) {
+    const categoria = obtenerCategoriaEventoPublico(clave);
+    if(!categoria) return;
+    categoriaEventoPublicoEnEdicion = categoria.clave;
+    document.getElementById("admin-public-category-name").value = categoria.nombre;
+    document.getElementById("admin-public-category-icon").value = categoria.icono;
+    document.getElementById("admin-public-category-save").innerHTML = '<i class="fa-solid fa-floppy-disk"></i> ACTUALIZAR TIPO';
+    document.getElementById("admin-public-category-cancel").hidden = false;
+}
+
+function guardarCategoriaEventoPublico() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede modificar tipos de evento");
+    const nombre = textoPaginaPublica(document.getElementById("admin-public-category-name")?.value, "", 60);
+    const icono = normalizarIconoPaginaPublica(document.getElementById("admin-public-category-icon")?.value);
+    if(!nombre) return notify("⚠️ Escribe el nombre del tipo de evento");
+    const duplicada = configuracionPaginaPublica.categorias.some(categoria => normalizarClaveColor(categoria.nombre) === normalizarClaveColor(nombre) && categoria.clave !== categoriaEventoPublicoEnEdicion);
+    if(duplicada) return notify("⚠️ Ya existe un tipo de evento con ese nombre");
+    if(categoriaEventoPublicoEnEdicion) {
+        const categoria = obtenerCategoriaEventoPublico(categoriaEventoPublicoEnEdicion);
+        if(!categoria) return;
+        categoria.nombre = nombre;
+        categoria.icono = icono;
+        notify("✅ Tipo de evento actualizado. Guarda toda la página para publicarlo");
+    } else {
+        if(configuracionPaginaPublica.categorias.length >= MAXIMO_CATEGORIAS_EVENTOS_PUBLICOS) return notify(`⚠️ Máximo ${MAXIMO_CATEGORIAS_EVENTOS_PUBLICOS} tipos de evento`);
+        configuracionPaginaPublica.categorias.push({ clave: crearClaveCategoriaPaginaPublica(nombre), nombre, icono });
+        notify("✅ Tipo de evento agregado. Guarda toda la página para publicarlo");
+    }
+    categoriasPaginaPublicaPendientes = true;
+    cancelarEdicionCategoriaEventoPublico();
+    renderConfiguracionPaginaPublica();
+}
+
+async function eliminarCategoriaEventoPublico(clave) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar tipos de evento");
+    const categoria = obtenerCategoriaEventoPublico(clave);
+    if(!categoria) return;
+    if(configuracionPaginaPublica.categorias.length <= 1) return notify("⚠️ La página debe conservar al menos un tipo de evento");
+    await cargarGaleriaPublica(true);
+    const usadas = galeriaPublica.filter(medio => medio.categoria === clave).length;
+    if(usadas) return notify(`⚠️ No puedes eliminar ${categoria.nombre}: tiene ${usadas} publicaciones. Edítalas o elimínalas primero`);
+    if(!confirm(`¿Eliminar el tipo de evento “${categoria.nombre}”?`)) return;
+    configuracionPaginaPublica.categorias = configuracionPaginaPublica.categorias.filter(valor => valor.clave !== clave);
+    categoriasPaginaPublicaPendientes = true;
+    if(categoriaGaleriaPublicaActiva === clave) categoriaGaleriaPublicaActiva = "todos";
+    cancelarEdicionCategoriaEventoPublico();
+    renderConfiguracionPaginaPublica();
+    notify("🗑️ Tipo eliminado. Guarda toda la página para publicar el cambio");
+}
+
+function renderServiciosAdministradorPaginaPublica() {
+    const contenedor = document.getElementById("admin-public-services-list");
+    if(!contenedor || !esAdministradorActual()) return;
+    contenedor.replaceChildren();
+    configuracionPaginaPublica.contenido.servicios.forEach((servicio, indice) => {
+        const fila = document.createElement("article");
+        fila.className = "admin-public-service-item";
+        const informacion = document.createElement("div");
+        const icono = document.createElement("i");
+        icono.className = `fa-solid ${servicio.icono}`;
+        const textos = document.createElement("div");
+        const titulo = document.createElement("strong");
+        titulo.textContent = servicio.titulo;
+        const descripcion = document.createElement("span");
+        descripcion.textContent = servicio.descripcion;
+        textos.append(titulo, descripcion);
+        informacion.append(icono, textos);
+        const acciones = document.createElement("div");
+        acciones.className = "admin-public-item-actions";
+        const editar = document.createElement("button");
+        editar.type = "button";
+        editar.className = "btn-mini btn-edit";
+        editar.innerHTML = '<i class="fa-solid fa-pen"></i> EDITAR';
+        editar.addEventListener("click", () => editarServicioPaginaPublica(indice));
+        const eliminar = document.createElement("button");
+        eliminar.type = "button";
+        eliminar.className = "btn-mini btn-delete";
+        eliminar.innerHTML = '<i class="fa-solid fa-trash-can"></i> ELIMINAR';
+        eliminar.addEventListener("click", () => eliminarServicioPaginaPublica(indice));
+        acciones.append(editar, eliminar);
+        fila.append(informacion, acciones);
+        contenedor.appendChild(fila);
+    });
+}
+
+function cancelarEdicionServicioPaginaPublica() {
+    servicioPaginaPublicaEnEdicion = -1;
+    ["admin-public-service-title", "admin-public-service-description"].forEach(id => { const campo = document.getElementById(id); if(campo) campo.value = ""; });
+    const icono = document.getElementById("admin-public-service-icon");
+    const guardar = document.getElementById("admin-public-service-save");
+    const cancelar = document.getElementById("admin-public-service-cancel");
+    if(icono) icono.value = "fa-star";
+    if(guardar) guardar.innerHTML = '<i class="fa-solid fa-plus"></i> AGREGAR SERVICIO';
+    if(cancelar) cancelar.hidden = true;
+}
+
+function editarServicioPaginaPublica(indice) {
+    const servicio = configuracionPaginaPublica.contenido.servicios[indice];
+    if(!servicio) return;
+    servicioPaginaPublicaEnEdicion = indice;
+    document.getElementById("admin-public-service-title").value = servicio.titulo;
+    document.getElementById("admin-public-service-description").value = servicio.descripcion;
+    document.getElementById("admin-public-service-icon").value = servicio.icono;
+    document.getElementById("admin-public-service-save").innerHTML = '<i class="fa-solid fa-floppy-disk"></i> ACTUALIZAR SERVICIO';
+    document.getElementById("admin-public-service-cancel").hidden = false;
+}
+
+function guardarServicioPaginaPublica() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede modificar servicios");
+    const servicio = normalizarServicioPaginaPublica({
+        titulo: document.getElementById("admin-public-service-title")?.value,
+        descripcion: document.getElementById("admin-public-service-description")?.value,
+        icono: document.getElementById("admin-public-service-icon")?.value
+    });
+    if(!servicio) return notify("⚠️ Completa el nombre y la descripción del servicio");
+    if(servicioPaginaPublicaEnEdicion >= 0) configuracionPaginaPublica.contenido.servicios[servicioPaginaPublicaEnEdicion] = servicio;
+    else {
+        if(configuracionPaginaPublica.contenido.servicios.length >= MAXIMO_SERVICIOS_PAGINA_PUBLICA) return notify(`⚠️ Máximo ${MAXIMO_SERVICIOS_PAGINA_PUBLICA} servicios`);
+        configuracionPaginaPublica.contenido.servicios.push(servicio);
+    }
+    cancelarEdicionServicioPaginaPublica();
+    renderContenidoPaginaPublica();
+    renderServiciosAdministradorPaginaPublica();
+    notify("✅ Servicio actualizado. Guarda toda la página para publicarlo");
+}
+
+function eliminarServicioPaginaPublica(indice) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar servicios");
+    const servicio = configuracionPaginaPublica.contenido.servicios[indice];
+    if(!servicio || !confirm(`¿Eliminar el servicio “${servicio.titulo}”?`)) return;
+    configuracionPaginaPublica.contenido.servicios.splice(indice, 1);
+    cancelarEdicionServicioPaginaPublica();
+    renderContenidoPaginaPublica();
+    renderServiciosAdministradorPaginaPublica();
+    notify("🗑️ Servicio eliminado. Guarda toda la página para publicar el cambio");
+}
+
+function leerContenidoPaginaPublicaDesdeFormulario() {
+    const actual = configuracionPaginaPublica.contenido;
+    const valor = (id, respaldo) => document.getElementById(id)?.value ?? respaldo;
+    return normalizarContenidoPaginaPublica({
+        ubicacion: valor("admin-content-location", actual.ubicacion),
+        heroEtiqueta: valor("admin-content-hero-label", actual.heroEtiqueta),
+        heroTitulo: valor("admin-content-hero-title", actual.heroTitulo),
+        heroDescripcion: valor("admin-content-hero-description", actual.heroDescripcion),
+        heroInsignia: valor("admin-content-hero-badge", actual.heroInsignia),
+        serviciosEtiqueta: valor("admin-content-services-label", actual.serviciosEtiqueta),
+        serviciosTitulo: valor("admin-content-services-title", actual.serviciosTitulo),
+        serviciosDescripcion: valor("admin-content-services-description", actual.serviciosDescripcion),
+        servicios: actual.servicios,
+        galeriaEtiqueta: valor("admin-content-gallery-label", actual.galeriaEtiqueta),
+        galeriaTitulo: valor("admin-content-gallery-title", actual.galeriaTitulo),
+        galeriaDescripcion: valor("admin-content-gallery-description", actual.galeriaDescripcion),
+        capacitacionEtiqueta: valor("admin-content-training-label", actual.capacitacionEtiqueta),
+        capacitacionTitulo: valor("admin-content-training-title", actual.capacitacionTitulo),
+        capacitacionDescripcion: valor("admin-content-training-description", actual.capacitacionDescripcion),
+        capacitacionEtiquetas: String(valor("admin-content-training-tags", actual.capacitacionEtiquetas.join(", "))).split(","),
+        cotizacionEtiqueta: valor("admin-content-quote-label", actual.cotizacionEtiqueta),
+        cotizacionTitulo: valor("admin-content-quote-title", actual.cotizacionTitulo),
+        cotizacionDescripcion: valor("admin-content-quote-description", actual.cotizacionDescripcion),
+        piePagina: valor("admin-content-footer", actual.piePagina)
     });
 }
 
@@ -4145,13 +4666,43 @@ function sincronizarCamposConfiguracionPaginaPublica() {
     const tiktok = document.getElementById("admin-public-tiktok");
     if(instagram) instagram.value = configuracionPaginaPublica.instagram;
     if(tiktok) tiktok.value = configuracionPaginaPublica.tiktok;
+    const contenido = configuracionPaginaPublica.contenido;
+    const campos = {
+        "admin-content-location": contenido.ubicacion,
+        "admin-content-hero-label": contenido.heroEtiqueta,
+        "admin-content-hero-title": contenido.heroTitulo,
+        "admin-content-hero-description": contenido.heroDescripcion,
+        "admin-content-hero-badge": contenido.heroInsignia,
+        "admin-content-services-label": contenido.serviciosEtiqueta,
+        "admin-content-services-title": contenido.serviciosTitulo,
+        "admin-content-services-description": contenido.serviciosDescripcion,
+        "admin-content-gallery-label": contenido.galeriaEtiqueta,
+        "admin-content-gallery-title": contenido.galeriaTitulo,
+        "admin-content-gallery-description": contenido.galeriaDescripcion,
+        "admin-content-training-label": contenido.capacitacionEtiqueta,
+        "admin-content-training-title": contenido.capacitacionTitulo,
+        "admin-content-training-description": contenido.capacitacionDescripcion,
+        "admin-content-training-tags": contenido.capacitacionEtiquetas.join(", "),
+        "admin-content-quote-label": contenido.cotizacionEtiqueta,
+        "admin-content-quote-title": contenido.cotizacionTitulo,
+        "admin-content-quote-description": contenido.cotizacionDescripcion,
+        "admin-content-footer": contenido.piePagina
+    };
+    Object.entries(campos).forEach(([id, valor]) => { const campo = document.getElementById(id); if(campo) campo.value = valor; });
     renderListaAsesoresPaginaPublica();
+    renderCategoriasAdministradorPaginaPublica();
+    renderServiciosAdministradorPaginaPublica();
 }
 
 function renderConfiguracionPaginaPublica() {
     renderRedesSocialesPublicas();
+    renderContenidoPaginaPublica();
+    renderSelectoresCategoriasPaginaPublica();
     renderSeleccionAsesorCotizacion();
     renderListaAsesoresPaginaPublica();
+    renderCategoriasAdministradorPaginaPublica();
+    renderServiciosAdministradorPaginaPublica();
+    renderGaleriaPublica();
 }
 
 async function cargarConfiguracionPaginaPublica(forzar = false) {
@@ -4160,13 +4711,13 @@ async function cargarConfiguracionPaginaPublica(forzar = false) {
         renderConfiguracionPaginaPublica();
         return configuracionPaginaPublica;
     }
-
     cargaConfiguracionPaginaPublicaEnCurso = (async () => {
         try {
             await FIRESTORE_READY;
             const documento = await db.collection("configuracion").doc(DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA).get();
             configuracionPaginaPublica = normalizarConfiguracionPaginaPublica(documento.exists ? documento.data() : {});
             configuracionPaginaPublicaCargada = true;
+            categoriasPaginaPublicaPendientes = false;
             renderConfiguracionPaginaPublica();
             if(esAdministradorActual()) sincronizarCamposConfiguracionPaginaPublica();
             return configuracionPaginaPublica;
@@ -4175,46 +4726,63 @@ async function cargarConfiguracionPaginaPublica(forzar = false) {
             configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
             configuracionPaginaPublicaCargada = true;
             renderConfiguracionPaginaPublica();
-            if(esAdministradorActual()) manejarError(error, "No se pudieron cargar las redes y asesores");
+            if(esAdministradorActual()) manejarError(error, "No se pudo cargar la página pública");
             return configuracionPaginaPublica;
         }
-    })().finally(() => {
-        cargaConfiguracionPaginaPublicaEnCurso = null;
-    });
+    })().finally(() => { cargaConfiguracionPaginaPublicaEnCurso = null; });
     return cargaConfiguracionPaginaPublicaEnCurso;
 }
 
 function agregarAsesorPaginaPublica() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
-    if(configuracionPaginaPublica.asesores.length >= MAXIMO_ASESORES_PAGINA_PUBLICA) {
-        return notify(`⚠️ Puedes configurar máximo ${MAXIMO_ASESORES_PAGINA_PUBLICA} asesores`);
-    }
+    if(asesorPaginaPublicaEnEdicion < 0 && configuracionPaginaPublica.asesores.length >= MAXIMO_ASESORES_PAGINA_PUBLICA) return notify(`⚠️ Puedes configurar máximo ${MAXIMO_ASESORES_PAGINA_PUBLICA} asesores`);
     const asesor = normalizarAsesorPaginaPublica({
         nombre: document.getElementById("admin-public-advisor-name")?.value,
         coordinador: document.getElementById("admin-public-coordinator-name")?.value,
         whatsapp: document.getElementById("admin-public-coordinator-phone")?.value
     });
     if(!asesor) return notify("⚠️ Completa el asesor, coordinador y un WhatsApp válido de 10 dígitos");
-    if(configuracionPaginaPublica.asesores.some(actual => normalizarClaveColor(actual.nombre) === normalizarClaveColor(asesor.nombre))) {
-        return notify("⚠️ Ya existe un asesor con ese nombre");
-    }
-    configuracionPaginaPublica.asesores.push(asesor);
-    ["admin-public-advisor-name", "admin-public-coordinator-name", "admin-public-coordinator-phone"].forEach(id => {
-        const campo = document.getElementById(id);
-        if(campo) campo.value = "";
-    });
+    if(configuracionPaginaPublica.asesores.some((actual, indice) => indice !== asesorPaginaPublicaEnEdicion && normalizarClaveColor(actual.nombre) === normalizarClaveColor(asesor.nombre))) return notify("⚠️ Ya existe un asesor con ese nombre");
+    const anterior = asesorPaginaPublicaEnEdicion >= 0 ? configuracionPaginaPublica.asesores[asesorPaginaPublicaEnEdicion] : null;
+    if(asesorPaginaPublicaEnEdicion >= 0) configuracionPaginaPublica.asesores[asesorPaginaPublicaEnEdicion] = asesor;
+    else configuracionPaginaPublica.asesores.push(asesor);
+    if(anterior && normalizarClaveColor(asesorPaginaPublicaSeleccionado) === normalizarClaveColor(anterior.nombre)) guardarAsesorPaginaPublicaSeleccionado(asesor.nombre);
+    cancelarEdicionAsesorPaginaPublica();
     renderListaAsesoresPaginaPublica();
     renderSeleccionAsesorCotizacion();
-    notify("✅ Asesor agregado. Pulsa Guardar para publicar el cambio");
+    notify(anterior ? "✅ Asesor actualizado. Guarda toda la página para publicarlo" : "✅ Asesor agregado. Guarda toda la página para publicarlo");
+}
+
+function editarAsesorPaginaPublica(indice) {
+    const asesor = configuracionPaginaPublica.asesores[indice];
+    if(!asesor) return;
+    asesorPaginaPublicaEnEdicion = indice;
+    document.getElementById("admin-public-advisor-name").value = asesor.nombre;
+    document.getElementById("admin-public-coordinator-name").value = asesor.coordinador;
+    document.getElementById("admin-public-coordinator-phone").value = asesor.whatsapp;
+    document.getElementById("admin-public-advisor-save").innerHTML = '<i class="fa-solid fa-floppy-disk"></i> ACTUALIZAR ASESOR';
+    document.getElementById("admin-public-advisor-cancel").hidden = false;
+}
+
+function cancelarEdicionAsesorPaginaPublica() {
+    asesorPaginaPublicaEnEdicion = -1;
+    ["admin-public-advisor-name", "admin-public-coordinator-name", "admin-public-coordinator-phone"].forEach(id => { const campo = document.getElementById(id); if(campo) campo.value = ""; });
+    const guardar = document.getElementById("admin-public-advisor-save");
+    const cancelar = document.getElementById("admin-public-advisor-cancel");
+    if(guardar) guardar.innerHTML = '<i class="fa-solid fa-user-plus"></i> AGREGAR ASESOR';
+    if(cancelar) cancelar.hidden = true;
 }
 
 function eliminarAsesorPaginaPublica(indice) {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
     if(!Number.isInteger(indice) || indice < 0 || indice >= configuracionPaginaPublica.asesores.length) return;
+    const eliminado = configuracionPaginaPublica.asesores[indice];
     configuracionPaginaPublica.asesores.splice(indice, 1);
+    if(normalizarClaveColor(asesorPaginaPublicaSeleccionado) === normalizarClaveColor(eliminado.nombre)) guardarAsesorPaginaPublicaSeleccionado("");
+    cancelarEdicionAsesorPaginaPublica();
     renderListaAsesoresPaginaPublica();
     renderSeleccionAsesorCotizacion();
-    notify("ℹ️ Asesor retirado. Pulsa Guardar para publicar el cambio");
+    notify("ℹ️ Asesor retirado. Guarda toda la página para publicar el cambio");
 }
 
 async function guardarConfiguracionPaginaPublica() {
@@ -4225,11 +4793,12 @@ async function guardarConfiguracionPaginaPublica() {
     const tiktok = normalizarUrlRedSocialPublica(tiktokOriginal, "tiktok");
     if(instagramOriginal && !instagram) return notify("⚠️ Ingresa un enlace válido de Instagram");
     if(tiktokOriginal && !tiktok) return notify("⚠️ Ingresa un enlace válido de TikTok");
-
     const nuevaConfiguracion = normalizarConfiguracionPaginaPublica({
         instagram,
         tiktok,
-        asesores: configuracionPaginaPublica.asesores
+        asesores: configuracionPaginaPublica.asesores,
+        categorias: configuracionPaginaPublica.categorias,
+        contenido: leerContenidoPaginaPublicaDesdeFormulario()
     });
     const liberarBoton = bloquearBotonActual("GUARDANDO...");
     try {
@@ -4240,11 +4809,12 @@ async function guardarConfiguracionPaginaPublica() {
         });
         configuracionPaginaPublica = nuevaConfiguracion;
         configuracionPaginaPublicaCargada = true;
+        categoriasPaginaPublicaPendientes = false;
         renderConfiguracionPaginaPublica();
         sincronizarCamposConfiguracionPaginaPublica();
-        notify("✅ Redes y asesores publicados en la página web");
+        notify("✅ Página web actualizada correctamente");
     } catch(error) {
-        manejarError(error, "No se pudo guardar la configuración pública");
+        manejarError(error, "No se pudo guardar la página web");
     } finally {
         liberarBoton();
     }
@@ -4285,7 +4855,8 @@ function esVideoDirectoPublico(valor) {
 
 function normalizarMedioPublico(id, datos = {}) {
     const tipo = datos.tipo === "video" ? "video" : "imagen";
-    const categoria = obtenerCategoriaEventoPublico(datos.categoria)?.clave || "sin-categoria";
+    const categoriaOriginal = String(datos.categoria || "").trim().toLowerCase();
+    const categoria = /^[a-z0-9][a-z0-9-]{1,59}$/.test(categoriaOriginal) ? categoriaOriginal : "sin-categoria";
     const contenidoOriginal = String(datos.contenido || datos.url || datos.imagen || "").trim();
     const contenido = tipo === "imagen"
         ? (esComprobanteSeguro(contenidoOriginal) ? contenidoOriginal : "")
@@ -4306,7 +4877,7 @@ function renderFiltrosGaleriaPublica() {
     const contenedor = document.getElementById("public-gallery-filters");
     if(!contenedor) return;
     contenedor.replaceChildren();
-    const opciones = [{ clave: "todos", nombre: "Todos", icono: "fa-border-all" }, ...CATEGORIAS_EVENTOS_PUBLICOS];
+    const opciones = [{ clave: "todos", nombre: "Todos", icono: "fa-border-all" }, ...configuracionPaginaPublica.categorias];
     opciones.forEach(categoria => {
         const boton = document.createElement("button");
         boton.type = "button";
@@ -4433,6 +5004,7 @@ function renderAdministradorGaleriaPublica() {
         vacio.className = "admin-public-gallery-empty";
         vacio.innerHTML = '<i class="fa-regular fa-images"></i> Todavía no hay publicaciones.';
         contenedor.appendChild(vacio);
+        renderCategoriasAdministradorPaginaPublica();
         return;
     }
 
@@ -4447,15 +5019,24 @@ function renderAdministradorGaleriaPublica() {
         categoria.textContent = obtenerCategoriaEventoPublico(medio.categoria)?.nombre || "Publicación anterior · sin categoría";
         const titulo = document.createElement("strong");
         titulo.textContent = medio.titulo;
+        const acciones = document.createElement("div");
+        acciones.className = "admin-public-item-actions";
+        const editar = document.createElement("button");
+        editar.type = "button";
+        editar.className = "btn-mini btn-edit";
+        editar.innerHTML = '<i class="fa-solid fa-pen"></i> EDITAR';
+        editar.addEventListener("click", () => editarMedioPublico(medio.id));
         const eliminar = document.createElement("button");
         eliminar.type = "button";
         eliminar.className = "btn-mini btn-delete";
         eliminar.innerHTML = '<i class="fa-solid fa-trash-can"></i> ELIMINAR';
         eliminar.addEventListener("click", () => eliminarMedioPublico(medio.id, medio.titulo));
-        informacion.append(categoria, titulo, eliminar);
+        acciones.append(editar, eliminar);
+        informacion.append(categoria, titulo, acciones);
         tarjeta.append(escenario, informacion);
         contenedor.appendChild(tarjeta);
     });
+    renderCategoriasAdministradorPaginaPublica();
 }
 
 async function cargarGaleriaPublica(forzar = false) {
@@ -4507,8 +5088,45 @@ function cambiarTipoMedioPublico() {
     if(campoVideo) campoVideo.style.display = tipo === "video" ? "block" : "none";
 }
 
+function cancelarEdicionMedioPublico() {
+    publicacionGaleriaEnEdicionId = "";
+    const tipo = document.getElementById("admin-public-media-type");
+    const titulo = document.getElementById("admin-public-media-title");
+    const descripcion = document.getElementById("admin-public-media-description");
+    const imagen = document.getElementById("admin-public-media-image");
+    const video = document.getElementById("admin-public-media-video");
+    const publicar = document.getElementById("admin-public-gallery-publish");
+    const cancelar = document.getElementById("admin-public-gallery-cancel");
+    if(tipo) tipo.value = "imagen";
+    if(titulo) titulo.value = "";
+    if(descripcion) descripcion.value = "";
+    if(imagen) imagen.value = "";
+    if(video) video.value = "";
+    if(publicar) publicar.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> PUBLICAR EN LA PÁGINA';
+    if(cancelar) cancelar.hidden = true;
+    cambiarTipoMedioPublico();
+}
+
+function editarMedioPublico(id) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar publicaciones");
+    const medio = galeriaPublica.find(valor => valor.id === id);
+    if(!medio) return notify("⚠️ La publicación ya no está disponible");
+    publicacionGaleriaEnEdicionId = medio.id;
+    document.getElementById("admin-public-media-type").value = medio.tipo;
+    document.getElementById("admin-public-media-category").value = medio.categoria;
+    document.getElementById("admin-public-media-title").value = medio.titulo;
+    document.getElementById("admin-public-media-description").value = medio.descripcion;
+    document.getElementById("admin-public-media-video").value = medio.tipo === "video" ? medio.contenido : "";
+    document.getElementById("admin-public-media-image").value = "";
+    document.getElementById("admin-public-gallery-publish").innerHTML = '<i class="fa-solid fa-floppy-disk"></i> GUARDAR CAMBIOS';
+    document.getElementById("admin-public-gallery-cancel").hidden = false;
+    cambiarTipoMedioPublico();
+    document.getElementById("admin-public-media-title")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
 async function publicarMedioPublico() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede publicar en la galería");
+    if(categoriasPaginaPublicaPendientes) return notify("⚠️ Guarda toda la página web antes de publicar en una categoría nueva o modificada");
     const tipo = document.getElementById("admin-public-media-type")?.value === "video" ? "video" : "imagen";
     const categoria = document.getElementById("admin-public-media-category")?.value || "";
     const titulo = document.getElementById("admin-public-media-title")?.value.trim() || "";
@@ -4516,39 +5134,43 @@ async function publicarMedioPublico() {
     if(!titulo) return notify("⚠️ Escribe un título para la publicación");
     if(!obtenerCategoriaEventoPublico(categoria)) return notify("⚠️ Selecciona el tipo de evento");
 
-    const liberarBoton = bloquearBotonActual("PUBLICANDO...");
+    const medioAnterior = galeriaPublica.find(medio => medio.id === publicacionGaleriaEnEdicionId) || null;
+    const esEdicion = Boolean(medioAnterior);
+    const liberarBoton = bloquearBotonActual(esEdicion ? "GUARDANDO..." : "PUBLICANDO...");
     try {
-        await cargarGaleriaPublica(true);
-        if(galeriaPublica.length >= MAXIMO_PUBLICACIONES_GALERIA) {
+        if(!esEdicion) await cargarGaleriaPublica(true);
+        if(!esEdicion && galeriaPublica.length >= MAXIMO_PUBLICACIONES_GALERIA) {
             return notify(`⚠️ La galería admite máximo ${MAXIMO_PUBLICACIONES_GALERIA} publicaciones. Elimina una antes de continuar`);
         }
 
         let contenido = "";
         if(tipo === "imagen") {
             const archivo = document.getElementById("admin-public-media-image")?.files?.[0];
-            if(!archivo) return notify("⚠️ Selecciona una fotografía");
-            contenido = await procesarImagenBoletaVirtual(archivo);
+            if(archivo) contenido = await procesarImagenBoletaVirtual(archivo);
+            else if(esEdicion && medioAnterior.tipo === "imagen") contenido = medioAnterior.contenido;
+            else return notify("⚠️ Selecciona una fotografía");
         } else {
             contenido = obtenerUrlHttpSegura(document.getElementById("admin-public-media-video")?.value);
             if(!contenido || !contenido.startsWith("https://")) return notify("⚠️ Ingresa un enlace de video válido que comience con https://");
         }
 
-        await db.collection(COLECCION_GALERIA_PUBLICA).add({
+        const datosPublicacion = {
             tipo,
             categoria,
             titulo: titulo.slice(0, 120),
             descripcion: descripcion.slice(0, 500),
-            contenido,
+            contenido
+        };
+        if(esEdicion) await db.collection(COLECCION_GALERIA_PUBLICA).doc(medioAnterior.id).update(datosPublicacion);
+        else await db.collection(COLECCION_GALERIA_PUBLICA).add({
+            ...datosPublicacion,
             creado: fechaServidor(),
             creadoPor: auth.currentUser.email
         });
 
-        document.getElementById("admin-public-media-title").value = "";
-        document.getElementById("admin-public-media-description").value = "";
-        document.getElementById("admin-public-media-image").value = "";
-        document.getElementById("admin-public-media-video").value = "";
+        cancelarEdicionMedioPublico();
         await cargarGaleriaPublica(true);
-        notify("✅ Publicación agregada a la página web");
+        notify(esEdicion ? "✅ Publicación actualizada" : "✅ Publicación agregada a la página web");
     } catch(error) {
         manejarError(error, "No se pudo publicar en la galería");
     } finally {
@@ -4563,8 +5185,10 @@ async function eliminarMedioPublico(id, titulo) {
     try {
         await db.collection(COLECCION_GALERIA_PUBLICA).doc(id).delete();
         galeriaPublica = galeriaPublica.filter(medio => medio.id !== id);
+        if(publicacionGaleriaEnEdicionId === id) cancelarEdicionMedioPublico();
         renderGaleriaPublica();
         renderAdministradorGaleriaPublica();
+        renderCategoriasAdministradorPaginaPublica();
         notify("🗑️ Publicación eliminada");
     } catch(error) {
         manejarError(error, "No se pudo eliminar la publicación");
@@ -4591,14 +5215,14 @@ function enviarCotizacionPublica(evento) {
     if(!nombre || !seleccionAsesor || !tipo || !fecha || !lugar || !asistentes) return notify("⚠️ Completa los datos obligatorios de la cotización");
     if(!/^\d{10}$/.test(telefono)) return notify("⚠️ Ingresa un WhatsApp válido de 10 dígitos");
 
-    let asesorSeleccionado = null;
-    if(seleccionAsesor.startsWith("asesor:")) {
-        const indiceAsesor = Number(seleccionAsesor.split(":")[1]);
-        asesorSeleccionado = Number.isInteger(indiceAsesor) ? configuracionPaginaPublica.asesores[indiceAsesor] : null;
-        if(!asesorSeleccionado) return notify("⚠️ El asesor seleccionado ya no está disponible. Elige nuevamente");
-    } else if(seleccionAsesor !== "general") {
+    const asesorSeleccionado = obtenerAsesorPaginaPublicaPorValor(seleccionAsesor);
+    if(seleccionAsesor.startsWith("asesor:") && !asesorSeleccionado) {
+        return notify("⚠️ El asesor seleccionado ya no está disponible. Elige nuevamente");
+    }
+    if(!asesorSeleccionado && seleccionAsesor !== "general") {
         return notify("⚠️ Selecciona quién te está ayudando con la cotización");
     }
+    if(asesorSeleccionado) guardarAsesorPaginaPublicaSeleccionado(asesorSeleccionado.nombre);
 
     const contactoDestino = asesorSeleccionado?.whatsapp || CONTACTO_PUBLICO_WHATSAPP;
     const asesorTexto = asesorSeleccionado?.nombre || "Ningún asesor / contacto general";

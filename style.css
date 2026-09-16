@@ -223,6 +223,22 @@ a {
     justify-content: flex-end;
 }
 
+.brand-logo {
+    display: block;
+    object-fit: contain;
+}
+
+.brand-logo-auth {
+    width: min(100%, 330px);
+    height: auto;
+    margin: 2px auto 22px;
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.18);
+}
+
 .theme-toggle {
     min-width: 104px;
     min-height: 36px;
@@ -615,6 +631,22 @@ header h2 {
     text-overflow: ellipsis;
     white-space: nowrap;
     text-shadow: none;
+}
+
+.app-header-brand {
+    margin: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-grow: 1;
+}
+
+.app-header-brand .brand-logo {
+    width: clamp(128px, 18vw, 190px);
+    height: 42px;
+    padding: 4px 9px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.94);
 }
 
 header > .badge-rank {
@@ -4486,7 +4518,8 @@ html[data-theme="light"] .admin-virtual-ticket-item {
 
 #view-auth.public-site-open > .auth-theme-toolbar,
 #view-auth.public-site-open > h2,
-#view-auth.public-site-open > p {
+#view-auth.public-site-open > p,
+#view-auth.public-site-open > .brand-logo-auth {
     display: none;
 }
 
@@ -4531,6 +4564,10 @@ html[data-theme="light"] .admin-virtual-ticket-item {
     color: var(--text-muted);
     font-size: 0.5rem;
     font-weight: 800;
+}
+
+.public-site-topbar > div > span b {
+    font: inherit;
 }
 
 .public-social-links {
@@ -4661,6 +4698,80 @@ html[data-theme="light"] .admin-virtual-ticket-item {
     color: #6ee7b7;
 }
 
+.public-advisor-modal[hidden] {
+    display: none;
+}
+
+.public-advisor-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    padding: 20px;
+    display: grid;
+    place-items: center;
+    background: rgba(2, 6, 23, 0.78);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.public-advisor-dialog {
+    position: relative;
+    width: min(100%, 440px);
+    padding: 28px;
+    display: grid;
+    justify-items: center;
+    gap: 13px;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 22px;
+    background: var(--glass-strong);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4);
+    text-align: center;
+}
+
+.public-advisor-dialog-icon {
+    width: 58px;
+    height: 58px;
+    display: grid;
+    place-items: center;
+    border-radius: 18px;
+    background: rgba(16, 185, 129, 0.13);
+    color: #34d399;
+    font-size: 1.65rem;
+}
+
+.public-advisor-dialog h2 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 1.05rem;
+}
+
+.public-advisor-dialog p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    line-height: 1.6;
+}
+
+.public-advisor-dialog select {
+    width: 100%;
+    margin: 0;
+}
+
+.public-advisor-close {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 34px;
+    height: 34px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    background: var(--surface-soft);
+    color: var(--text-soft);
+}
+
 .public-hero-visual {
     min-height: 260px;
     display: grid;
@@ -4669,25 +4780,14 @@ html[data-theme="light"] .admin-virtual-ticket-item {
     gap: 18px;
 }
 
-.public-hero-logo {
-    width: min(240px, 72vw);
-    aspect-ratio: 1;
-    display: grid;
-    place-items: center;
-    border: 1px solid rgba(0, 240, 255, 0.28);
-    border-radius: 36% 64% 58% 42% / 42% 38% 62% 58%;
-    background: linear-gradient(145deg, rgba(0, 240, 255, 0.14), rgba(168, 85, 247, 0.13));
-    color: #f8fafc;
-    font-size: clamp(3rem, 10vw, 5.8rem);
-    font-weight: 900;
-    letter-spacing: -0.1em;
-    box-shadow: inset 0 0 55px rgba(0, 240, 255, 0.08), 0 24px 70px rgba(0, 0, 0, 0.28);
-    transform: rotate(-3deg);
-}
-
-.public-hero-logo span {
-    color: #67f7ff;
-    font-size: 0.62em;
+.public-hero-brand-logo {
+    width: min(100%, 470px);
+    height: auto;
+    padding: 18px 20px;
+    border: 1px solid rgba(255, 255, 255, 0.72);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.26);
 }
 
 .public-hero-badge {
@@ -5062,6 +5162,20 @@ html[data-theme="light"] .admin-virtual-ticket-item {
     display: block;
 }
 
+.public-footer-brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.public-footer-brand .brand-logo {
+    width: min(200px, 40vw);
+    height: 54px;
+    padding: 5px 9px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.94);
+}
+
 .public-site-footer strong {
     color: var(--text-main);
     font-size: 0.62rem;
@@ -5328,6 +5442,170 @@ html[data-theme="light"] .public-quote-section {
     margin-top: 15px !important;
 }
 
+.admin-public-subsection {
+    margin-top: 18px;
+    padding: 16px;
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    border-radius: 16px;
+    background: rgba(168, 85, 247, 0.025);
+}
+
+.admin-public-category-form,
+.admin-public-service-form {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.admin-public-category-form label > span,
+.admin-public-service-form label > span,
+.admin-public-content-form label > span {
+    display: block;
+    margin: 0 0 5px;
+    color: var(--text-soft);
+    font-size: 0.48rem;
+    font-weight: 800;
+}
+
+.admin-public-category-form input,
+.admin-public-category-form select,
+.admin-public-service-form input,
+.admin-public-service-form select,
+.admin-public-service-form textarea,
+.admin-public-content-form input,
+.admin-public-content-form textarea {
+    width: 100%;
+    margin: 0;
+}
+
+.admin-public-inline-actions,
+.admin-public-item-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.admin-public-category-form > .admin-public-inline-actions {
+    grid-column: 1 / -1;
+}
+
+.admin-public-inline-actions .btn-mini,
+.admin-public-item-actions .btn-mini,
+.admin-public-media-item-info .admin-public-item-actions .btn-mini {
+    width: fit-content !important;
+    margin: 0 !important;
+}
+
+.btn-secondary {
+    border: 1px solid var(--border-strong) !important;
+    background: var(--surface-soft) !important;
+    color: var(--text-soft) !important;
+}
+
+.admin-public-categories-list,
+.admin-public-services-list {
+    max-width: 900px;
+    margin: 14px auto 0;
+    display: grid;
+    gap: 8px;
+}
+
+.admin-public-category-item,
+.admin-public-service-item {
+    padding: 11px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface-soft);
+}
+
+.admin-public-category-item > div:first-child,
+.admin-public-service-item > div:first-child {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.admin-public-category-item > div:first-child > i,
+.admin-public-service-item > div:first-child > i {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 auto;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    background: rgba(6, 182, 212, 0.1);
+    color: var(--accent-strong);
+}
+
+.admin-public-category-item strong,
+.admin-public-category-item span,
+.admin-public-service-item strong,
+.admin-public-service-item span {
+    display: block;
+}
+
+.admin-public-category-item strong,
+.admin-public-service-item strong {
+    color: var(--text-main);
+    font-size: 0.53rem;
+}
+
+.admin-public-category-item span,
+.admin-public-service-item span {
+    margin-top: 3px;
+    color: var(--text-muted);
+    font-size: 0.44rem;
+    line-height: 1.45;
+}
+
+.admin-public-content-form {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px;
+}
+
+.admin-public-content-form fieldset {
+    min-width: 0;
+    margin: 0;
+    padding: 13px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface-soft);
+}
+
+.admin-public-content-form legend {
+    padding: 0 7px;
+    color: var(--accent-strong);
+    font-size: 0.5rem;
+    font-weight: 900;
+    text-transform: uppercase;
+}
+
+.admin-public-service-editor {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+
+.admin-public-service-editor h4 {
+    margin: 0;
+    color: var(--text-main);
+    font-size: 0.55rem;
+    text-align: center;
+}
+
 @media (max-width: 760px) {
     .public-hero {
         grid-template-columns: 1fr;
@@ -5347,8 +5625,8 @@ html[data-theme="light"] .public-quote-section {
         min-height: 210px;
     }
 
-    .public-hero-logo {
-        width: min(190px, 66vw);
+    .public-hero-brand-logo {
+        width: min(430px, 88vw);
     }
 
     .public-services-grid,
@@ -5362,6 +5640,10 @@ html[data-theme="light"] .public-quote-section {
     }
 
     .admin-public-advisor-form {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-public-content-form {
         grid-template-columns: 1fr;
     }
 }
@@ -5397,7 +5679,9 @@ html[data-theme="light"] .public-quote-section {
     .public-services-grid,
     .public-media-gallery,
     .admin-public-gallery-list,
-    .admin-public-gallery-form {
+    .admin-public-gallery-form,
+    .admin-public-category-form,
+    .admin-public-service-form {
         grid-template-columns: 1fr;
     }
 
@@ -5427,6 +5711,32 @@ html[data-theme="light"] .public-quote-section {
         align-items: center;
         flex-direction: column;
         text-align: center;
+    }
+
+    .admin-public-content-form fieldset {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-public-content-form fieldset > *,
+    .admin-public-category-form > *,
+    .admin-public-service-form > * {
+        grid-column: 1 / -1;
+    }
+
+    .admin-public-category-item,
+    .admin-public-service-item {
+        align-items: stretch;
+        flex-direction: column;
+        text-align: center;
+    }
+
+    .admin-public-category-item > div:first-child,
+    .admin-public-service-item > div:first-child {
+        justify-content: center;
+    }
+
+    .public-footer-brand {
+        flex-direction: column;
     }
 
     .admin-public-social-form {

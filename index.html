@@ -6,6 +6,7 @@
     <meta name="color-scheme" content="dark light">
     <meta id="theme-color-meta" name="theme-color" content="#05080f">
     <title>Logistica & Eventos | Control</title>
+    <link rel="icon" type="image/png" href="logo-logistica-eventos.png">
     <script>
         (() => {
             const temasValidos = ["system", "dark", "light"];
@@ -144,8 +145,7 @@
                     <span>Sistema</span>
                 </button>
             </div>
-            <h2 style="margin:0; font-size: 1.4rem;">LOGISTICA &</h2>
-            <p style="color:var(--accent); font-weight:800; font-size:0.9rem; letter-spacing: 2px; text-shadow: 0 0 8px var(--accent-glow);">EVENTOS</p>
+            <img class="brand-logo brand-logo-auth" src="logo-logistica-eventos.png" alt="Logística & Eventos">
             <div id="auth-access-choice" class="auth-access-choice">
                 <p>SELECCIONA CÓMO DESEAS INGRESAR</p>
                 <button type="button" class="auth-access-button" onclick="abrirAccesoInicial('usuario')">
@@ -201,6 +201,16 @@
             </div>
 
             <div id="auth-public-access" class="auth-access-panel public-site" style="display:none;">
+                <div id="public-advisor-modal" class="public-advisor-modal" hidden role="dialog" aria-modal="true" aria-labelledby="public-advisor-modal-title">
+                    <div class="public-advisor-dialog">
+                        <button class="public-advisor-close" type="button" onclick="cerrarSelectorAsesorPublico()" aria-label="Cerrar"><i class="fa-solid fa-xmark"></i></button>
+                        <div class="public-advisor-dialog-icon"><i class="fa-brands fa-whatsapp"></i></div>
+                        <h2 id="public-advisor-modal-title">¿Qué asesor te está atendiendo?</h2>
+                        <p>Selecciona el asesor para abrir el WhatsApp correspondiente.</p>
+                        <select id="public-whatsapp-advisor-select"><option value="" disabled selected>Cargando asesores...</option></select>
+                        <button class="public-primary-action" type="button" onclick="confirmarAsesorWhatsappPublico()"><i class="fa-brands fa-whatsapp"></i> CONTINUAR A WHATSAPP</button>
+                    </div>
+                </div>
                 <div class="public-site-topbar">
                     <button type="button" class="auth-access-back" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
                     <div>
@@ -208,34 +218,34 @@
                             <a id="public-instagram-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Visitar Instagram" hidden><i class="fa-brands fa-instagram" aria-hidden="true"></i></a>
                             <a id="public-tiktok-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Visitar TikTok" hidden><i class="fa-brands fa-tiktok" aria-hidden="true"></i></a>
                         </nav>
-                        <span><i class="fa-solid fa-location-dot"></i> Bogotá y alrededores</span>
+                        <span><i class="fa-solid fa-location-dot"></i><b id="public-location-text">Bogotá y alrededores</b></span>
                         <button class="theme-toggle" type="button" onclick="cambiarTema()" aria-label="Cambiar tema de la página"><i class="fa-solid fa-desktop" aria-hidden="true"></i><span>Sistema</span></button>
                     </div>
                 </div>
 
                 <section class="public-hero" aria-labelledby="public-site-title">
                     <div class="public-hero-copy">
-                        <span class="public-eyebrow">LOGÍSTICA · PRODUCCIÓN · EXPERIENCIAS</span>
+                        <span id="public-hero-eyebrow" class="public-eyebrow">LOGÍSTICA · PRODUCCIÓN · EXPERIENCIAS</span>
                         <h1 id="public-site-title">Creamos eventos que la gente recuerda</h1>
-                        <p>Personal capacitado para recreación, turismo, seguridad, meseros, DJ, decoración, animación y producción de eventos.</p>
+                        <p id="public-hero-description">Personal capacitado para recreación, turismo, seguridad, meseros, DJ, decoración, animación y producción de eventos.</p>
                         <div class="public-hero-actions">
                             <button type="button" class="public-primary-action" onclick="irACotizacionPublica()"><i class="fa-solid fa-file-signature"></i> SOLICITAR COTIZACIÓN</button>
-                            <a class="public-secondary-action" href="https://wa.me/573224343263" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i> HABLAR POR WHATSAPP</a>
+                            <button id="public-hero-whatsapp-button" class="public-secondary-action" type="button" onclick="hablarPorWhatsappPublico()"><i class="fa-brands fa-whatsapp"></i><span>HABLAR POR WHATSAPP</span></button>
                         </div>
                     </div>
                     <div class="public-hero-visual" aria-hidden="true">
-                        <div class="public-hero-logo">L<span>&</span>E</div>
-                        <div class="public-hero-badge"><i class="fa-solid fa-shield-heart"></i> Equipo preparado</div>
+                        <img class="brand-logo public-hero-brand-logo" src="logo-logistica-eventos.png" alt="">
+                        <div class="public-hero-badge"><i class="fa-solid fa-shield-heart"></i><span id="public-hero-badge-text">Equipo preparado</span></div>
                     </div>
                 </section>
 
                 <section class="public-section" aria-labelledby="public-services-title">
                     <div class="public-section-heading">
-                        <span>LO QUE HACEMOS</span>
+                        <span id="public-services-eyebrow">LO QUE HACEMOS</span>
                         <h2 id="public-services-title">Soluciones para cada tipo de evento</h2>
-                        <p>Organizamos el personal y los servicios necesarios para que tú disfrutes mientras nosotros cuidamos cada detalle.</p>
+                        <p id="public-services-description">Organizamos el personal y los servicios necesarios para que tú disfrutes mientras nosotros cuidamos cada detalle.</p>
                     </div>
-                    <div class="public-services-grid">
+                    <div id="public-services-grid" class="public-services-grid">
                         <article><i class="fa-solid fa-face-laugh-beam"></i><h3>Recreación y animación</h3><p>Dinámicas, integración, fiestas, actividades infantiles y experiencias para jóvenes.</p></article>
                         <article><i class="fa-solid fa-shield-halved"></i><h3>Logística y seguridad</h3><p>Control de acceso, organización de asistentes, apoyo operativo y acompañamiento.</p></article>
                         <article><i class="fa-solid fa-utensils"></i><h3>Meseros y buffet</h3><p>Personal de servicio, apoyo de alimentos y atención organizada para tus invitados.</p></article>
@@ -247,9 +257,9 @@
 
                 <section class="public-section public-gallery-section" aria-labelledby="public-gallery-title">
                     <div class="public-section-heading">
-                        <span>NUESTRO TRABAJO</span>
+                        <span id="public-gallery-eyebrow">NUESTRO TRABAJO</span>
                         <h2 id="public-gallery-title">Galería por tipo de evento</h2>
-                        <p>Elige una categoría y conoce cómo son nuestras experiencias, montajes y celebraciones.</p>
+                        <p id="public-gallery-description">Elige una categoría y conoce cómo son nuestras experiencias, montajes y celebraciones.</p>
                     </div>
                     <div id="public-gallery-filters" class="public-gallery-filters" aria-label="Filtrar galería por tipo de evento"></div>
                     <div id="public-media-gallery" class="public-media-gallery" aria-live="polite">
@@ -260,29 +270,24 @@
                 <section class="public-training-section" aria-labelledby="public-training-title">
                     <div class="public-training-icon"><i class="fa-solid fa-graduation-cap"></i></div>
                     <div>
-                        <span>FORMACIÓN DE EQUIPOS</span>
+                        <span id="public-training-eyebrow">FORMACIÓN DE EQUIPOS</span>
                         <h2 id="public-training-title">Capacitaciones prácticas</h2>
-                        <p>Preparamos al personal en atención al público, recreación, turismo, logística, seguridad y trabajo en equipo para responder profesionalmente en cada servicio.</p>
-                        <div class="public-training-tags"><span>Servicio al cliente</span><span>Trabajo en equipo</span><span>Operación de eventos</span><span>Protocolos de seguridad</span></div>
+                        <p id="public-training-description">Preparamos al personal en atención al público, recreación, turismo, logística, seguridad y trabajo en equipo para responder profesionalmente en cada servicio.</p>
+                        <div id="public-training-tags" class="public-training-tags"><span>Servicio al cliente</span><span>Trabajo en equipo</span><span>Operación de eventos</span><span>Protocolos de seguridad</span></div>
                     </div>
                 </section>
 
                 <section id="public-quote-section" class="public-quote-section" aria-labelledby="public-quote-title">
                     <div class="public-quote-copy">
-                        <span>COTIZA CON NOSOTROS</span>
+                        <span id="public-quote-eyebrow">COTIZA CON NOSOTROS</span>
                         <h2 id="public-quote-title">Cuéntanos qué estás planeando</h2>
-                        <p>Completa los datos principales. Al enviar, se abrirá WhatsApp con la solicitud organizada para atenderte más rápido.</p>
-                        <div class="public-contact-list">
-                            <a href="https://wa.me/573224343263" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i><span>WhatsApp<strong>322 434 3263</strong></span></a>
-                            <a href="tel:+573224343263"><i class="fa-solid fa-phone"></i><span>Llámanos<strong>+57 322 434 3263</strong></span></a>
-                            <div><i class="fa-solid fa-map-location-dot"></i><span>Cobertura<strong>Bogotá y alrededores</strong></span></div>
-                        </div>
+                        <p id="public-quote-description">Completa los datos principales. Al enviar, se abrirá WhatsApp con la solicitud organizada para atenderte más rápido.</p>
                     </div>
                     <form class="public-quote-form" onsubmit="enviarCotizacionPublica(event)">
                         <label><span>Nombre y apellido</span><input id="public-quote-name" type="text" maxlength="100" autocomplete="name" required placeholder="¿Cómo te llamas?"></label>
                         <label><span>Tu WhatsApp</span><input id="public-quote-phone" type="tel" maxlength="14" inputmode="numeric" autocomplete="tel" required placeholder="10 dígitos"></label>
-                        <label class="public-quote-full"><span>¿Qué asesor está ayudándote con la cotización?</span><select id="public-quote-advisor" required><option value="" disabled selected>Cargando asesores...</option></select></label>
-                        <label><span>Tipo de evento</span><select id="public-quote-type" required><option value="" disabled selected>Selecciona una opción</option><option>Fiestas infantiles</option><option>15 años</option><option>Cumpleaños</option><option>Bodas</option><option>Fiestas Proms</option><option>Eventos empresariales</option><option>Turismo</option><option>Capacitación</option><option>Otro</option></select></label>
+                        <label class="public-quote-full"><span>¿Qué asesor está ayudándote con la cotización?</span><select id="public-quote-advisor" required onchange="seleccionarAsesorCotizacionPublica(this.value)"><option value="" disabled selected>Cargando asesores...</option></select></label>
+                        <label><span>Tipo de evento</span><select id="public-quote-type" required><option value="" disabled selected>Selecciona una opción</option></select></label>
                         <label><span>Fecha aproximada</span><input id="public-quote-date" type="date" required></label>
                         <label><span>Ciudad o lugar</span><input id="public-quote-location" type="text" maxlength="120" required placeholder="Ejemplo: Bogotá, Suba"></label>
                         <label><span>Número de asistentes</span><input id="public-quote-guests" type="number" min="1" max="100000" required placeholder="Ejemplo: 80"></label>
@@ -292,7 +297,7 @@
                 </section>
 
                 <footer class="public-site-footer">
-                    <div><strong>LOGÍSTICA & EVENTOS</strong><span>Organización, talento y experiencias.</span></div>
+                    <div class="public-footer-brand"><img class="brand-logo" src="logo-logistica-eventos.png" alt="Logística & Eventos"><span id="public-footer-tagline">Organización, talento y experiencias.</span></div>
                     <button type="button" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver al acceso</button>
                 </footer>
             </div>
@@ -301,7 +306,7 @@
         <div id="view-home" style="display:none; flex-direction:column; height:100%;">
             <header>
                 <div id="user-rank-badge" class="badge-rank">---</div>
-                <h2 style="margin:0; font-size:0.9rem; letter-spacing: 1px; flex-grow: 1; text-align: center;">LOGISTICA & EVENTOS</h2>
+                <h2 class="app-header-brand"><img class="brand-logo" src="logo-logistica-eventos.png" alt="Logística & Eventos"></h2>
                 <div class="header-actions">
                     <select id="global-code-filter" class="dynamic-codes-filter" onchange="aplicarFiltroCodigoGlobal()" style="display:none;">
                         <option value="Todos">★ TODOS LOS GRUPOS</option>
@@ -749,20 +754,72 @@
                         </div>
 
                         <div id="admin-public-gallery-card" class="admin-card full-width admin-public-gallery-card">
-                            <p class="admin-card-title"><i class="fa-solid fa-photo-film"></i> GALERÍA DE LA PÁGINA WEB</p>
-                            <p class="admin-public-gallery-description">Publica fotos o videos organizados por tipo de evento. El contenido aparecerá en la opción pública “Página web”. Máximo 24 publicaciones.</p>
+                            <p class="admin-card-title"><i class="fa-solid fa-globe"></i> ADMINISTRAR PÁGINA WEB</p>
+                            <p class="admin-public-gallery-description">Controla las categorías, fotos, videos, textos, servicios, redes y asesores de la página pública.</p>
+
+                            <section class="admin-public-subsection" aria-labelledby="admin-public-categories-title">
+                                <div class="admin-public-config-heading">
+                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
+                                    <div><strong id="admin-public-categories-title">TIPOS DE EVENTO</strong><span>Agrega, renombra o elimina las categorías que aparecen en la galería y la cotización.</span></div>
+                                </div>
+                                <div class="admin-public-category-form">
+                                    <label><span>Nombre del tipo de evento</span><input id="admin-public-category-name" type="text" maxlength="60" placeholder="Ejemplo: Conciertos"></label>
+                                    <label><span>Icono</span><select id="admin-public-category-icon"><option value="fa-star">Estrella</option><option value="fa-children">Infantil</option><option value="fa-crown">Corona</option><option value="fa-cake-candles">Cumpleaños</option><option value="fa-heart">Boda</option><option value="fa-graduation-cap">Proms</option><option value="fa-briefcase">Empresarial</option><option value="fa-umbrella-beach">Turismo</option><option value="fa-music">Música</option><option value="fa-champagne-glasses">Celebración</option></select></label>
+                                    <div class="admin-public-inline-actions">
+                                        <button id="admin-public-category-save" class="btn-mini btn-add" type="button" onclick="guardarCategoriaEventoPublico()"><i class="fa-solid fa-plus"></i> AGREGAR TIPO</button>
+                                        <button id="admin-public-category-cancel" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionCategoriaEventoPublico()" hidden><i class="fa-solid fa-xmark"></i> CANCELAR</button>
+                                    </div>
+                                </div>
+                                <div id="admin-public-categories-list" class="admin-public-categories-list" aria-live="polite"></div>
+                            </section>
+
+                            <section class="admin-public-subsection" aria-labelledby="admin-public-media-title-heading">
+                            <div class="admin-public-config-heading">
+                                <i class="fa-solid fa-photo-film" aria-hidden="true"></i>
+                                <div><strong id="admin-public-media-title-heading">FOTOS Y VIDEOS</strong><span>Publica o edita contenido de la galería. Máximo 24 publicaciones.</span></div>
+                            </div>
                             <div class="admin-public-gallery-form">
                                 <label><span>Tipo de publicación</span><select id="admin-public-media-type" onchange="cambiarTipoMedioPublico()"><option value="imagen">Foto</option><option value="video">Video por enlace</option></select></label>
-                                <label><span>Tipo de evento</span><select id="admin-public-media-category"><option value="fiestas-infantiles">Fiestas infantiles</option><option value="15-anos">15 años</option><option value="cumpleanos">Cumpleaños</option><option value="bodas">Bodas</option><option value="fiestas-proms">Fiestas Proms</option><option value="eventos-empresariales">Eventos empresariales</option><option value="turismo">Turismo</option></select></label>
+                                <label><span>Tipo de evento</span><select id="admin-public-media-category"></select></label>
                                 <label><span>Título</span><input id="admin-public-media-title" type="text" maxlength="120" placeholder="Ejemplo: Integración empresarial"></label>
                                 <label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-public-media-description" maxlength="500" rows="3" placeholder="Describe brevemente el evento o la capacitación."></textarea></label>
-                                <label id="admin-public-image-field" class="admin-public-gallery-full"><span>Seleccionar fotografía</span><input id="admin-public-media-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                                <label id="admin-public-image-field" class="admin-public-gallery-full"><span>Seleccionar fotografía <small>En una edición puedes dejarla vacía para conservar la actual.</small></span><input id="admin-public-media-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
                                 <label id="admin-public-video-field" class="admin-public-gallery-full" style="display:none;"><span>Enlace del video</span><input id="admin-public-media-video" type="url" maxlength="500" placeholder="YouTube, Facebook, Instagram o enlace directo"></label>
-                                <button class="btn-mini btn-add admin-public-gallery-publish" type="button" onclick="publicarMedioPublico()"><i class="fa-solid fa-cloud-arrow-up"></i> PUBLICAR EN LA PÁGINA</button>
+                                <div class="admin-public-inline-actions admin-public-gallery-full">
+                                    <button id="admin-public-gallery-publish" class="btn-mini btn-add admin-public-gallery-publish" type="button" onclick="publicarMedioPublico()"><i class="fa-solid fa-cloud-arrow-up"></i> PUBLICAR EN LA PÁGINA</button>
+                                    <button id="admin-public-gallery-cancel" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionMedioPublico()" hidden><i class="fa-solid fa-xmark"></i> CANCELAR EDICIÓN</button>
+                                </div>
                             </div>
                             <div id="admin-public-gallery-list" class="admin-public-gallery-list" aria-live="polite">
                                 <p class="admin-public-gallery-empty"><i class="fa-regular fa-images"></i> Todavía no hay publicaciones.</p>
                             </div>
+                            </section>
+
+                            <section class="admin-public-subsection" aria-labelledby="admin-public-content-title">
+                                <div class="admin-public-config-heading">
+                                    <i class="fa-solid fa-pen-ruler" aria-hidden="true"></i>
+                                    <div><strong id="admin-public-content-title">TEXTOS Y ÁREAS DE LA PÁGINA</strong><span>Edita el contenido visible sin modificar el código.</span></div>
+                                </div>
+                                <div class="admin-public-content-form">
+                                    <fieldset><legend>Portada</legend><label><span>Ubicación o cobertura</span><input id="admin-content-location" type="text" maxlength="100"></label><label><span>Insignia</span><input id="admin-content-hero-badge" type="text" maxlength="80"></label><label><span>Etiqueta</span><input id="admin-content-hero-label" type="text" maxlength="100"></label><label><span>Título</span><input id="admin-content-hero-title" type="text" maxlength="140"></label><label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-content-hero-description" maxlength="500" rows="3"></textarea></label></fieldset>
+                                    <fieldset><legend>Servicios</legend><label><span>Etiqueta</span><input id="admin-content-services-label" type="text" maxlength="100"></label><label><span>Título</span><input id="admin-content-services-title" type="text" maxlength="140"></label><label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-content-services-description" maxlength="500" rows="3"></textarea></label></fieldset>
+                                    <fieldset><legend>Galería</legend><label><span>Etiqueta</span><input id="admin-content-gallery-label" type="text" maxlength="100"></label><label><span>Título</span><input id="admin-content-gallery-title" type="text" maxlength="140"></label><label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-content-gallery-description" maxlength="500" rows="3"></textarea></label></fieldset>
+                                    <fieldset><legend>Capacitación</legend><label><span>Etiqueta</span><input id="admin-content-training-label" type="text" maxlength="100"></label><label><span>Título</span><input id="admin-content-training-title" type="text" maxlength="140"></label><label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-content-training-description" maxlength="500" rows="3"></textarea></label><label class="admin-public-gallery-full"><span>Etiquetas separadas por coma</span><input id="admin-content-training-tags" type="text" maxlength="400"></label></fieldset>
+                                    <fieldset><legend>Cotización</legend><label><span>Etiqueta</span><input id="admin-content-quote-label" type="text" maxlength="100"></label><label><span>Título</span><input id="admin-content-quote-title" type="text" maxlength="140"></label><label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-content-quote-description" maxlength="500" rows="3"></textarea></label></fieldset>
+                                    <fieldset><legend>Pie de página</legend><label class="admin-public-gallery-full"><span>Texto final</span><input id="admin-content-footer" type="text" maxlength="180"></label></fieldset>
+                                </div>
+
+                                <div class="admin-public-service-editor">
+                                    <h4>SERVICIOS MOSTRADOS</h4>
+                                    <div class="admin-public-service-form">
+                                        <label><span>Servicio</span><input id="admin-public-service-title" type="text" maxlength="80" placeholder="Ejemplo: Fotografía"></label>
+                                        <label><span>Icono</span><select id="admin-public-service-icon"><option value="fa-star">Estrella</option><option value="fa-face-laugh-beam">Recreación</option><option value="fa-shield-halved">Seguridad</option><option value="fa-utensils">Meseros</option><option value="fa-music">Música</option><option value="fa-umbrella-beach">Turismo</option><option value="fa-wand-magic-sparkles">Decoración</option><option value="fa-camera">Fotografía</option><option value="fa-bus">Transporte</option><option value="fa-microphone">Animación</option></select></label>
+                                        <label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-public-service-description" maxlength="300" rows="2"></textarea></label>
+                                        <div class="admin-public-inline-actions admin-public-gallery-full"><button id="admin-public-service-save" class="btn-mini btn-add" type="button" onclick="guardarServicioPaginaPublica()"><i class="fa-solid fa-plus"></i> AGREGAR SERVICIO</button><button id="admin-public-service-cancel" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionServicioPaginaPublica()" hidden><i class="fa-solid fa-xmark"></i> CANCELAR</button></div>
+                                    </div>
+                                    <div id="admin-public-services-list" class="admin-public-services-list" aria-live="polite"></div>
+                                </div>
+                            </section>
 
                             <section class="admin-public-config" aria-labelledby="admin-public-config-title">
                                 <div class="admin-public-config-heading">
@@ -777,10 +834,10 @@
                                     <label><span>Nombre del asesor</span><input id="admin-public-advisor-name" type="text" maxlength="80" placeholder="Ejemplo: Laura"></label>
                                     <label><span>Coordinador asignado</span><input id="admin-public-coordinator-name" type="text" maxlength="100" placeholder="Nombre del coordinador"></label>
                                     <label><span>WhatsApp del coordinador</span><input id="admin-public-coordinator-phone" type="tel" maxlength="14" inputmode="numeric" placeholder="10 dígitos"></label>
-                                    <button class="btn-mini btn-add admin-public-advisor-add" type="button" onclick="agregarAsesorPaginaPublica()"><i class="fa-solid fa-user-plus"></i> AGREGAR ASESOR</button>
+                                    <div class="admin-public-inline-actions admin-public-gallery-full"><button id="admin-public-advisor-save" class="btn-mini btn-add admin-public-advisor-add" type="button" onclick="agregarAsesorPaginaPublica()"><i class="fa-solid fa-user-plus"></i> AGREGAR ASESOR</button><button id="admin-public-advisor-cancel" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionAsesorPaginaPublica()" hidden><i class="fa-solid fa-xmark"></i> CANCELAR</button></div>
                                 </div>
                                 <div id="admin-public-advisors-list" class="admin-public-advisors-list" aria-live="polite"></div>
-                                <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarConfiguracionPaginaPublica()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR REDES Y ASESORES</button>
+                                <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarConfiguracionPaginaPublica()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR TODA LA PÁGINA WEB</button>
                             </section>
                         </div>
 
