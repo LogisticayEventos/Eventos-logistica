@@ -156,6 +156,10 @@
                     <i class="fa-solid fa-ticket"></i>
                     <span>COMPRADOR<small>Consultar estado de boletas</small></span>
                 </button>
+                <button type="button" class="auth-access-button auth-access-public" onclick="abrirAccesoInicial('pagina')">
+                    <i class="fa-solid fa-globe"></i>
+                    <span>PÁGINA WEB<small>Eventos, capacitaciones y cotizaciones</small></span>
+                </button>
             </div>
 
             <div id="auth-user-access" class="auth-access-panel" style="display:none;">
@@ -194,6 +198,103 @@
                     <button id="buyer-lookup-button" class="btn-primary" type="button" onclick="consultarBoletasComprador()"><i class="fa-solid fa-ticket"></i> CONSULTAR</button>
                     <div id="buyer-lookup-results" class="buyer-lookup-results" aria-live="polite"></div>
                 </div>
+            </div>
+
+            <div id="auth-public-access" class="auth-access-panel public-site" style="display:none;">
+                <div class="public-site-topbar">
+                    <button type="button" class="auth-access-back" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
+                    <div>
+                        <nav id="public-social-links" class="public-social-links" aria-label="Redes sociales" hidden>
+                            <a id="public-instagram-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Visitar Instagram" hidden><i class="fa-brands fa-instagram" aria-hidden="true"></i></a>
+                            <a id="public-tiktok-link" href="#" target="_blank" rel="noopener noreferrer" aria-label="Visitar TikTok" hidden><i class="fa-brands fa-tiktok" aria-hidden="true"></i></a>
+                        </nav>
+                        <span><i class="fa-solid fa-location-dot"></i> Bogotá y alrededores</span>
+                        <button class="theme-toggle" type="button" onclick="cambiarTema()" aria-label="Cambiar tema de la página"><i class="fa-solid fa-desktop" aria-hidden="true"></i><span>Sistema</span></button>
+                    </div>
+                </div>
+
+                <section class="public-hero" aria-labelledby="public-site-title">
+                    <div class="public-hero-copy">
+                        <span class="public-eyebrow">LOGÍSTICA · PRODUCCIÓN · EXPERIENCIAS</span>
+                        <h1 id="public-site-title">Creamos eventos que la gente recuerda</h1>
+                        <p>Personal capacitado para recreación, turismo, seguridad, meseros, DJ, decoración, animación y producción de eventos.</p>
+                        <div class="public-hero-actions">
+                            <button type="button" class="public-primary-action" onclick="irACotizacionPublica()"><i class="fa-solid fa-file-signature"></i> SOLICITAR COTIZACIÓN</button>
+                            <a class="public-secondary-action" href="https://wa.me/573224343263" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i> HABLAR POR WHATSAPP</a>
+                        </div>
+                    </div>
+                    <div class="public-hero-visual" aria-hidden="true">
+                        <div class="public-hero-logo">L<span>&</span>E</div>
+                        <div class="public-hero-badge"><i class="fa-solid fa-shield-heart"></i> Equipo preparado</div>
+                    </div>
+                </section>
+
+                <section class="public-section" aria-labelledby="public-services-title">
+                    <div class="public-section-heading">
+                        <span>LO QUE HACEMOS</span>
+                        <h2 id="public-services-title">Soluciones para cada tipo de evento</h2>
+                        <p>Organizamos el personal y los servicios necesarios para que tú disfrutes mientras nosotros cuidamos cada detalle.</p>
+                    </div>
+                    <div class="public-services-grid">
+                        <article><i class="fa-solid fa-face-laugh-beam"></i><h3>Recreación y animación</h3><p>Dinámicas, integración, fiestas, actividades infantiles y experiencias para jóvenes.</p></article>
+                        <article><i class="fa-solid fa-shield-halved"></i><h3>Logística y seguridad</h3><p>Control de acceso, organización de asistentes, apoyo operativo y acompañamiento.</p></article>
+                        <article><i class="fa-solid fa-utensils"></i><h3>Meseros y buffet</h3><p>Personal de servicio, apoyo de alimentos y atención organizada para tus invitados.</p></article>
+                        <article><i class="fa-solid fa-music"></i><h3>DJ y producción</h3><p>Música, sonido, iluminación y operación técnica según las necesidades del evento.</p></article>
+                        <article><i class="fa-solid fa-umbrella-beach"></i><h3>Turismo y salidas</h3><p>Apoyo logístico para planes grupales, integración, recorridos y experiencias.</p></article>
+                        <article><i class="fa-solid fa-wand-magic-sparkles"></i><h3>Decoración y shows</h3><p>Maquillaje, globoflexia, payasos, títeres y ambientación para cada ocasión.</p></article>
+                    </div>
+                </section>
+
+                <section class="public-section public-gallery-section" aria-labelledby="public-gallery-title">
+                    <div class="public-section-heading">
+                        <span>NUESTRO TRABAJO</span>
+                        <h2 id="public-gallery-title">Galería por tipo de evento</h2>
+                        <p>Elige una categoría y conoce cómo son nuestras experiencias, montajes y celebraciones.</p>
+                    </div>
+                    <div id="public-gallery-filters" class="public-gallery-filters" aria-label="Filtrar galería por tipo de evento"></div>
+                    <div id="public-media-gallery" class="public-media-gallery" aria-live="polite">
+                        <div class="public-gallery-empty"><i class="fa-solid fa-photo-film"></i><strong>Galería en preparación</strong><span>Pronto encontrarás aquí fotos y videos de nuestros eventos.</span></div>
+                    </div>
+                </section>
+
+                <section class="public-training-section" aria-labelledby="public-training-title">
+                    <div class="public-training-icon"><i class="fa-solid fa-graduation-cap"></i></div>
+                    <div>
+                        <span>FORMACIÓN DE EQUIPOS</span>
+                        <h2 id="public-training-title">Capacitaciones prácticas</h2>
+                        <p>Preparamos al personal en atención al público, recreación, turismo, logística, seguridad y trabajo en equipo para responder profesionalmente en cada servicio.</p>
+                        <div class="public-training-tags"><span>Servicio al cliente</span><span>Trabajo en equipo</span><span>Operación de eventos</span><span>Protocolos de seguridad</span></div>
+                    </div>
+                </section>
+
+                <section id="public-quote-section" class="public-quote-section" aria-labelledby="public-quote-title">
+                    <div class="public-quote-copy">
+                        <span>COTIZA CON NOSOTROS</span>
+                        <h2 id="public-quote-title">Cuéntanos qué estás planeando</h2>
+                        <p>Completa los datos principales. Al enviar, se abrirá WhatsApp con la solicitud organizada para atenderte más rápido.</p>
+                        <div class="public-contact-list">
+                            <a href="https://wa.me/573224343263" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i><span>WhatsApp<strong>322 434 3263</strong></span></a>
+                            <a href="tel:+573224343263"><i class="fa-solid fa-phone"></i><span>Llámanos<strong>+57 322 434 3263</strong></span></a>
+                            <div><i class="fa-solid fa-map-location-dot"></i><span>Cobertura<strong>Bogotá y alrededores</strong></span></div>
+                        </div>
+                    </div>
+                    <form class="public-quote-form" onsubmit="enviarCotizacionPublica(event)">
+                        <label><span>Nombre y apellido</span><input id="public-quote-name" type="text" maxlength="100" autocomplete="name" required placeholder="¿Cómo te llamas?"></label>
+                        <label><span>Tu WhatsApp</span><input id="public-quote-phone" type="tel" maxlength="14" inputmode="numeric" autocomplete="tel" required placeholder="10 dígitos"></label>
+                        <label class="public-quote-full"><span>¿Qué asesor está ayudándote con la cotización?</span><select id="public-quote-advisor" required><option value="" disabled selected>Cargando asesores...</option></select></label>
+                        <label><span>Tipo de evento</span><select id="public-quote-type" required><option value="" disabled selected>Selecciona una opción</option><option>Fiestas infantiles</option><option>15 años</option><option>Cumpleaños</option><option>Bodas</option><option>Fiestas Proms</option><option>Eventos empresariales</option><option>Turismo</option><option>Capacitación</option><option>Otro</option></select></label>
+                        <label><span>Fecha aproximada</span><input id="public-quote-date" type="date" required></label>
+                        <label><span>Ciudad o lugar</span><input id="public-quote-location" type="text" maxlength="120" required placeholder="Ejemplo: Bogotá, Suba"></label>
+                        <label><span>Número de asistentes</span><input id="public-quote-guests" type="number" min="1" max="100000" required placeholder="Ejemplo: 80"></label>
+                        <label class="public-quote-full"><span>Servicios o detalles que necesitas</span><textarea id="public-quote-details" maxlength="700" rows="4" placeholder="Cuéntanos qué servicios necesitas, horario y cualquier detalle importante."></textarea></label>
+                        <button class="public-quote-submit" type="submit"><i class="fa-brands fa-whatsapp"></i> ENVIAR SOLICITUD POR WHATSAPP</button>
+                    </form>
+                </section>
+
+                <footer class="public-site-footer">
+                    <div><strong>LOGÍSTICA & EVENTOS</strong><span>Organización, talento y experiencias.</span></div>
+                    <button type="button" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver al acceso</button>
+                </footer>
             </div>
         </div>
 
@@ -645,6 +746,42 @@
                             <div id="admin-virtual-ticket-list" class="admin-virtual-ticket-list" aria-live="polite">
                                 <p class="admin-virtual-ticket-empty"><i class="fa-regular fa-images"></i> Todavía no has agregado imágenes.</p>
                             </div>
+                        </div>
+
+                        <div id="admin-public-gallery-card" class="admin-card full-width admin-public-gallery-card">
+                            <p class="admin-card-title"><i class="fa-solid fa-photo-film"></i> GALERÍA DE LA PÁGINA WEB</p>
+                            <p class="admin-public-gallery-description">Publica fotos o videos organizados por tipo de evento. El contenido aparecerá en la opción pública “Página web”. Máximo 24 publicaciones.</p>
+                            <div class="admin-public-gallery-form">
+                                <label><span>Tipo de publicación</span><select id="admin-public-media-type" onchange="cambiarTipoMedioPublico()"><option value="imagen">Foto</option><option value="video">Video por enlace</option></select></label>
+                                <label><span>Tipo de evento</span><select id="admin-public-media-category"><option value="fiestas-infantiles">Fiestas infantiles</option><option value="15-anos">15 años</option><option value="cumpleanos">Cumpleaños</option><option value="bodas">Bodas</option><option value="fiestas-proms">Fiestas Proms</option><option value="eventos-empresariales">Eventos empresariales</option><option value="turismo">Turismo</option></select></label>
+                                <label><span>Título</span><input id="admin-public-media-title" type="text" maxlength="120" placeholder="Ejemplo: Integración empresarial"></label>
+                                <label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-public-media-description" maxlength="500" rows="3" placeholder="Describe brevemente el evento o la capacitación."></textarea></label>
+                                <label id="admin-public-image-field" class="admin-public-gallery-full"><span>Seleccionar fotografía</span><input id="admin-public-media-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                                <label id="admin-public-video-field" class="admin-public-gallery-full" style="display:none;"><span>Enlace del video</span><input id="admin-public-media-video" type="url" maxlength="500" placeholder="YouTube, Facebook, Instagram o enlace directo"></label>
+                                <button class="btn-mini btn-add admin-public-gallery-publish" type="button" onclick="publicarMedioPublico()"><i class="fa-solid fa-cloud-arrow-up"></i> PUBLICAR EN LA PÁGINA</button>
+                            </div>
+                            <div id="admin-public-gallery-list" class="admin-public-gallery-list" aria-live="polite">
+                                <p class="admin-public-gallery-empty"><i class="fa-regular fa-images"></i> Todavía no hay publicaciones.</p>
+                            </div>
+
+                            <section class="admin-public-config" aria-labelledby="admin-public-config-title">
+                                <div class="admin-public-config-heading">
+                                    <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                                    <div><strong id="admin-public-config-title">REDES Y ASESORES DE COTIZACIÓN</strong><span>Configura las redes visibles y el coordinador que recibirá cada solicitud.</span></div>
+                                </div>
+                                <div class="admin-public-social-form">
+                                    <label><span>Enlace de Instagram</span><input id="admin-public-instagram" type="url" maxlength="300" placeholder="https://www.instagram.com/tu_cuenta"></label>
+                                    <label><span>Enlace de TikTok</span><input id="admin-public-tiktok" type="url" maxlength="300" placeholder="https://www.tiktok.com/@tu_cuenta"></label>
+                                </div>
+                                <div class="admin-public-advisor-form">
+                                    <label><span>Nombre del asesor</span><input id="admin-public-advisor-name" type="text" maxlength="80" placeholder="Ejemplo: Laura"></label>
+                                    <label><span>Coordinador asignado</span><input id="admin-public-coordinator-name" type="text" maxlength="100" placeholder="Nombre del coordinador"></label>
+                                    <label><span>WhatsApp del coordinador</span><input id="admin-public-coordinator-phone" type="tel" maxlength="14" inputmode="numeric" placeholder="10 dígitos"></label>
+                                    <button class="btn-mini btn-add admin-public-advisor-add" type="button" onclick="agregarAsesorPaginaPublica()"><i class="fa-solid fa-user-plus"></i> AGREGAR ASESOR</button>
+                                </div>
+                                <div id="admin-public-advisors-list" class="admin-public-advisors-list" aria-live="polite"></div>
+                                <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarConfiguracionPaginaPublica()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR REDES Y ASESORES</button>
+                            </section>
                         </div>
 
                         <div id="admin-edit-panel-code" class="admin-card">

@@ -187,6 +187,20 @@ const MAXIMO_ARCHIVOS_BOLETAS_VIRTUALES = 100;
 const MAXIMO_BYTES_ARCHIVO_BOLETA_VIRTUAL = 15 * 1024 * 1024;
 const MAXIMO_CARACTERES_IMAGEN_BOLETA_VIRTUAL = 820000;
 const CLAVE_CACHE_EQUIPOS = "logistica-eventos-equipos-v1";
+const CONTACTO_PUBLICO_WHATSAPP = "3224343263";
+const COLECCION_GALERIA_PUBLICA = "galeria_publica";
+const MAXIMO_PUBLICACIONES_GALERIA = 24;
+const DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA = "pagina_publica";
+const MAXIMO_ASESORES_PAGINA_PUBLICA = 30;
+const CATEGORIAS_EVENTOS_PUBLICOS = Object.freeze([
+    Object.freeze({ clave: "fiestas-infantiles", nombre: "Fiestas infantiles", icono: "fa-children" }),
+    Object.freeze({ clave: "15-anos", nombre: "15 años", icono: "fa-crown" }),
+    Object.freeze({ clave: "cumpleanos", nombre: "Cumpleaños", icono: "fa-cake-candles" }),
+    Object.freeze({ clave: "bodas", nombre: "Bodas", icono: "fa-heart" }),
+    Object.freeze({ clave: "fiestas-proms", nombre: "Fiestas Proms", icono: "fa-graduation-cap" }),
+    Object.freeze({ clave: "eventos-empresariales", nombre: "Eventos empresariales", icono: "fa-briefcase" }),
+    Object.freeze({ clave: "turismo", nombre: "Turismo", icono: "fa-umbrella-beach" })
+]);
 
 function fechaServidor() {
     return firebase.firestore.FieldValue.serverTimestamp();
@@ -745,6 +759,12 @@ let catalogoBoletasVirtuales = [];
 let boletaVirtualActual = null;
 let sincronizacionCatalogoVirtualEnCurso = null;
 let eliminacionCatalogoVirtualEnCurso = false;
+let galeriaPublica = [];
+let cargaGaleriaPublicaEnCurso = null;
+let categoriaGaleriaPublicaActiva = "todos";
+let configuracionPaginaPublica = { instagram: "", tiktok: "", asesores: [] };
+let configuracionPaginaPublicaCargada = false;
+let cargaConfiguracionPaginaPublicaEnCurso = null;
 
 let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
@@ -2765,6 +2785,8 @@ function showSection(id) {
     if(id === 'administracion') {
         inicializarSeccionesAdminPlegables();
         listenCatalogoBoletasVirtuales();
+        cargarGaleriaPublica(true);
+        cargarConfiguracionPaginaPublica(true);
     } else {
         detenerCatalogoBoletasVirtuales();
     }
@@ -3999,19 +4021,642 @@ async function eliminarPersonalYBoletasPorCodigo() {
     }
 }
 
+function obtenerCategoriaEventoPublico(clave) {
+    return CATEGORIAS_EVENTOS_PUBLICOS.find(categoria => categoria.clave === String(clave || "").trim()) || null;
+}
+
+function normalizarUrlRedSocialPublica(valor, red) {
+    const urlSegura = obtenerUrlHttpSegura(valor);
+    if(!urlSegura) return "";
+    try {
+        const host = new URL(urlSegura).hostname.toLowerCase().replace(/^www\./, "");
+        const dominio = red === "instagram" ? "instagram.com" : "tiktok.com";
+        return (host === dominio || host.endsWith(`.${dominio}`)) ? urlSegura : "";
+    } catch(error) {
+        return "";
+    }
+}
+
+function normalizarAsesorPaginaPublica(asesor = {}) {
+    const nombre = String(asesor.nombre || "").trim().replace(/\s+/g, " ").slice(0, 80);
+    const coordinador = String(asesor.coordinador || "").trim().replace(/\s+/g, " ").slice(0, 100);
+    const whatsapp = normalizarWhatsappConsulta(asesor.whatsapp);
+    if(!nombre || !coordinador || !/^\d{10}$/.test(whatsapp)) return null;
+    return { nombre, coordinador, whatsapp };
+}
+
+function normalizarConfiguracionPaginaPublica(datos = {}) {
+    const asesores = [];
+    const nombres = new Set();
+    (Array.isArray(datos.asesores) ? datos.asesores : []).slice(0, MAXIMO_ASESORES_PAGINA_PUBLICA).forEach(valor => {
+        const asesor = normalizarAsesorPaginaPublica(valor);
+        const clave = normalizarClaveColor(asesor?.nombre);
+        if(!asesor || !clave || nombres.has(clave)) return;
+        nombres.add(clave);
+        asesores.push(asesor);
+    });
+    return {
+        instagram: normalizarUrlRedSocialPublica(datos.instagram, "instagram"),
+        tiktok: normalizarUrlRedSocialPublica(datos.tiktok, "tiktok"),
+        asesores
+    };
+}
+
+function renderRedesSocialesPublicas() {
+    const contenedor = document.getElementById("public-social-links");
+    const instagram = document.getElementById("public-instagram-link");
+    const tiktok = document.getElementById("public-tiktok-link");
+    if(!contenedor || !instagram || !tiktok) return;
+
+    const redes = [
+        [instagram, configuracionPaginaPublica.instagram],
+        [tiktok, configuracionPaginaPublica.tiktok]
+    ];
+    redes.forEach(([enlace, url]) => {
+        enlace.hidden = !url;
+        if(url) enlace.href = url;
+        else enlace.removeAttribute("href");
+    });
+    contenedor.hidden = !configuracionPaginaPublica.instagram && !configuracionPaginaPublica.tiktok;
+}
+
+function renderSeleccionAsesorCotizacion() {
+    const selector = document.getElementById("public-quote-advisor");
+    if(!selector) return;
+    const valorAnterior = selector.value;
+    selector.replaceChildren();
+
+    const indicacion = document.createElement("option");
+    indicacion.value = "";
+    indicacion.disabled = true;
+    indicacion.textContent = "Selecciona el asesor que te está ayudando";
+    selector.appendChild(indicacion);
+
+    configuracionPaginaPublica.asesores.forEach((asesor, indice) => {
+        const opcion = document.createElement("option");
+        opcion.value = `asesor:${indice}`;
+        opcion.textContent = `${asesor.nombre} · Coordina ${asesor.coordinador}`;
+        selector.appendChild(opcion);
+    });
+
+    const general = document.createElement("option");
+    general.value = "general";
+    general.textContent = "Ningún asesor / contacto general";
+    selector.appendChild(general);
+
+    const existeValorAnterior = Array.from(selector.options).some(opcion => opcion.value === valorAnterior);
+    selector.value = existeValorAnterior ? valorAnterior : "";
+    indicacion.selected = !selector.value;
+}
+
+function renderListaAsesoresPaginaPublica() {
+    const contenedor = document.getElementById("admin-public-advisors-list");
+    if(!contenedor || !esAdministradorActual()) return;
+    contenedor.replaceChildren();
+    if(!configuracionPaginaPublica.asesores.length) {
+        const vacio = document.createElement("p");
+        vacio.className = "admin-public-advisors-empty";
+        vacio.textContent = "Todavía no hay asesores configurados. Las cotizaciones usarán el contacto general.";
+        contenedor.appendChild(vacio);
+        return;
+    }
+
+    configuracionPaginaPublica.asesores.forEach((asesor, indice) => {
+        const fila = document.createElement("article");
+        fila.className = "admin-public-advisor-item";
+        const informacion = document.createElement("div");
+        const nombre = document.createElement("strong");
+        nombre.textContent = asesor.nombre;
+        const detalle = document.createElement("span");
+        detalle.textContent = `${asesor.coordinador} · ${asesor.whatsapp}`;
+        informacion.append(nombre, detalle);
+        const eliminar = document.createElement("button");
+        eliminar.type = "button";
+        eliminar.className = "btn-mini btn-delete";
+        eliminar.innerHTML = '<i class="fa-solid fa-user-minus"></i> QUITAR';
+        eliminar.addEventListener("click", () => eliminarAsesorPaginaPublica(indice));
+        fila.append(informacion, eliminar);
+        contenedor.appendChild(fila);
+    });
+}
+
+function sincronizarCamposConfiguracionPaginaPublica() {
+    const instagram = document.getElementById("admin-public-instagram");
+    const tiktok = document.getElementById("admin-public-tiktok");
+    if(instagram) instagram.value = configuracionPaginaPublica.instagram;
+    if(tiktok) tiktok.value = configuracionPaginaPublica.tiktok;
+    renderListaAsesoresPaginaPublica();
+}
+
+function renderConfiguracionPaginaPublica() {
+    renderRedesSocialesPublicas();
+    renderSeleccionAsesorCotizacion();
+    renderListaAsesoresPaginaPublica();
+}
+
+async function cargarConfiguracionPaginaPublica(forzar = false) {
+    if(cargaConfiguracionPaginaPublicaEnCurso) return cargaConfiguracionPaginaPublicaEnCurso;
+    if(configuracionPaginaPublicaCargada && !forzar) {
+        renderConfiguracionPaginaPublica();
+        return configuracionPaginaPublica;
+    }
+
+    cargaConfiguracionPaginaPublicaEnCurso = (async () => {
+        try {
+            await FIRESTORE_READY;
+            const documento = await db.collection("configuracion").doc(DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA).get();
+            configuracionPaginaPublica = normalizarConfiguracionPaginaPublica(documento.exists ? documento.data() : {});
+            configuracionPaginaPublicaCargada = true;
+            renderConfiguracionPaginaPublica();
+            if(esAdministradorActual()) sincronizarCamposConfiguracionPaginaPublica();
+            return configuracionPaginaPublica;
+        } catch(error) {
+            console.error("No se pudo cargar la configuración de la página pública", error);
+            configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
+            configuracionPaginaPublicaCargada = true;
+            renderConfiguracionPaginaPublica();
+            if(esAdministradorActual()) manejarError(error, "No se pudieron cargar las redes y asesores");
+            return configuracionPaginaPublica;
+        }
+    })().finally(() => {
+        cargaConfiguracionPaginaPublicaEnCurso = null;
+    });
+    return cargaConfiguracionPaginaPublicaEnCurso;
+}
+
+function agregarAsesorPaginaPublica() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
+    if(configuracionPaginaPublica.asesores.length >= MAXIMO_ASESORES_PAGINA_PUBLICA) {
+        return notify(`⚠️ Puedes configurar máximo ${MAXIMO_ASESORES_PAGINA_PUBLICA} asesores`);
+    }
+    const asesor = normalizarAsesorPaginaPublica({
+        nombre: document.getElementById("admin-public-advisor-name")?.value,
+        coordinador: document.getElementById("admin-public-coordinator-name")?.value,
+        whatsapp: document.getElementById("admin-public-coordinator-phone")?.value
+    });
+    if(!asesor) return notify("⚠️ Completa el asesor, coordinador y un WhatsApp válido de 10 dígitos");
+    if(configuracionPaginaPublica.asesores.some(actual => normalizarClaveColor(actual.nombre) === normalizarClaveColor(asesor.nombre))) {
+        return notify("⚠️ Ya existe un asesor con ese nombre");
+    }
+    configuracionPaginaPublica.asesores.push(asesor);
+    ["admin-public-advisor-name", "admin-public-coordinator-name", "admin-public-coordinator-phone"].forEach(id => {
+        const campo = document.getElementById(id);
+        if(campo) campo.value = "";
+    });
+    renderListaAsesoresPaginaPublica();
+    renderSeleccionAsesorCotizacion();
+    notify("✅ Asesor agregado. Pulsa Guardar para publicar el cambio");
+}
+
+function eliminarAsesorPaginaPublica(indice) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
+    if(!Number.isInteger(indice) || indice < 0 || indice >= configuracionPaginaPublica.asesores.length) return;
+    configuracionPaginaPublica.asesores.splice(indice, 1);
+    renderListaAsesoresPaginaPublica();
+    renderSeleccionAsesorCotizacion();
+    notify("ℹ️ Asesor retirado. Pulsa Guardar para publicar el cambio");
+}
+
+async function guardarConfiguracionPaginaPublica() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede guardar esta configuración");
+    const instagramOriginal = document.getElementById("admin-public-instagram")?.value.trim() || "";
+    const tiktokOriginal = document.getElementById("admin-public-tiktok")?.value.trim() || "";
+    const instagram = normalizarUrlRedSocialPublica(instagramOriginal, "instagram");
+    const tiktok = normalizarUrlRedSocialPublica(tiktokOriginal, "tiktok");
+    if(instagramOriginal && !instagram) return notify("⚠️ Ingresa un enlace válido de Instagram");
+    if(tiktokOriginal && !tiktok) return notify("⚠️ Ingresa un enlace válido de TikTok");
+
+    const nuevaConfiguracion = normalizarConfiguracionPaginaPublica({
+        instagram,
+        tiktok,
+        asesores: configuracionPaginaPublica.asesores
+    });
+    const liberarBoton = bloquearBotonActual("GUARDANDO...");
+    try {
+        await db.collection("configuracion").doc(DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA).set({
+            ...nuevaConfiguracion,
+            actualizado: fechaServidor(),
+            actualizadoPor: normalizarEmailCuenta(auth.currentUser?.email)
+        });
+        configuracionPaginaPublica = nuevaConfiguracion;
+        configuracionPaginaPublicaCargada = true;
+        renderConfiguracionPaginaPublica();
+        sincronizarCamposConfiguracionPaginaPublica();
+        notify("✅ Redes y asesores publicados en la página web");
+    } catch(error) {
+        manejarError(error, "No se pudo guardar la configuración pública");
+    } finally {
+        liberarBoton();
+    }
+}
+
+function obtenerVideoYoutubePublico(valor) {
+    const urlSegura = obtenerUrlHttpSegura(valor);
+    if(!urlSegura) return "";
+
+    try {
+        const url = new URL(urlSegura);
+        const host = url.hostname.toLowerCase().replace(/^www\./, "");
+        let id = "";
+        if(host === "youtu.be") id = url.pathname.split("/").filter(Boolean)[0] || "";
+        if(host === "youtube.com" || host === "m.youtube.com") {
+            if(url.pathname === "/watch") id = url.searchParams.get("v") || "";
+            else if(url.pathname.startsWith("/shorts/") || url.pathname.startsWith("/embed/")) {
+                id = url.pathname.split("/").filter(Boolean)[1] || "";
+            }
+        }
+        return /^[A-Za-z0-9_-]{6,20}$/.test(id)
+            ? `https://www.youtube-nocookie.com/embed/${id}`
+            : "";
+    } catch(error) {
+        return "";
+    }
+}
+
+function esVideoDirectoPublico(valor) {
+    const urlSegura = obtenerUrlHttpSegura(valor);
+    if(!urlSegura) return false;
+    try {
+        return /\.(?:mp4|webm|ogg)$/i.test(new URL(urlSegura).pathname);
+    } catch(error) {
+        return false;
+    }
+}
+
+function normalizarMedioPublico(id, datos = {}) {
+    const tipo = datos.tipo === "video" ? "video" : "imagen";
+    const categoria = obtenerCategoriaEventoPublico(datos.categoria)?.clave || "sin-categoria";
+    const contenidoOriginal = String(datos.contenido || datos.url || datos.imagen || "").trim();
+    const contenido = tipo === "imagen"
+        ? (esComprobanteSeguro(contenidoOriginal) ? contenidoOriginal : "")
+        : obtenerUrlHttpSegura(contenidoOriginal);
+
+    return {
+        id: String(id || ""),
+        tipo,
+        categoria,
+        titulo: String(datos.titulo || "Experiencia Logística & Eventos").trim().slice(0, 120),
+        descripcion: String(datos.descripcion || "").trim().slice(0, 500),
+        contenido,
+        creado: datos.creado || null
+    };
+}
+
+function renderFiltrosGaleriaPublica() {
+    const contenedor = document.getElementById("public-gallery-filters");
+    if(!contenedor) return;
+    contenedor.replaceChildren();
+    const opciones = [{ clave: "todos", nombre: "Todos", icono: "fa-border-all" }, ...CATEGORIAS_EVENTOS_PUBLICOS];
+    opciones.forEach(categoria => {
+        const boton = document.createElement("button");
+        boton.type = "button";
+        boton.className = `public-gallery-filter${categoriaGaleriaPublicaActiva === categoria.clave ? " active" : ""}`;
+        boton.setAttribute("aria-pressed", categoriaGaleriaPublicaActiva === categoria.clave ? "true" : "false");
+        const icono = document.createElement("i");
+        icono.className = `fa-solid ${categoria.icono}`;
+        icono.setAttribute("aria-hidden", "true");
+        const texto = document.createElement("span");
+        texto.textContent = categoria.nombre;
+        boton.append(icono, texto);
+        boton.addEventListener("click", () => {
+            categoriaGaleriaPublicaActiva = categoria.clave;
+            renderGaleriaPublica();
+        });
+        contenedor.appendChild(boton);
+    });
+}
+
+function crearEscenarioMedioPublico(medio) {
+    const escenario = document.createElement("div");
+    escenario.className = "public-media-stage";
+
+    if(medio.tipo === "imagen" && esComprobanteSeguro(medio.contenido)) {
+        const imagen = document.createElement("img");
+        imagen.src = medio.contenido;
+        imagen.alt = medio.titulo;
+        imagen.loading = "lazy";
+        imagen.decoding = "async";
+        escenario.appendChild(imagen);
+        return escenario;
+    }
+
+    const youtube = obtenerVideoYoutubePublico(medio.contenido);
+    if(medio.tipo === "video" && youtube) {
+        const video = document.createElement("iframe");
+        video.src = youtube;
+        video.title = medio.titulo;
+        video.loading = "lazy";
+        video.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share";
+        video.allowFullscreen = true;
+        escenario.appendChild(video);
+        return escenario;
+    }
+
+    if(medio.tipo === "video" && esVideoDirectoPublico(medio.contenido)) {
+        const video = document.createElement("video");
+        video.src = medio.contenido;
+        video.controls = true;
+        video.preload = "metadata";
+        video.setAttribute("playsinline", "");
+        escenario.appendChild(video);
+        return escenario;
+    }
+
+    const enlace = document.createElement("a");
+    enlace.className = "public-media-external";
+    enlace.href = medio.contenido || "#";
+    enlace.target = "_blank";
+    enlace.rel = "noopener noreferrer";
+    const icono = document.createElement("i");
+    icono.className = "fa-solid fa-circle-play";
+    const texto = document.createElement("span");
+    texto.textContent = medio.contenido ? "VER VIDEO EN LA PLATAFORMA" : "CONTENIDO NO DISPONIBLE";
+    enlace.append(icono, texto);
+    escenario.appendChild(enlace);
+    return escenario;
+}
+
+function renderGaleriaPublica() {
+    const contenedor = document.getElementById("public-media-gallery");
+    if(!contenedor) return;
+    renderFiltrosGaleriaPublica();
+    contenedor.replaceChildren();
+
+    const publicacionesVisibles = categoriaGaleriaPublicaActiva === "todos"
+        ? galeriaPublica
+        : galeriaPublica.filter(medio => medio.categoria === categoriaGaleriaPublicaActiva);
+
+    if(!publicacionesVisibles.length) {
+        const vacio = document.createElement("div");
+        vacio.className = "public-gallery-empty";
+        const categoria = obtenerCategoriaEventoPublico(categoriaGaleriaPublicaActiva);
+        vacio.innerHTML = categoria
+            ? `<i class="fa-solid ${categoria.icono}"></i><strong>${escaparHTML(categoria.nombre)}</strong><span>Todavía no hay fotos o videos publicados en esta categoría.</span>`
+            : '<i class="fa-solid fa-photo-film"></i><strong>Galería en preparación</strong><span>Pronto encontrarás aquí fotos y videos de nuestros eventos.</span>';
+        contenedor.appendChild(vacio);
+        return;
+    }
+
+    publicacionesVisibles.forEach(medio => {
+        const tarjeta = document.createElement("article");
+        tarjeta.className = "public-media-card";
+        const escenario = crearEscenarioMedioPublico(medio);
+        const informacion = document.createElement("div");
+        informacion.className = "public-media-info";
+        const categoria = obtenerCategoriaEventoPublico(medio.categoria);
+        if(categoria) {
+            const etiqueta = document.createElement("span");
+            etiqueta.className = "public-media-category";
+            etiqueta.textContent = categoria.nombre;
+            informacion.appendChild(etiqueta);
+        }
+        const titulo = document.createElement("strong");
+        titulo.textContent = medio.titulo;
+        informacion.appendChild(titulo);
+        if(medio.descripcion) {
+            const descripcion = document.createElement("p");
+            descripcion.textContent = medio.descripcion;
+            informacion.appendChild(descripcion);
+        }
+        tarjeta.append(escenario, informacion);
+        contenedor.appendChild(tarjeta);
+    });
+}
+
+function renderAdministradorGaleriaPublica() {
+    const contenedor = document.getElementById("admin-public-gallery-list");
+    if(!contenedor || !esAdministradorActual()) return;
+    contenedor.replaceChildren();
+
+    if(!galeriaPublica.length) {
+        const vacio = document.createElement("p");
+        vacio.className = "admin-public-gallery-empty";
+        vacio.innerHTML = '<i class="fa-regular fa-images"></i> Todavía no hay publicaciones.';
+        contenedor.appendChild(vacio);
+        return;
+    }
+
+    galeriaPublica.forEach(medio => {
+        const tarjeta = document.createElement("article");
+        tarjeta.className = "admin-public-media-item";
+        const escenario = crearEscenarioMedioPublico(medio);
+        const informacion = document.createElement("div");
+        informacion.className = "admin-public-media-item-info";
+        const categoria = document.createElement("span");
+        categoria.className = "admin-public-media-category";
+        categoria.textContent = obtenerCategoriaEventoPublico(medio.categoria)?.nombre || "Publicación anterior · sin categoría";
+        const titulo = document.createElement("strong");
+        titulo.textContent = medio.titulo;
+        const eliminar = document.createElement("button");
+        eliminar.type = "button";
+        eliminar.className = "btn-mini btn-delete";
+        eliminar.innerHTML = '<i class="fa-solid fa-trash-can"></i> ELIMINAR';
+        eliminar.addEventListener("click", () => eliminarMedioPublico(medio.id, medio.titulo));
+        informacion.append(categoria, titulo, eliminar);
+        tarjeta.append(escenario, informacion);
+        contenedor.appendChild(tarjeta);
+    });
+}
+
+async function cargarGaleriaPublica(forzar = false) {
+    if(cargaGaleriaPublicaEnCurso) return cargaGaleriaPublicaEnCurso;
+    if(!forzar && galeriaPublica.length) {
+        renderGaleriaPublica();
+        renderAdministradorGaleriaPublica();
+        return galeriaPublica;
+    }
+
+    const contenedor = document.getElementById("public-media-gallery");
+    if(contenedor && !galeriaPublica.length) {
+        contenedor.innerHTML = '<div class="public-gallery-empty"><i class="fa-solid fa-spinner fa-spin"></i><strong>Cargando galería</strong><span>Estamos preparando las experiencias.</span></div>';
+    }
+
+    cargaGaleriaPublicaEnCurso = (async () => {
+        try {
+            await FIRESTORE_READY;
+            const snapshot = await db.collection(COLECCION_GALERIA_PUBLICA)
+                .orderBy("creado", "desc")
+                .limit(MAXIMO_PUBLICACIONES_GALERIA)
+                .get();
+            galeriaPublica = snapshot.docs
+                .map(documento => normalizarMedioPublico(documento.id, documento.data()))
+                .filter(medio => medio.id && medio.contenido);
+            renderGaleriaPublica();
+            renderAdministradorGaleriaPublica();
+            return galeriaPublica;
+        } catch(error) {
+            console.error("No se pudo cargar la galería pública", error);
+            if(contenedor) {
+                contenedor.innerHTML = '<div class="public-gallery-empty"><i class="fa-solid fa-triangle-exclamation"></i><strong>No se pudo cargar la galería</strong><span>Revisa la conexión e inténtalo nuevamente.</span></div>';
+            }
+            if(esAdministradorActual()) manejarError(error, "No se pudo cargar la galería pública");
+            return [];
+        }
+    })().finally(() => {
+        cargaGaleriaPublicaEnCurso = null;
+    });
+
+    return cargaGaleriaPublicaEnCurso;
+}
+
+function cambiarTipoMedioPublico() {
+    const tipo = document.getElementById("admin-public-media-type")?.value || "imagen";
+    const campoImagen = document.getElementById("admin-public-image-field");
+    const campoVideo = document.getElementById("admin-public-video-field");
+    if(campoImagen) campoImagen.style.display = tipo === "imagen" ? "block" : "none";
+    if(campoVideo) campoVideo.style.display = tipo === "video" ? "block" : "none";
+}
+
+async function publicarMedioPublico() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede publicar en la galería");
+    const tipo = document.getElementById("admin-public-media-type")?.value === "video" ? "video" : "imagen";
+    const categoria = document.getElementById("admin-public-media-category")?.value || "";
+    const titulo = document.getElementById("admin-public-media-title")?.value.trim() || "";
+    const descripcion = document.getElementById("admin-public-media-description")?.value.trim() || "";
+    if(!titulo) return notify("⚠️ Escribe un título para la publicación");
+    if(!obtenerCategoriaEventoPublico(categoria)) return notify("⚠️ Selecciona el tipo de evento");
+
+    const liberarBoton = bloquearBotonActual("PUBLICANDO...");
+    try {
+        await cargarGaleriaPublica(true);
+        if(galeriaPublica.length >= MAXIMO_PUBLICACIONES_GALERIA) {
+            return notify(`⚠️ La galería admite máximo ${MAXIMO_PUBLICACIONES_GALERIA} publicaciones. Elimina una antes de continuar`);
+        }
+
+        let contenido = "";
+        if(tipo === "imagen") {
+            const archivo = document.getElementById("admin-public-media-image")?.files?.[0];
+            if(!archivo) return notify("⚠️ Selecciona una fotografía");
+            contenido = await procesarImagenBoletaVirtual(archivo);
+        } else {
+            contenido = obtenerUrlHttpSegura(document.getElementById("admin-public-media-video")?.value);
+            if(!contenido || !contenido.startsWith("https://")) return notify("⚠️ Ingresa un enlace de video válido que comience con https://");
+        }
+
+        await db.collection(COLECCION_GALERIA_PUBLICA).add({
+            tipo,
+            categoria,
+            titulo: titulo.slice(0, 120),
+            descripcion: descripcion.slice(0, 500),
+            contenido,
+            creado: fechaServidor(),
+            creadoPor: auth.currentUser.email
+        });
+
+        document.getElementById("admin-public-media-title").value = "";
+        document.getElementById("admin-public-media-description").value = "";
+        document.getElementById("admin-public-media-image").value = "";
+        document.getElementById("admin-public-media-video").value = "";
+        await cargarGaleriaPublica(true);
+        notify("✅ Publicación agregada a la página web");
+    } catch(error) {
+        manejarError(error, "No se pudo publicar en la galería");
+    } finally {
+        liberarBoton();
+    }
+}
+
+async function eliminarMedioPublico(id, titulo) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar publicaciones");
+    if(!confirm(`¿Eliminar “${titulo}” de la página web?`)) return;
+    const liberarBoton = bloquearBotonActual("ELIMINANDO...");
+    try {
+        await db.collection(COLECCION_GALERIA_PUBLICA).doc(id).delete();
+        galeriaPublica = galeriaPublica.filter(medio => medio.id !== id);
+        renderGaleriaPublica();
+        renderAdministradorGaleriaPublica();
+        notify("🗑️ Publicación eliminada");
+    } catch(error) {
+        manejarError(error, "No se pudo eliminar la publicación");
+    } finally {
+        liberarBoton();
+    }
+}
+
+function irACotizacionPublica() {
+    document.getElementById("public-quote-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function enviarCotizacionPublica(evento) {
+    evento?.preventDefault();
+    const nombre = document.getElementById("public-quote-name")?.value.trim() || "";
+    const telefono = normalizarWhatsappConsulta(document.getElementById("public-quote-phone")?.value);
+    const seleccionAsesor = document.getElementById("public-quote-advisor")?.value || "";
+    const tipo = document.getElementById("public-quote-type")?.value || "";
+    const fecha = document.getElementById("public-quote-date")?.value || "";
+    const lugar = document.getElementById("public-quote-location")?.value.trim() || "";
+    const asistentes = document.getElementById("public-quote-guests")?.value || "";
+    const detalles = document.getElementById("public-quote-details")?.value.trim() || "Sin detalles adicionales";
+
+    if(!nombre || !seleccionAsesor || !tipo || !fecha || !lugar || !asistentes) return notify("⚠️ Completa los datos obligatorios de la cotización");
+    if(!/^\d{10}$/.test(telefono)) return notify("⚠️ Ingresa un WhatsApp válido de 10 dígitos");
+
+    let asesorSeleccionado = null;
+    if(seleccionAsesor.startsWith("asesor:")) {
+        const indiceAsesor = Number(seleccionAsesor.split(":")[1]);
+        asesorSeleccionado = Number.isInteger(indiceAsesor) ? configuracionPaginaPublica.asesores[indiceAsesor] : null;
+        if(!asesorSeleccionado) return notify("⚠️ El asesor seleccionado ya no está disponible. Elige nuevamente");
+    } else if(seleccionAsesor !== "general") {
+        return notify("⚠️ Selecciona quién te está ayudando con la cotización");
+    }
+
+    const contactoDestino = asesorSeleccionado?.whatsapp || CONTACTO_PUBLICO_WHATSAPP;
+    const asesorTexto = asesorSeleccionado?.nombre || "Ningún asesor / contacto general";
+    const coordinadorTexto = asesorSeleccionado?.coordinador || "Equipo general de Logística & Eventos";
+
+    const mensaje = [
+        "Hola, equipo de *Logística & Eventos*. 👋",
+        "",
+        "Deseo solicitar una cotización para un evento.",
+        "",
+        "📋 *DATOS DE CONTACTO*",
+        `• Nombre: ${nombre}`,
+        `• WhatsApp: ${telefono}`,
+        `• Asesor que me está ayudando: ${asesorTexto}`,
+        `• Coordinador asignado: ${coordinadorTexto}`,
+        "",
+        "🎉 *INFORMACIÓN DEL EVENTO*",
+        `• Tipo: ${tipo}`,
+        `• Fecha aproximada: ${fecha}`,
+        `• Ciudad o lugar: ${lugar}`,
+        `• Número de asistentes: ${asistentes}`,
+        `• Servicios y detalles: ${detalles}`,
+        "",
+        "Agradezco información sobre disponibilidad, servicios y valor aproximado."
+    ].join("\n");
+
+    const url = `https://wa.me/57${contactoDestino}?text=${encodeURIComponent(mensaje)}`;
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.target = "_blank";
+    enlace.rel = "noopener noreferrer";
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
+}
+
 function abrirAccesoInicial(tipo) {
     const selector = document.getElementById("auth-access-choice");
     const accesoUsuario = document.getElementById("auth-user-access");
     const accesoComprador = document.getElementById("auth-buyer-access");
-    if(!selector || !accesoUsuario || !accesoComprador) return;
+    const accesoPublico = document.getElementById("auth-public-access");
+    const vistaAcceso = document.getElementById("view-auth");
+    if(!selector || !accesoUsuario || !accesoComprador || !accesoPublico || !vistaAcceso) return;
 
     selector.style.display = "none";
     accesoUsuario.style.display = tipo === "usuario" ? "block" : "none";
     accesoComprador.style.display = tipo === "comprador" ? "block" : "none";
+    accesoPublico.style.display = tipo === "pagina" ? "block" : "none";
+    vistaAcceso.classList.toggle("public-site-open", tipo === "pagina");
 
     if(tipo === "usuario") toggleAuth("login");
     if(tipo === "comprador") {
         document.getElementById("buyer-lookup-ticket")?.focus();
+    }
+    if(tipo === "pagina") {
+        vistaAcceso.scrollTop = 0;
+        cargarGaleriaPublica();
+        cargarConfiguracionPaginaPublica();
     }
 }
 
@@ -4019,10 +4664,17 @@ function volverSeleccionAcceso() {
     const selector = document.getElementById("auth-access-choice");
     const accesoUsuario = document.getElementById("auth-user-access");
     const accesoComprador = document.getElementById("auth-buyer-access");
+    const accesoPublico = document.getElementById("auth-public-access");
+    const vistaAcceso = document.getElementById("view-auth");
     const resultados = document.getElementById("buyer-lookup-results");
     if(selector) selector.style.display = "flex";
     if(accesoUsuario) accesoUsuario.style.display = "none";
     if(accesoComprador) accesoComprador.style.display = "none";
+    if(accesoPublico) accesoPublico.style.display = "none";
+    if(vistaAcceso) {
+        vistaAcceso.classList.remove("public-site-open");
+        vistaAcceso.scrollTop = 0;
+    }
     if(resultados) resultados.replaceChildren();
 }
 
