@@ -191,6 +191,7 @@ const CONTACTO_PUBLICO_WHATSAPP = "3224343263";
 const COLECCION_GALERIA_PUBLICA = "galeria_publica";
 const MAXIMO_PUBLICACIONES_GALERIA = 24;
 const DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA = "pagina_publica";
+const DOCUMENTO_RESULTADO_SORTEO = "resultado_sorteo";
 const MAXIMO_ASESORES_PAGINA_PUBLICA = 30;
 const MAXIMO_CATEGORIAS_EVENTOS_PUBLICOS = 24;
 const MAXIMO_SERVICIOS_PAGINA_PUBLICA = 18;
@@ -404,6 +405,11 @@ function crearDatosConsultaBoleta(boleta = {}, boletaId = "", permitirFechaServi
     const comprador = String(boleta.c || boleta.comprador || "").trim();
     const whatsapp = normalizarWhatsappConsulta(boleta.t || boleta.whatsapp || boleta.telefono);
     const recreador = String(boleta.recreador || "").trim();
+    const vendedorWhatsapp = normalizarWhatsappConsulta(
+        boleta.vendedorWhatsapp
+        || (auth.currentUser?.email === boleta.vendedor ? currentUserData?.tel : "")
+        || allUsers.find(usuario => usuario.id === boleta.vendedor)?.tel
+    );
     const equipo = String(boleta.equipo || boleta.color || "").trim();
     const fechaConvertida = convertirFechaFirestore(boleta.creado);
     const creado = fechaConvertida || (permitirFechaServidor ? boleta.creado : null);
@@ -416,6 +422,7 @@ function crearDatosConsultaBoleta(boleta = {}, boletaId = "", permitirFechaServi
         comprador,
         whatsapp,
         recreador,
+        vendedorWhatsapp: /^\d{10}$/.test(vendedorWhatsapp) ? vendedorWhatsapp : "",
         equipo,
         estado: boleta.estado === "Activa" ? "Activa" : "Pendiente",
         creado,
@@ -800,6 +807,7 @@ let configuracionPaginaPublicaCargada = false;
 let cargaConfiguracionPaginaPublicaEnCurso = null;
 let asesorPaginaPublicaSeleccionado = "";
 let asesorPaginaPublicaEnEdicion = -1;
+let resultadoSorteoActual = { publicado: false, numero: "", premio: "" };
 let categoriaEventoPublicoEnEdicion = "";
 let categoriasPaginaPublicaPendientes = false;
 let servicioPaginaPublicaEnEdicion = -1;
@@ -2826,6 +2834,7 @@ function showSection(id) {
         listenCatalogoBoletasVirtuales();
         cargarGaleriaPublica(true);
         cargarConfiguracionPaginaPublica(true);
+        cargarResultadoSorteoAdmin();
     } else {
         detenerCatalogoBoletasVirtuales();
     }
@@ -4733,6 +4742,49 @@ async function cargarConfiguracionPaginaPublica(forzar = false) {
     return cargaConfiguracionPaginaPublicaEnCurso;
 }
 
+async function cargarResultadoSorteoAdmin() {
+    if(!esAdministradorActual()) return;
+    try {
+        const documento = await db.collection("configuracion").doc(DOCUMENTO_RESULTADO_SORTEO).get();
+        resultadoSorteoActual = documento.exists ? normalizarResultadoSorteo(documento.data()) : normalizarResultadoSorteo();
+        const numero = document.getElementById("admin-winning-ticket");
+        const premio = document.getElementById("admin-winning-prize");
+        const publicado = document.getElementById("admin-winning-published");
+        const estado = document.getElementById("admin-winning-status");
+        if(numero) numero.value = resultadoSorteoActual.numero;
+        if(premio) premio.value = resultadoSorteoActual.premio;
+        if(publicado) publicado.checked = resultadoSorteoActual.publicado;
+        if(estado) estado.textContent = resultadoSorteoActual.publicado
+            ? `Publicado: boleta N.º ${resultadoSorteoActual.numero} · ${resultadoSorteoActual.premio}`
+            : "El resultado está oculto para los compradores.";
+    } catch(error) {
+        manejarError(error, "No se pudo cargar el resultado del sorteo");
+    }
+}
+
+async function guardarResultadoSorteo() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede publicar el resultado");
+    const numero = normalizarNumeroBoletaConsulta(document.getElementById("admin-winning-ticket")?.value);
+    const premio = String(document.getElementById("admin-winning-prize")?.value || "").trim();
+    const publicado = document.getElementById("admin-winning-published")?.checked === true;
+    if(!/^\d{3}$/.test(numero)) return notify("⚠️ Ingresa los 3 dígitos de la boleta ganadora");
+    if(!premio) return notify("⚠️ Escribe el nombre del premio");
+    const liberarBoton = bloquearBotonActual("GUARDANDO...");
+    try {
+        await db.collection("configuracion").doc(DOCUMENTO_RESULTADO_SORTEO).set({
+            numero, premio: premio.slice(0, 160), publicado,
+            actualizado: fechaServidor(), actualizadoPor: auth.currentUser.email
+        });
+        resultadoSorteoActual = { numero, premio: premio.slice(0, 160), publicado };
+        await cargarResultadoSorteoAdmin();
+        notify(publicado ? "🏆 Resultado publicado" : "✅ Resultado guardado sin publicar");
+    } catch(error) {
+        manejarError(error, "No se pudo guardar el resultado del sorteo");
+    } finally {
+        liberarBoton();
+    }
+}
+
 function agregarAsesorPaginaPublica() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
     if(asesorPaginaPublicaEnEdicion < 0 && configuracionPaginaPublica.asesores.length >= MAXIMO_ASESORES_PAGINA_PUBLICA) return notify(`⚠️ Puedes configurar máximo ${MAXIMO_ASESORES_PAGINA_PUBLICA} asesores`);
@@ -5272,6 +5324,8 @@ function abrirAccesoInicial(tipo) {
     accesoComprador.style.display = tipo === "comprador" ? "block" : "none";
     accesoPublico.style.display = tipo === "pagina" ? "block" : "none";
     vistaAcceso.classList.toggle("public-site-open", tipo === "pagina");
+    const ruta = tipo === "pagina" ? "web" : tipo;
+    if(location.hash !== `#${ruta}`) history.pushState(null, "", `#${ruta}`);
 
     if(tipo === "usuario") toggleAuth("login");
     if(tipo === "comprador") {
@@ -5300,9 +5354,51 @@ function volverSeleccionAcceso() {
         vistaAcceso.scrollTop = 0;
     }
     if(resultados) resultados.replaceChildren();
+    if(location.hash) history.pushState(null, "", location.pathname + location.search);
 }
 
-function renderResultadosComprador(boletas, configuracionAyuda = CONFIGURACION_PAGOS_POR_DEFECTO) {
+function aplicarRutaAccesoDesdeEnlace() {
+    if(document.getElementById("view-home")?.style.display !== "none") return;
+    const ruta = location.hash.replace(/^#/, "").toLowerCase();
+    if(ruta === "usuario") abrirAccesoInicial("usuario");
+    else if(ruta === "comprador") abrirAccesoInicial("comprador");
+    else if(ruta === "web" || ruta === "pagina") abrirAccesoInicial("pagina");
+    else volverSeleccionAcceso();
+}
+
+window.addEventListener("hashchange", aplicarRutaAccesoDesdeEnlace);
+if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", aplicarRutaAccesoDesdeEnlace, { once: true });
+else aplicarRutaAccesoDesdeEnlace();
+
+function normalizarResultadoSorteo(datos = {}) {
+    const numero = normalizarNumeroBoletaConsulta(datos.numero);
+    return {
+        publicado: datos.publicado === true && /^\d{3}$/.test(numero),
+        numero: /^\d{3}$/.test(numero) ? numero : "",
+        premio: String(datos.premio || "Premio principal").trim().slice(0, 160)
+    };
+}
+
+function renderResultadoSorteoComprador(boleta, resultado) {
+    const bloque = document.createElement("div");
+    bloque.className = "buyer-ticket-draw";
+    if(!resultado.publicado) {
+        bloque.classList.add("is-waiting");
+        bloque.innerHTML = '<i class="fa-regular fa-clock"></i><span><strong>SORTEO PENDIENTE</strong><small>El número ganador todavía no ha sido publicado.</small></span>';
+    } else if(boleta.estado !== "Activa") {
+        bloque.classList.add("is-not-eligible");
+        bloque.innerHTML = `<i class="fa-solid fa-circle-exclamation"></i><span><strong>NO PARTICIPA</strong><small>La boleta ganadora es la N.º ${escaparHTML(resultado.numero)}, pero esta boleta sigue pendiente de pago.</small></span>`;
+    } else if(boleta.n === resultado.numero) {
+        bloque.classList.add("is-winner");
+        bloque.innerHTML = `<i class="fa-solid fa-trophy"></i><span><strong>¡GANASTE!</strong><small>Tu boleta coincide con la ganadora N.º ${escaparHTML(resultado.numero)} · ${escaparHTML(resultado.premio)}</small></span>`;
+    } else {
+        bloque.classList.add("is-not-winner");
+        bloque.innerHTML = `<i class="fa-regular fa-circle-xmark"></i><span><strong>ESTA VEZ NO GANASTE</strong><small>La boleta ganadora fue la N.º ${escaparHTML(resultado.numero)} · ${escaparHTML(resultado.premio)}</small></span>`;
+    }
+    return bloque;
+}
+
+function renderResultadosComprador(boletas, configuracionAyuda = CONFIGURACION_PAGOS_POR_DEFECTO, resultadoSorteo = resultadoSorteoActual) {
     const contenedor = document.getElementById("buyer-lookup-results");
     if(!contenedor) return;
     contenedor.replaceChildren();
@@ -5344,7 +5440,8 @@ function renderResultadosComprador(boletas, configuracionAyuda = CONFIGURACION_P
         const campos = [
             ["Comprador", boleta.comprador || "---"],
             ["WhatsApp", boleta.whatsapp || "---"],
-            ["Recreador", boleta.recreador || "---"],
+            ["Vendedor", boleta.recreador || "---"],
+            ["WhatsApp del vendedor", boleta.vendedorWhatsapp || "No registrado"],
             ["Equipo", boleta.equipo || "---"],
             ["Fecha de registro", fecha ? fecha.toLocaleDateString("es-CO") : "---"]
         ];
@@ -5354,13 +5451,20 @@ function renderResultadosComprador(boletas, configuracionAyuda = CONFIGURACION_P
             campo.className = "buyer-ticket-field";
             const titulo = document.createElement("small");
             titulo.textContent = etiqueta;
-            const contenido = document.createElement("span");
+            const esWhatsappVendedor = etiqueta === "WhatsApp del vendedor" && /^\d{10}$/.test(String(valor));
+            const contenido = document.createElement(esWhatsappVendedor ? "a" : "span");
             contenido.textContent = valor;
+            if(esWhatsappVendedor) {
+                contenido.href = `https://wa.me/57${valor}?text=${encodeURIComponent(`Hola, necesito información sobre la boleta N.º ${boleta.n}.`)}`;
+                contenido.target = "_blank";
+                contenido.rel = "noopener noreferrer";
+                contenido.className = "buyer-seller-whatsapp";
+            }
             campo.append(titulo, contenido);
             detalles.appendChild(campo);
         });
 
-        fila.append(encabezado, detalles);
+        fila.append(encabezado, detalles, renderResultadoSorteoComprador(boleta, resultadoSorteo));
 
         const claveEquipo = normalizarClaveColor(boleta.equipo);
         const contacto = configuracionAyuda.contactos?.[claveEquipo];
@@ -5407,6 +5511,7 @@ function prepararConsultaComprador(documento, numero, whatsapp) {
                 comprador: String(datos.comprador || ""),
                 whatsapp,
                 recreador: String(datos.recreador || ""),
+                vendedorWhatsapp: normalizarWhatsappConsulta(datos.vendedorWhatsapp),
                 equipo: String(datos.equipo || ""),
                 estado: datos.estado === "Activa" ? "Activa" : "Pendiente",
                 creado: datos.creado || null
@@ -5439,30 +5544,36 @@ async function consultarBoletasComprador() {
         const hash = await obtenerHashConsultaBoleta(numero, whatsapp);
         const boletaRef = db.collection("consulta_boletas").doc(hash);
         const contactosRef = db.collection("configuracion").doc("contactos_ayuda");
+        const resultadoRef = db.collection("configuracion").doc(DOCUMENTO_RESULTADO_SORTEO);
         const consultaServidor = Promise.all([
             boletaRef.get({ source: "server" }),
-            contactosRef.get({ source: "server" })
+            contactosRef.get({ source: "server" }),
+            resultadoRef.get({ source: "server" })
         ]).then(valor => ({ valor }), error => ({ error }));
 
-        const [boletaCache, contactosCache] = await Promise.allSettled([
+        const [boletaCache, contactosCache, resultadoCache] = await Promise.allSettled([
             boletaRef.get({ source: "cache" }),
-            contactosRef.get({ source: "cache" })
+            contactosRef.get({ source: "cache" }),
+            resultadoRef.get({ source: "cache" })
         ]);
         if(boletaCache.status === "fulfilled" && boletaCache.value.exists) {
             const boletas = prepararConsultaComprador(boletaCache.value, numero, whatsapp);
             const configuracionAyuda = contactosCache.status === "fulfilled"
                 ? prepararContactosAyuda(contactosCache.value)
                 : normalizarConfiguracionPagosLista();
-            renderResultadosComprador(boletas, configuracionAyuda);
+            const resultado = resultadoCache.status === "fulfilled" && resultadoCache.value.exists
+                ? normalizarResultadoSorteo(resultadoCache.value.data()) : normalizarResultadoSorteo();
+            renderResultadosComprador(boletas, configuracionAyuda, resultado);
             resultadoCacheMostrado = boletas.length > 0;
         }
 
         const resultadoServidor = await consultaServidor;
         if(resultadoServidor.error) throw resultadoServidor.error;
-        const [documento, configuracionDoc] = resultadoServidor.valor;
+        const [documento, configuracionDoc, resultadoDoc] = resultadoServidor.valor;
         const boletas = prepararConsultaComprador(documento, numero, whatsapp);
         const configuracionAyuda = prepararContactosAyuda(configuracionDoc);
-        renderResultadosComprador(boletas, configuracionAyuda);
+        resultadoSorteoActual = resultadoDoc.exists ? normalizarResultadoSorteo(resultadoDoc.data()) : normalizarResultadoSorteo();
+        renderResultadosComprador(boletas, configuracionAyuda, resultadoSorteoActual);
     } catch(error) {
         if(!resultadoCacheMostrado) {
             if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-error">No fue posible consultar las boletas en este momento.</p>';
@@ -5497,14 +5608,22 @@ async function sincronizarConsultaCompradores() {
             actualizadoPor: auth.currentUser.email
         });
         const equiposPorUsuario = new Map();
-        usuariosSnapshot.forEach(doc => equiposPorUsuario.set(doc.id, String(doc.data().color || "").trim()));
+        const telefonosPorUsuario = new Map();
+        usuariosSnapshot.forEach(doc => {
+            equiposPorUsuario.set(doc.id, String(doc.data().color || "").trim());
+            telefonosPorUsuario.set(doc.id, normalizarWhatsappConsulta(doc.data().tel));
+        });
         let lote = db.batch();
         let operaciones = 0;
 
         for(const doc of snapshot.docs) {
             const datos = doc.data();
             const equipo = String(datos.equipo || equiposPorUsuario.get(datos.vendedor) || "").trim();
-            const datosConsulta = crearDatosConsultaBoleta({ ...datos, equipo }, doc.id);
+            const datosConsulta = crearDatosConsultaBoleta({
+                ...datos,
+                equipo,
+                vendedorWhatsapp: telefonosPorUsuario.get(datos.vendedor) || ""
+            }, doc.id);
             if(!datosConsulta) {
                 omitidas++;
                 continue;

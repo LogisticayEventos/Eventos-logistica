@@ -6,7 +6,6 @@
     <meta name="color-scheme" content="dark light">
     <meta id="theme-color-meta" name="theme-color" content="#05080f">
     <title>Logistica & Eventos | Control</title>
-    <link rel="icon" type="image/png" href="logo-logistica-eventos.png">
     <script>
         (() => {
             const temasValidos = ["system", "dark", "light"];
@@ -145,7 +144,7 @@
                     <span>Sistema</span>
                 </button>
             </div>
-            <img class="brand-logo brand-logo-auth" src="logo-logistica-eventos.png" alt="Logística & Eventos">
+            <h1 class="brand-text brand-text-auth">LOGÍSTICA &amp; EVENTOS</h1>
             <div id="auth-access-choice" class="auth-access-choice">
                 <p>SELECCIONA CÓMO DESEAS INGRESAR</p>
                 <button type="button" class="auth-access-button" onclick="abrirAccesoInicial('usuario')">
@@ -234,7 +233,7 @@
                         </div>
                     </div>
                     <div class="public-hero-visual" aria-hidden="true">
-                        <img class="brand-logo public-hero-brand-logo" src="logo-logistica-eventos.png" alt="">
+                        <i class="fa-solid fa-champagne-glasses public-hero-main-icon"></i>
                         <div class="public-hero-badge"><i class="fa-solid fa-shield-heart"></i><span id="public-hero-badge-text">Equipo preparado</span></div>
                     </div>
                 </section>
@@ -297,7 +296,7 @@
                 </section>
 
                 <footer class="public-site-footer">
-                    <div class="public-footer-brand"><img class="brand-logo" src="logo-logistica-eventos.png" alt="Logística & Eventos"><span id="public-footer-tagline">Organización, talento y experiencias.</span></div>
+                    <div class="public-footer-brand"><strong>LOGÍSTICA &amp; EVENTOS</strong><span id="public-footer-tagline">Organización, talento y experiencias.</span></div>
                     <button type="button" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver al acceso</button>
                 </footer>
             </div>
@@ -306,7 +305,7 @@
         <div id="view-home" style="display:none; flex-direction:column; height:100%;">
             <header>
                 <div id="user-rank-badge" class="badge-rank">---</div>
-                <h2 class="app-header-brand"><img class="brand-logo" src="logo-logistica-eventos.png" alt="Logística & Eventos"></h2>
+                <h2 class="app-header-brand">LOGÍSTICA &amp; EVENTOS</h2>
                 <div class="header-actions">
                     <select id="global-code-filter" class="dynamic-codes-filter" onchange="aplicarFiltroCodigoGlobal()" style="display:none;">
                         <option value="Todos">★ TODOS LOS GRUPOS</option>
@@ -838,6 +837,20 @@
                                 </div>
                                 <div id="admin-public-advisors-list" class="admin-public-advisors-list" aria-live="polite"></div>
                                 <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarConfiguracionPaginaPublica()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR TODA LA PÁGINA WEB</button>
+                            </section>
+
+                            <section class="admin-public-config" aria-labelledby="admin-draw-result-title">
+                                <div class="admin-public-config-heading">
+                                    <i class="fa-solid fa-trophy" aria-hidden="true"></i>
+                                    <div><strong id="admin-draw-result-title">RESULTADO DE LA BOLETA GANADORA</strong><span>Publica el número ganador para que cada comprador pueda saber si ganó.</span></div>
+                                </div>
+                                <div class="admin-public-social-form">
+                                    <label><span>Número ganador</span><input id="admin-winning-ticket" type="text" maxlength="3" inputmode="numeric" placeholder="000"></label>
+                                    <label><span>Premio</span><input id="admin-winning-prize" type="text" maxlength="160" placeholder="Ejemplo: Premio principal"></label>
+                                </div>
+                                <label class="admin-draw-published"><input id="admin-winning-published" type="checkbox"> Mostrar el resultado a los compradores</label>
+                                <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarResultadoSorteo()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR RESULTADO</button>
+                                <small id="admin-winning-status" class="admin-public-config-status">El resultado aún no se ha cargado.</small>
                             </section>
                         </div>
 

@@ -5753,3 +5753,20 @@ html[data-theme="light"] .public-quote-section {
         margin: 0 auto !important;
     }
 }
+.brand-text { margin: 0; color: var(--text-main); font-weight: 900; letter-spacing: .08em; text-align: center; }
+.brand-text-auth { font-size: clamp(1.45rem, 5vw, 2.2rem); margin: 18px 0 22px; }
+.app-header-brand { color: var(--text-main); font-size: clamp(.8rem, 2vw, 1.05rem); letter-spacing: .06em; white-space: nowrap; }
+.public-hero-main-icon { font-size: clamp(5rem, 16vw, 9rem); color: var(--accent); filter: drop-shadow(0 15px 28px rgba(0,240,255,.22)); }
+.public-footer-brand strong { color: var(--text-main); letter-spacing: .06em; }
+.buyer-ticket-draw { display:flex; align-items:center; gap:12px; margin-top:12px; padding:12px; border-radius:14px; border:1px solid rgba(148,163,184,.24); background:rgba(148,163,184,.08); }
+.buyer-ticket-draw > i { font-size:1.45rem; }
+.buyer-ticket-draw span { display:flex; flex-direction:column; gap:3px; }
+.buyer-ticket-draw strong { font-size:.76rem; }
+.buyer-ticket-draw small { color:var(--text-soft); line-height:1.4; }
+.buyer-ticket-draw.is-winner { border-color:rgba(245,158,11,.55); background:rgba(245,158,11,.12); color:#f59e0b; }
+.buyer-ticket-draw.is-not-winner { border-color:rgba(239,68,68,.35); color:#ef4444; }
+.buyer-ticket-draw.is-waiting { color:var(--accent); }
+.buyer-ticket-draw.is-not-eligible { color:#f59e0b; }
+.admin-draw-published { display:flex; align-items:center; gap:10px; margin:14px 0; color:var(--text-main); font-weight:700; }
+.admin-draw-published input { width:auto; }
+.admin-public-config-status { display:block; margin-top:10px; color:var(--text-muted); }
