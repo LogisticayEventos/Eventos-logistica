@@ -807,6 +807,8 @@ let configuracionPaginaPublicaCargada = false;
 let cargaConfiguracionPaginaPublicaEnCurso = null;
 let asesorPaginaPublicaSeleccionado = "";
 let asesorPaginaPublicaEnEdicion = -1;
+let ventaEnCurso = false;
+let consultaCompradorEnCurso = false;
 let resultadoSorteoActual = { publicado: false, numero: "", premio: "" };
 let categoriaEventoPublicoEnEdicion = "";
 let categoriasPaginaPublicaPendientes = false;
@@ -974,11 +976,13 @@ auth.onAuthStateChanged(async user => {
         listenConfiguracionPagosLista();
         listenConfiguracionBoletasVirtuales();
         loadUser();
+        if(['#web', '#pagina', '#comprador'].includes(location.hash)) aplicarRutaAccesoDesdeEnlace();
     } else {
         detenerEscuchadoresPrivados();
         document.getElementById('view-auth').style.display = 'block';
         document.getElementById('view-home').style.display = 'none';
-        volverSeleccionAcceso();
+        currentUserData = null;
+        aplicarRutaAccesoDesdeEnlace();
         listenEquipos();
     }
 });
@@ -3012,10 +3016,11 @@ function renderBoletas() {
         if(b.n) setBoletasVendidasGlobal.add(b.n.toString());
 
         // MODIFICACIÓN APLICADA: Agrupa usando el nombre del perfil (mapaNombres) o 'Sin Nombre' si no hay.
-        const recKey = mapaNombres[b.vendedor] || b.recreador || 'Sin Nombre';
+        const recKey = b.vendedor || `sin-vendedor:${b.id}`;
         
         if(!mapaRecreadores[recKey]) {
             mapaRecreadores[recKey] = { 
+                nombre: mapaNombres[b.vendedor] || b.recreador || "Sin Nombre",
                 color: col, 
                 total: 0, 
                 activas: 0, 
@@ -3050,8 +3055,8 @@ function renderBoletas() {
         if(filterEst === "Activa" && data.activas === 0) continue;
         if(filterEst === "Pendiente" && data.pendientes === 0) continue;
 
-        const nombreSeguro = escaparHTML(String(nombre).toUpperCase());
-        const nombreEvento = codificarDatoEvento(nombre);
+        const nombreSeguro = escaparHTML(String(data.nombre).toUpperCase());
+        const nombreEvento = codificarDatoEvento(data.emailVendedor);
         const colorTextoSeguro = escaparHTML(data.color);
         const colorVisualSeguro = obtenerColorVisualEquipo(data.color);
         const fechaVentaSegura = escaparHTML(data.fechaVenta);
@@ -3292,11 +3297,12 @@ function buscarDuenioBoleta() {
     }
 }
 
-async function eliminarTodosRegistrosRecreador(nombreRecreador) {
+async function eliminarTodosRegistrosRecreador(vendedorId) {
+    const nombreRecreador = obtenerNombreCompletoUsuario(allUsers.find(u => u.id === vendedorId) || {}, vendedorId);
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar boletas registradas");
     if (!confirm(`¿Estás seguro de eliminar TODOS los registros de boletas para: ${nombreRecreador}?`)) return;
     
-    const boletasABorrar = allBoletas.filter(b => b.recreador === nombreRecreador);
+    const boletasABorrar = allBoletas.filter(b => b.vendedor === vendedorId);
     if(boletasABorrar.length === 0) return notify("No hay registros para este recreador");
 
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
@@ -3400,7 +3406,8 @@ function enviarAvisoWhatsappBoletaPendiente(boletaId) {
     enlace.remove();
 }
 
-function abrirGestionBoletas(nombreRecreador) {
+function abrirGestionBoletas(vendedorId) {
+    const nombreRecreador = obtenerNombreCompletoUsuario(allUsers.find(u => u.id === vendedorId) || {}, vendedorId);
     const email = auth.currentUser.email;
     const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
     const esAdmin = r === "Administrador";
@@ -3410,14 +3417,7 @@ function abrirGestionBoletas(nombreRecreador) {
     document.getElementById('modal-gestion-boletas').style.display = 'flex';
 
     // REGLA PRIORI: Filtro lógico ajustado para coincidir el nombre del perfil con el vendedor (correo)
-    const boletasRecreador = allBoletas.filter(b => {
-        const perfilVendedor = allUsers.find(u => u.id === b.vendedor);
-        let nombreMapeado = b.recreador || 'Sin Nombre';
-        if (perfilVendedor) {
-            nombreMapeado = obtenerNombreCompletoUsuario(perfilVendedor);
-        }
-        return nombreMapeado === nombreRecreador || b.recreador === nombreRecreador;
-    });
+    const boletasRecreador = allBoletas.filter(b => b.vendedor === vendedorId);
     
     if(boletasRecreador.length === 0) {
         render.innerHTML = `<h3 style="color:var(--accent); text-align:center; margin-bottom:15px;">BOLETAS: ${nombreTituloSeguro}</h3><p style="text-align:center; font-size:0.7rem;">No hay boletas registradas.</p>`;
@@ -3598,15 +3598,19 @@ async function publicarComunicado() {
 }
 
 async function inscribirBoleta() {
+    if(ventaEnCurso) return;
+    if(!auth.currentUser || !currentUserData) return notify("⚠️ Inicia sesión para registrar ventas");
     const r = document.getElementById('ins-rec-nom').value.trim();
     const n = document.getElementById('ins-n-boleta').value.trim();
     const c = document.getElementById('ins-com-nom').value.trim();
     const t = document.getElementById('ins-com-tel').value.trim();
 
     if(!/^\d{3}$/.test(n)) return notify("⚠️ El número de boleta debe tener exactamente 3 dígitos");
+    if(!r || r.length > 160 || c.length > 160) return notify("⚠️ Revisa el nombre del vendedor y del comprador (máximo 160 caracteres)");
     if(!c) return notify("⚠️ El nombre del comprador es obligatorio");
     if(!/^\d{10}$/.test(t)) return notify("⚠️ El WhatsApp del comprador debe tener exactamente 10 dígitos");
 
+    ventaEnCurso = true;
     const liberarBoton = bloquearBotonActual("REGISTRANDO...");
 
     try {
@@ -3615,15 +3619,18 @@ async function inscribirBoleta() {
         const equipo = await obtenerEquipoRegistradorBoleta(datosBoleta);
         const datosConsulta = crearDatosConsultaBoleta({ ...datosBoleta, equipo }, boletaRef.id, true);
         const consultaRef = await obtenerReferenciaConsultaBoleta(n, t);
-        const batch = db.batch();
-        batch.set(boletaRef, datosBoleta);
-        batch.set(consultaRef, datosConsulta);
-        await batch.commit();
+        await db.runTransaction(async transaction => {
+            const existente = await transaction.get(consultaRef);
+            if(existente.exists) throw new Error("Ya existe una venta con esa boleta y WhatsApp. Consulta el registro antes de repetirlo.");
+            transaction.set(boletaRef, datosBoleta);
+            transaction.set(consultaRef, datosConsulta);
+        });
         document.getElementById('ins-rec-nom').value = ""; document.getElementById('ins-n-boleta').value = ""; document.getElementById('ins-com-nom').value = ""; document.getElementById('ins-com-tel').value = "";
         notify("✅ Registrada");
     } catch(error) {
         manejarError(error, "No se pudo registrar la venta");
     } finally {
+        ventaEnCurso = false;
         liberarBoton();
     }
 }
@@ -3688,10 +3695,18 @@ async function guardarPerfil() {
     if(!/^\d{10}$/.test(doc)) return notify("⚠️ El documento debe tener exactamente 10 dígitos");
     if(!/^\d{10}$/.test(tel)) return notify("⚠️ El WhatsApp debe tener exactamente 10 dígitos");
 
+    if(!col) return notify("⚠️ Selecciona tu equipo");
+    const fechaNacimiento = new Date(`${nac}T00:00:00`);
+    if(!Number.isFinite(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) return notify("⚠️ Revisa la fecha de nacimiento");
     const liberarBoton = bloquearBotonActual("GUARDANDO...");
     try {
         await db.collection("usuarios").doc(auth.currentUser.email).update({ doc: doc, tel: tel, nacimiento: nac, color: col });
-        notify("✅ Guardado");
+        try {
+            await sincronizarConsultasUsuarioEditado(auth.currentUser.email, obtenerNombreCompletoUsuario(currentUserData), col, tel);
+            notify("✅ Perfil y contactos de boletas actualizados");
+        } catch(error) {
+            notify("⚠️ Perfil guardado; no se pudieron actualizar todas las consultas. Vuelve a guardar para reintentar.");
+        }
     } catch(error) {
         manejarError(error, "No se pudo guardar el perfil");
     } finally {
@@ -3818,7 +3833,7 @@ function abrirEditorUsuario(id) {
     abrirCarnet(id, true);
 }
 
-async function sincronizarConsultasUsuarioEditado(usuarioId, nombreCompleto, color) {
+async function sincronizarConsultasUsuarioEditado(usuarioId, nombreCompleto, color, telefono) {
     const snapshot = await db.collection("boletas").where("vendedor", "==", usuarioId).get();
     if(snapshot.empty) return 0;
 
@@ -3827,6 +3842,7 @@ async function sincronizarConsultasUsuarioEditado(usuarioId, nombreCompleto, col
         const datosConsulta = crearDatosConsultaBoleta({
             ...datos,
             recreador: nombreCompleto,
+            vendedorWhatsapp: telefono,
             equipo: color
         }, documento.id);
         if(!datosConsulta) return null;
@@ -3886,9 +3902,9 @@ async function guardarEdicionUsuario(evento, id) {
 
         let consultasSincronizadas = 0;
         let sincronizacionIncompleta = false;
-        if(cambioNombre || cambioColor) {
+        if(cambioNombre || cambioColor || String(usuarioOriginal.tel || "") !== tel) {
             try {
-                consultasSincronizadas = await sincronizarConsultasUsuarioEditado(id, `${nombre} ${apellido}`.trim(), color);
+                consultasSincronizadas = await sincronizarConsultasUsuarioEditado(id, `${nombre} ${apellido}`.trim(), color, tel);
             } catch(errorSincronizacion) {
                 sincronizacionIncompleta = true;
                 console.error("No se pudieron sincronizar todas las consultas del comprador", errorSincronizacion);
@@ -4733,7 +4749,7 @@ async function cargarConfiguracionPaginaPublica(forzar = false) {
         } catch(error) {
             console.error("No se pudo cargar la configuración de la página pública", error);
             configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
-            configuracionPaginaPublicaCargada = true;
+            configuracionPaginaPublicaCargada = false;
             renderConfiguracionPaginaPublica();
             if(esAdministradorActual()) manejarError(error, "No se pudo cargar la página pública");
             return configuracionPaginaPublica;
@@ -5355,11 +5371,22 @@ function volverSeleccionAcceso() {
     }
     if(resultados) resultados.replaceChildren();
     if(location.hash) history.pushState(null, "", location.pathname + location.search);
+    if(auth.currentUser) {
+        document.getElementById("view-auth").style.display = "none";
+        document.getElementById("view-home").style.display = "flex";
+    }
 }
 
 function aplicarRutaAccesoDesdeEnlace() {
-    if(document.getElementById("view-home")?.style.display !== "none") return;
     const ruta = location.hash.replace(/^#/, "").toLowerCase();
+    const publica = ["web", "pagina", "comprador"].includes(ruta);
+    if(auth.currentUser && !publica) {
+        document.getElementById("view-auth").style.display = "none";
+        document.getElementById("view-home").style.display = "flex";
+        return;
+    }
+    document.getElementById("view-auth").style.display = "block";
+    document.getElementById("view-home").style.display = "none";
     if(ruta === "usuario") abrirAccesoInicial("usuario");
     else if(ruta === "comprador") abrirAccesoInicial("comprador");
     else if(ruta === "web" || ruta === "pagina") abrirAccesoInicial("pagina");
@@ -5529,12 +5556,14 @@ function prepararContactosAyuda(documento) {
 }
 
 async function consultarBoletasComprador() {
+    if(consultaCompradorEnCurso) return;
     const numero = normalizarNumeroBoletaConsulta(document.getElementById("buyer-lookup-ticket").value);
     const whatsapp = normalizarWhatsappConsulta(document.getElementById("buyer-lookup-phone").value);
     const contenedor = document.getElementById("buyer-lookup-results");
     if(!/^\d{3}$/.test(numero)) return notify("⚠️ Ingresa los 3 dígitos de la boleta");
     if(!/^\d{10}$/.test(whatsapp)) return notify("⚠️ Ingresa los 10 dígitos del WhatsApp registrado");
 
+    consultaCompradorEnCurso = true;
     const liberarBoton = bloquearBotonActual("CONSULTANDO...");
     if(contenedor) contenedor.innerHTML = '<p class="buyer-lookup-loading"><i class="fa-solid fa-spinner fa-spin"></i> Buscando tus boletas...</p>';
     let resultadoCacheMostrado = false;
@@ -5564,6 +5593,9 @@ async function consultarBoletasComprador() {
             const resultado = resultadoCache.status === "fulfilled" && resultadoCache.value.exists
                 ? normalizarResultadoSorteo(resultadoCache.value.data()) : normalizarResultadoSorteo();
             renderResultadosComprador(boletas, configuracionAyuda, resultado);
+            const avisoCache = document.createElement("p");
+            avisoCache.textContent = "Información guardada: pendiente de verificar con el servidor.";
+            contenedor.prepend(avisoCache);
             resultadoCacheMostrado = boletas.length > 0;
         }
 
@@ -5582,6 +5614,7 @@ async function consultarBoletasComprador() {
             notify("ℹ️ Mostrando la última información guardada en el teléfono");
         }
     } finally {
+        consultaCompradorEnCurso = false;
         liberarBoton();
     }
 }
@@ -5678,6 +5711,7 @@ async function handleLogin() {
 async function handleLogout() {
     const liberarBoton = bloquearBotonActual("SALIENDO...");
     try {
+        history.replaceState(null, "", location.pathname + location.search);
         await auth.signOut();
     } catch(error) {
         manejarError(error, "No se pudo cerrar la sesión");
@@ -5689,7 +5723,7 @@ function toggleAuth(view) { if(view === 'reg') { document.getElementById('auth-l
 
 function calcularEdad(fecha) {
     if(!fecha) return "---";
-    const fNac = new Date(fecha), fHoy = new Date();
+    const fNac = new Date(`${fecha}T00:00:00`), fHoy = new Date();
     let e = fHoy.getFullYear() - fNac.getFullYear();
     if(fHoy.getMonth() < fNac.getMonth() || (fHoy.getMonth() === fNac.getMonth() && fHoy.getDate() < fNac.getDate())) e--;
     return e + " Años";
@@ -5709,7 +5743,7 @@ function cargarBibliotecaExcel() {
 
     promesaCargaExcel = new Promise((resolve, reject) => {
         const script = document.createElement("script");
-        script.src = "vendor/xlsx/xlsx.full.min.js";
+        script.src = ES_APLICACION_ANDROID ? "vendor/xlsx/xlsx.full.min.js" : "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
         script.async = true;
         script.onload = () => globalThis.XLSX
             ? resolve(globalThis.XLSX)
