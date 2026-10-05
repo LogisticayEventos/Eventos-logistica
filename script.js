@@ -185,7 +185,7 @@ const CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO = Object.freeze({
 });
 const COLECCION_BOLETAS_VIRTUALES = "boletas_virtuales";
 const MAXIMO_ARCHIVOS_BOLETAS_VIRTUALES = 100;
-const MAXIMO_BYTES_ARCHIVO_BOLETA_VIRTUAL = 15 * 1024 * 1024;
+const MAXIMO_BYTES_ARCHIVO_IMAGEN = 50 * 1024 * 1024;
 const MAXIMO_CARACTERES_IMAGEN_BOLETA_VIRTUAL = 820000;
 const CLAVE_CACHE_EQUIPOS = "logistica-eventos-equipos-v1";
 const CONTACTO_PUBLICO_WHATSAPP = "3224343263";
@@ -1837,16 +1837,27 @@ function cargarImagenDesdeDataUrl(dataUrl) {
     });
 }
 
+async function cargarImagenDesdeArchivo(archivo) {
+    if(typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+        return cargarImagenDesdeDataUrl(await leerArchivoComoDataUrl(archivo));
+    }
+    const urlLocal = URL.createObjectURL(archivo);
+    try {
+        return await cargarImagenDesdeDataUrl(urlLocal);
+    } finally {
+        URL.revokeObjectURL(urlLocal);
+    }
+}
+
 async function procesarImagenBoletaVirtual(archivo) {
     if(!archivo?.type || !["image/png", "image/jpeg", "image/webp"].includes(archivo.type)) {
         throw new Error("Solo se permiten imágenes PNG, JPG o WEBP");
     }
-    if(archivo.size > MAXIMO_BYTES_ARCHIVO_BOLETA_VIRTUAL) {
-        throw new Error("La imagen supera el límite de 15 MB");
+    if(archivo.size > MAXIMO_BYTES_ARCHIVO_IMAGEN) {
+        throw new Error("La imagen original supera el límite de 50 MB");
     }
 
-    const dataUrl = await leerArchivoComoDataUrl(archivo);
-    const imagen = await cargarImagenDesdeDataUrl(dataUrl);
+    const imagen = await cargarImagenDesdeArchivo(archivo);
     let escala = Math.min(1, 1800 / Math.max(imagen.width, imagen.height));
     let resultado = "";
 
@@ -2380,25 +2391,13 @@ async function seleccionarQrPago(archivo) {
         if(input) input.value = "";
         return notify("⚠️ Selecciona una imagen PNG, JPG o WEBP");
     }
-    if(archivo.size > 8 * 1024 * 1024) {
+    if(archivo.size > MAXIMO_BYTES_ARCHIVO_IMAGEN) {
         if(input) input.value = "";
-        return notify("⚠️ La imagen no puede superar 8 MB");
+        return notify("⚠️ La imagen original no puede superar 50 MB");
     }
 
     try {
-        const dataUrl = await new Promise((resolve, reject) => {
-            const lector = new FileReader();
-            lector.onload = evento => resolve(evento.target.result);
-            lector.onerror = () => reject(new Error("No se pudo leer la imagen"));
-            lector.readAsDataURL(archivo);
-        });
-
-        const imagen = await new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error("La imagen no es válida"));
-            img.src = dataUrl;
-        });
+        const imagen = await cargarImagenDesdeArchivo(archivo);
 
         const maximo = 600;
         const escala = Math.min(1, maximo / Math.max(imagen.width, imagen.height));

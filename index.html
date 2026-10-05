@@ -671,7 +671,7 @@
                             <div class="admin-payment-qr-area">
                                 <div class="admin-payment-qr-copy">
                                     <strong><i class="fa-solid fa-qrcode"></i> Imagen QR opcional</strong>
-                                    <small>Se comprimirá automáticamente antes de guardarse.</small>
+                                    <small>Hasta 50 MB; se comprimirá automáticamente antes de guardarse.</small>
                                     <input type="file" id="admin-pago-qr-input" accept="image/png,image/jpeg,image/webp" onchange="seleccionarQrPago(this.files[0])">
                                 </div>
                                 <div id="admin-pago-qr-preview-wrap" class="admin-payment-qr-preview" style="display:none;">
@@ -885,7 +885,7 @@
                                 <label><span>Tipo de evento</span><select id="admin-public-media-category"></select></label>
                                 <label><span>Título</span><input id="admin-public-media-title" type="text" maxlength="120" placeholder="Ejemplo: Integración empresarial"></label>
                                 <label class="admin-public-gallery-full"><span>Descripción</span><textarea id="admin-public-media-description" maxlength="500" rows="3" placeholder="Describe brevemente el evento o la capacitación."></textarea></label>
-                                <label id="admin-public-image-field" class="admin-public-gallery-full"><span>Seleccionar fotografía <small>En una edición puedes dejarla vacía para conservar la actual.</small></span><input id="admin-public-media-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                                <label id="admin-public-image-field" class="admin-public-gallery-full"><span>Seleccionar fotografía <small>Hasta 50 MB. En una edición puedes dejarla vacía para conservar la actual.</small></span><input id="admin-public-media-image" type="file" accept="image/png,image/jpeg,image/webp"></label>
                                 <label id="admin-public-video-field" class="admin-public-gallery-full" style="display:none;"><span>Enlace del video</span><input id="admin-public-media-video" type="url" maxlength="500" placeholder="YouTube, Facebook, Instagram o enlace directo"></label>
                                 <div class="admin-public-inline-actions admin-public-gallery-full">
                                     <button id="admin-public-gallery-publish" class="btn-mini btn-add admin-public-gallery-publish" type="button" onclick="publicarMedioPublico()"><i class="fa-solid fa-cloud-arrow-up"></i> PUBLICAR EN LA PÁGINA</button>
@@ -976,7 +976,7 @@
                             <button class="btn-mini btn-secondary" type="button" onclick="agregarEventoEquipoVerde()"><i class="fa-solid fa-plus"></i> AGREGAR TIPO</button>
                             <div class="admin-team-actions"><button class="btn-mini btn-add" type="button" onclick="guardarEquipoVerde()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR EQUIPO VERDE</button><a href="#team-verde" target="_blank" rel="noopener noreferrer">VER PÁGINA</a></div>
                             <h4>IMÁGENES DE LA PÁGINA</h4>
-                            <p>Selecciona una imagen y súbela por separado. El cartel, el emblema y las fotos originales están incluidos como respaldo.</p>
+                            <p>Selecciona una imagen de hasta 50 MB y súbela por separado. El cartel, el emblema y las fotos originales están incluidos como respaldo.</p>
                             <div class="admin-team-media-form">
                                 <label><span>Imagen que quieres cambiar</span><select id="admin-team-media-slot"><option value="logo">Emblema de portada</option><option value="rifa">Cartel de la rifa</option></select></label>
                                 <label><span>Foto nueva (PNG, JPG o WEBP)</span><input id="admin-team-media-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
@@ -984,7 +984,7 @@
                                 <button class="btn-mini btn-secondary" type="button" onclick="restaurarImagenEquipoVerde()"><i class="fa-solid fa-rotate-left"></i> RESTAURAR ORIGINAL</button>
                             </div>
                             <h4>FOTOS DE MUESTRA · CARRUSEL DE PORTADA</h4>
-                            <p>Agrega hasta 12 fotografías. Puedes cambiar el título, la descripción o la foto más adelante. Si no publicas ninguna, se verán las imágenes de muestra incluidas en la página.</p>
+                            <p>Agrega hasta 12 fotografías de hasta 50 MB cada una. Puedes cambiar el título, la descripción o la foto más adelante. Si no publicas ninguna, se verán las imágenes de muestra incluidas en la página.</p>
                             <div class="admin-team-showcase-form">
                                 <label><span>Título de la foto</span><input id="admin-team-showcase-title" maxlength="80" type="text" placeholder="Ejemplo: Celebración infantil"></label>
                                 <label><span>Descripción breve (opcional)</span><textarea id="admin-team-showcase-description" maxlength="250" rows="2" placeholder="Un momento de nuestro equipo"></textarea></label>
