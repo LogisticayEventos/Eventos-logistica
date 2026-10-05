@@ -948,6 +948,18 @@ function esAdministradorActual() {
     return obtenerRangoActual() === "Administrador";
 }
 
+function puedeVerPaginaEquipoVerde() {
+    return Boolean(auth.currentUser && currentUserData
+        && normalizarClaveColor(currentUserData.color) === "verde");
+}
+
+function actualizarAccesosEquipoVerde() {
+    const permitido = puedeVerPaginaEquipoVerde();
+    const accesos = document.getElementById("team-quick-links");
+    if(accesos) accesos.hidden = !permitido;
+    document.body.classList.toggle("team-links-visible", permitido);
+}
+
 function puedeGestionarPagosActual() {
     const rango = obtenerRangoActual();
     return rango === "Administrador" || rango === "Coordinador General";
@@ -1025,6 +1037,8 @@ auth.onAuthStateChanged(async user => {
     await Promise.all([FIRESTORE_READY, AUTH_READY]);
 
     if (user) {
+        currentUserData = null;
+        actualizarAccesosEquipoVerde();
         // createUserWithEmailAndPassword inicia sesión antes de que el perfil
         // termine de guardarse. Durante ese intervalo no se debe cargar la vista.
         if(registroEnCurso) return;
@@ -1041,6 +1055,7 @@ auth.onAuthStateChanged(async user => {
         document.getElementById('view-auth').style.display = 'block';
         document.getElementById('view-home').style.display = 'none';
         currentUserData = null;
+        actualizarAccesosEquipoVerde();
         aplicarRutaAccesoDesdeEnlace();
         listenEquipos();
     }
@@ -2602,6 +2617,7 @@ function loadUser() {
     unsubscribeUsuarioActual = usuarioRef.onSnapshot(doc => {
         if(!doc.exists) {
             currentUserData = null;
+            actualizarAccesosEquipoVerde();
             document.getElementById('p-full-name').innerText = "CARGANDO PERFIL...";
             document.getElementById('p-initials').innerText = "...";
             document.getElementById('user-rank-badge').innerText = "CARGANDO";
@@ -2617,8 +2633,15 @@ function loadUser() {
         const apellido = String(d.apellido || "").trim();
         const nombreCompleto = obtenerNombreCompletoUsuario(d, "PERFIL INCOMPLETO");
 
+        const accesoEquipoAnterior = puedeVerPaginaEquipoVerde();
+        const perfilAnteriorCargado = Boolean(currentUserData);
         currentUserData = d;
         currentUserData.email = email;
+        actualizarAccesosEquipoVerde();
+        if(location.hash.startsWith("#team-verde")
+            && (!perfilAnteriorCargado || accesoEquipoAnterior !== puedeVerPaginaEquipoVerde())) {
+            aplicarRutaAccesoDesdeEnlace();
+        }
         actualizarContactoPagoLista();
         actualizarPanelBoletaVirtualUsuario();
         listenEquipos();
@@ -2750,6 +2773,8 @@ function loadUser() {
             sesionIniciada = true;
         }
     }, error => {
+        currentUserData = null;
+        actualizarAccesosEquipoVerde();
         manejarError(error, "No se pudo cargar tu perfil");
     });
 }
@@ -4396,6 +4421,7 @@ function renderRedesSocialesPublicas() {
 }
 
 function abrirTikTokPublico() {
+    if(!puedeVerPaginaEquipoVerde()) return notify("⛔ TikTok está disponible para el Equipo Verde");
     const url = normalizarUrlRedSocialPublica(configuracionPaginaPublica.tiktok, "tiktok");
     if(!url) return notify("ℹ️ El perfil de TikTok todavía no está configurado");
     const enlace = document.createElement("a");
@@ -6016,7 +6042,12 @@ function enviarCotizacionPublica(evento) {
     enlace.remove();
 }
 
-function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio") {
+function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio", actualizarRuta = true) {
+    if(tipo === "equipo" && !puedeVerPaginaEquipoVerde()) {
+        if(!auth.currentUser) abrirAccesoInicial("usuario", "inicio", false);
+        else notify("⛔ La página de Equipo Verde está disponible solo para ese equipo");
+        return;
+    }
     const selector = document.getElementById("auth-access-choice");
     const accesoUsuario = document.getElementById("auth-user-access");
     const accesoComprador = document.getElementById("auth-buyer-access");
@@ -6034,7 +6065,7 @@ function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio") {
     vistaAcceso.closest(".main-wrapper")?.classList.toggle("team-page-open", tipo === "equipo");
     const ruta = tipo === "pagina" ? "web" : tipo === "equipo"
         ? `team-verde${subpaginaEquipo === "inicio" ? "" : `/${subpaginaEquipo}`}` : tipo;
-    if(location.hash !== `#${ruta}`) history.pushState(null, "", `#${ruta}`);
+    if(actualizarRuta && location.hash !== `#${ruta}`) history.pushState(null, "", `#${ruta}`);
 
     if(tipo === "usuario") toggleAuth("login");
     if(tipo === "comprador") {
@@ -6082,6 +6113,25 @@ function volverSeleccionAcceso() {
 function aplicarRutaAccesoDesdeEnlace() {
     const ruta = location.hash.replace(/^#/, "").toLowerCase();
     const paginaEquipo = /^team-verde(?:\/(inicio|rifa|capacitaciones|eventos|contactos))?$/.exec(ruta);
+    if(paginaEquipo) {
+        if(!auth.currentUser) {
+            document.getElementById("view-auth").style.display = "block";
+            document.getElementById("view-home").style.display = "none";
+            abrirAccesoInicial("usuario", "inicio", false);
+            return;
+        }
+        if(!currentUserData) {
+            document.getElementById("view-auth").style.display = "none";
+            document.getElementById("view-home").style.display = "flex";
+            return;
+        }
+        if(!puedeVerPaginaEquipoVerde()) {
+            history.replaceState(null, "", location.pathname + location.search);
+            volverSeleccionAcceso();
+            notify("⛔ La página de Equipo Verde está disponible solo para ese equipo");
+            return;
+        }
+    }
     const publica = ["web", "pagina", "comprador"].includes(ruta) || Boolean(paginaEquipo);
     if(auth.currentUser && !publica) {
         document.getElementById("view-auth").style.display = "none";
