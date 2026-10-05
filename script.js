@@ -110,6 +110,7 @@ const auth = firebase.auth();
 const FIRESTORE_READY = (() => {
     try {
         db.settings({
+            merge: true,
             cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
             experimentalAutoDetectLongPolling: true
         });
@@ -191,6 +192,10 @@ const CONTACTO_PUBLICO_WHATSAPP = "3224343263";
 const COLECCION_GALERIA_PUBLICA = "galeria_publica";
 const MAXIMO_PUBLICACIONES_GALERIA = 24;
 const DOCUMENTO_CONFIGURACION_PAGINA_PUBLICA = "pagina_publica";
+const DOCUMENTO_EQUIPO_VERDE = "equipo_verde";
+const COLECCION_MEDIOS_EQUIPO_VERDE = "equipo_verde_medios";
+const COLECCION_MUESTRAS_EQUIPO_VERDE = "equipo_verde_muestras";
+const MAXIMO_MUESTRAS_EQUIPO_VERDE = 12;
 const DOCUMENTO_RESULTADO_SORTEO = "resultado_sorteo";
 const MAXIMO_ASESORES_PAGINA_PUBLICA = 30;
 const MAXIMO_CATEGORIAS_EVENTOS_PUBLICOS = 24;
@@ -234,6 +239,49 @@ const CONTENIDO_PAGINA_PUBLICA_POR_DEFECTO = Object.freeze({
     cotizacionTitulo: "Cuéntanos qué estás planeando",
     cotizacionDescripcion: "Completa los datos principales. Al enviar, se abrirá WhatsApp con la solicitud organizada para atenderte más rápido.",
     piePagina: "Organización, talento y experiencias."
+});
+
+const IMAGENES_EQUIPO_VERDE_POR_DEFECTO = Object.freeze({
+    logo: "assets/equipo-verde-emblema.webp",
+    rifa: "assets/equipo-verde-rifa.webp",
+    "capacitacion-0": "assets/equipo-verde-capacitacion-0.jpg",
+    "capacitacion-1": "assets/equipo-verde-capacitacion-1.jpg",
+    "capacitacion-2": "assets/equipo-verde-capacitacion-2.jpg",
+    "capacitacion-3": "assets/equipo-verde-capacitacion-3.webp"
+});
+const MUESTRAS_EQUIPO_VERDE_POR_DEFECTO = Object.freeze([
+    Object.freeze({ titulo: "Recreación", descripcion: "Actividades para aprender, compartir y disfrutar.", contenido: IMAGENES_EQUIPO_VERDE_POR_DEFECTO["capacitacion-0"] }),
+    Object.freeze({ titulo: "Turismo", descripcion: "Experiencias y salidas para vivir en equipo.", contenido: IMAGENES_EQUIPO_VERDE_POR_DEFECTO["capacitacion-1"] }),
+    Object.freeze({ titulo: "Buffet", descripcion: "Atención y montaje para cada ocasión.", contenido: IMAGENES_EQUIPO_VERDE_POR_DEFECTO["capacitacion-2"] }),
+    Object.freeze({ titulo: "Producción", descripcion: "Sonido, iluminación y detalles que hacen la diferencia.", contenido: IMAGENES_EQUIPO_VERDE_POR_DEFECTO["capacitacion-3"] })
+]);
+const EQUIPO_VERDE_POR_DEFECTO = Object.freeze({
+    nombre: "EQUIPO VERDE",
+    portadaEtiqueta: "EQUIPO VERDE · LOGÍSTICA & EVENTOS",
+    introduccion: "Eventos que unen. Momentos que perduran.",
+    portadaDescripcion: "Un equipo que reúne creatividad, preparación y energía para transformar cada encuentro en un gran recuerdo.",
+    muestrasTitulo: "Experiencias en imágenes",
+    muestrasDescripcion: "Conoce algunos momentos de nuestros eventos y capacitaciones.",
+    rifaTitulo: "RIFA",
+    rifaDescripcion: "Conoce nuestra rifa vigente y consulta todos los detalles con el equipo.",
+    capacitacionesTitulo: "CAPACITACIONES",
+    capacitacionesDescripcion: "Aprende haciendo y desarrolla habilidades para ofrecer experiencias de calidad.",
+    eventosTitulo: "EVENTOS",
+    eventosDescripcion: "Celebraciones y planes pensados para que cada detalle cuente.",
+    contactosTitulo: "CONTACTOS",
+    contactosDescripcion: "Cuéntanos qué necesitas y construyamos juntos una experiencia memorable.",
+    capacitaciones: [
+        { titulo: "RECREACIÓN", descripcion: "Formación teórica y práctica para planificar y dirigir actividades recreativas, dinámicas de grupo y entretenimiento." },
+        { titulo: "TURISMO", descripcion: "Formación para mejorar la atención al cliente, diseñar experiencias y conocer destinos y patrimonio cultural y natural." },
+        { titulo: "BUFFET", descripcion: "Planeación, montaje, presentación y manipulación de alimentos en servicios para eventos." },
+        { titulo: "SONIDO E ILUMINACIÓN", descripcion: "Manejo de audio, luces y montaje técnico seguro para eventos y espectáculos." }
+    ],
+    eventos: ["15 AÑOS", "BODAS", "EXCURSIONES", "CUMPLEAÑOS", "PROMS", "PAYASOS"],
+    contactoCargo: "Coordinador Equipo Verde",
+    contactoNombre: "Fran Santamaria",
+    contactoWhatsapp: "3224343263",
+    direccion: "Tv. 35 #39-11, Bogotá",
+    mapa: "https://maps.app.goo.gl/Uke3HuDGgrk3op8Q7"
 });
 
 function fechaServidor() {
@@ -677,7 +725,7 @@ function normalizarConfiguracionBoletasVirtuales(datos = {}) {
 }
 
 function usuarioTieneBoletaVirtualEnCiclo(usuario = {}, configuracion = configuracionBoletasVirtuales) {
-    if(!usuario.boletaVirtualId) return false;
+    if(!usuario || !configuracion || !usuario.boletaVirtualId) return false;
     const cicloUsuario = Math.max(0, Math.floor(Number(usuario.boletaVirtualCiclo) || 0));
     if(cicloUsuario === configuracion.ciclo) return true;
 
@@ -704,6 +752,7 @@ function indiceAleatorioSeguro(limite) {
 }
 
 function equipoPuedeRecibirBoletaVirtual(usuario = {}, configuracion = configuracionBoletasVirtuales) {
+    if(!usuario || !configuracion) return false;
     const permitidos = Array.isArray(configuracion.equiposPermitidos) ? configuracion.equiposPermitidos : ["Todos"];
     if(permitidos.some(equipo => normalizarClaveColor(equipo) === "todos")) return true;
     const equipoUsuario = normalizarClaveColor(usuario.color);
@@ -805,6 +854,16 @@ let categoriaGaleriaPublicaActiva = "todos";
 let configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
 let configuracionPaginaPublicaCargada = false;
 let cargaConfiguracionPaginaPublicaEnCurso = null;
+let equipoVerde = normalizarEquipoVerde();
+let mediosEquipoVerde = {};
+let carruselEquipoVerdeIndice = 0;
+let equipoVerdeCargado = false;
+let cargaEquipoVerdeEnCurso = null;
+let muestrasEquipoVerde = [];
+let muestrasEquipoVerdeCargadas = false;
+let cargaMuestrasEquipoVerdeEnCurso = null;
+let muestraEquipoVerdeIndice = 0;
+let muestraEquipoVerdeEnEdicionId = "";
 let asesorPaginaPublicaSeleccionado = "";
 let asesorPaginaPublicaEnEdicion = -1;
 let ventaEnCurso = false;
@@ -976,7 +1035,7 @@ auth.onAuthStateChanged(async user => {
         listenConfiguracionPagosLista();
         listenConfiguracionBoletasVirtuales();
         loadUser();
-        if(['#web', '#pagina', '#comprador'].includes(location.hash)) aplicarRutaAccesoDesdeEnlace();
+        if(['#web', '#pagina', '#comprador'].includes(location.hash) || location.hash.startsWith('#team-verde')) aplicarRutaAccesoDesdeEnlace();
     } else {
         detenerEscuchadoresPrivados();
         document.getElementById('view-auth').style.display = 'block';
@@ -1465,6 +1524,14 @@ function actualizarPanelBoletaVirtualUsuario() {
     const resultado = document.getElementById("virtual-ticket-user-result");
     if(!tarjeta || !boton || !mensaje || !resultado) return;
 
+    // La configuración puede llegar antes que el perfil o después de cerrar sesión.
+    if(!auth.currentUser || !currentUserData) {
+        tarjeta.style.display = "none";
+        resultado.style.display = "none";
+        boton.disabled = true;
+        boletaVirtualActual = null;
+        return;
+    }
     const configuracion = configuracionBoletasVirtuales;
     const asignacionActual = usuarioTieneBoletaVirtualEnCiclo(currentUserData, configuracion);
     const equipoHabilitado = equipoPuedeRecibirBoletaVirtual(currentUserData, configuracion);
@@ -2838,6 +2905,8 @@ function showSection(id) {
         listenCatalogoBoletasVirtuales();
         cargarGaleriaPublica(true);
         cargarConfiguracionPaginaPublica(true);
+        cargarEquipoVerde(true);
+        cargarMuestrasEquipoVerde(true);
         cargarResultadoSorteoAdmin();
     } else {
         detenerCatalogoBoletasVirtuales();
@@ -4322,6 +4391,20 @@ function renderRedesSocialesPublicas() {
         else enlace.removeAttribute("href");
     });
     contenedor.hidden = !configuracionPaginaPublica.instagram && !configuracionPaginaPublica.tiktok;
+    const botonFlotante = document.getElementById("floating-tiktok-link");
+    if(botonFlotante) botonFlotante.title = configuracionPaginaPublica.tiktok ? "Visitar TikTok" : "TikTok: configura el enlace en Administración";
+}
+
+function abrirTikTokPublico() {
+    const url = normalizarUrlRedSocialPublica(configuracionPaginaPublica.tiktok, "tiktok");
+    if(!url) return notify("ℹ️ El perfil de TikTok todavía no está configurado");
+    const enlace = document.createElement("a");
+    enlace.href = url;
+    enlace.target = "_blank";
+    enlace.rel = "noopener noreferrer";
+    document.body.appendChild(enlace);
+    enlace.click();
+    enlace.remove();
 }
 
 function obtenerAsesorPaginaPublicaPorValor(valor) {
@@ -4534,6 +4617,7 @@ function editarCategoriaEventoPublico(clave) {
 
 function guardarCategoriaEventoPublico() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede modificar tipos de evento");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de editarla");
     const nombre = textoPaginaPublica(document.getElementById("admin-public-category-name")?.value, "", 60);
     const icono = normalizarIconoPaginaPublica(document.getElementById("admin-public-category-icon")?.value);
     if(!nombre) return notify("⚠️ Escribe el nombre del tipo de evento");
@@ -4557,10 +4641,13 @@ function guardarCategoriaEventoPublico() {
 
 async function eliminarCategoriaEventoPublico(clave) {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar tipos de evento");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de editarla");
     const categoria = obtenerCategoriaEventoPublico(clave);
     if(!categoria) return;
     if(configuracionPaginaPublica.categorias.length <= 1) return notify("⚠️ La página debe conservar al menos un tipo de evento");
-    await cargarGaleriaPublica(true);
+    if(await cargarGaleriaPublica(true) === null) {
+        return notify("⚠️ No se pudo comprobar si el tipo tiene publicaciones. Inténtalo nuevamente");
+    }
     const usadas = galeriaPublica.filter(medio => medio.categoria === clave).length;
     if(usadas) return notify(`⚠️ No puedes eliminar ${categoria.nombre}: tiene ${usadas} publicaciones. Edítalas o elimínalas primero`);
     if(!confirm(`¿Eliminar el tipo de evento “${categoria.nombre}”?`)) return;
@@ -4631,6 +4718,7 @@ function editarServicioPaginaPublica(indice) {
 
 function guardarServicioPaginaPublica() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede modificar servicios");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de editarla");
     const servicio = normalizarServicioPaginaPublica({
         titulo: document.getElementById("admin-public-service-title")?.value,
         descripcion: document.getElementById("admin-public-service-description")?.value,
@@ -4650,6 +4738,7 @@ function guardarServicioPaginaPublica() {
 
 function eliminarServicioPaginaPublica(indice) {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar servicios");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de editarla");
     const servicio = configuracionPaginaPublica.contenido.servicios[indice];
     if(!servicio || !confirm(`¿Eliminar el servicio “${servicio.titulo}”?`)) return;
     configuracionPaginaPublica.contenido.servicios.splice(indice, 1);
@@ -4736,6 +4825,7 @@ async function cargarConfiguracionPaginaPublica(forzar = false) {
         renderConfiguracionPaginaPublica();
         return configuracionPaginaPublica;
     }
+    const habiaConfiguracionCargada = configuracionPaginaPublicaCargada;
     cargaConfiguracionPaginaPublicaEnCurso = (async () => {
         try {
             await FIRESTORE_READY;
@@ -4748,7 +4838,7 @@ async function cargarConfiguracionPaginaPublica(forzar = false) {
             return configuracionPaginaPublica;
         } catch(error) {
             console.error("No se pudo cargar la configuración de la página pública", error);
-            configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
+            if(!habiaConfiguracionCargada) configuracionPaginaPublica = normalizarConfiguracionPaginaPublica();
             configuracionPaginaPublicaCargada = false;
             renderConfiguracionPaginaPublica();
             if(esAdministradorActual()) manejarError(error, "No se pudo cargar la página pública");
@@ -4803,6 +4893,7 @@ async function guardarResultadoSorteo() {
 
 function agregarAsesorPaginaPublica() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de editarla");
     if(asesorPaginaPublicaEnEdicion < 0 && configuracionPaginaPublica.asesores.length >= MAXIMO_ASESORES_PAGINA_PUBLICA) return notify(`⚠️ Puedes configurar máximo ${MAXIMO_ASESORES_PAGINA_PUBLICA} asesores`);
     const asesor = normalizarAsesorPaginaPublica({
         nombre: document.getElementById("admin-public-advisor-name")?.value,
@@ -4843,6 +4934,7 @@ function cancelarEdicionAsesorPaginaPublica() {
 
 function eliminarAsesorPaginaPublica(indice) {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede configurar asesores");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de editarla");
     if(!Number.isInteger(indice) || indice < 0 || indice >= configuracionPaginaPublica.asesores.length) return;
     const eliminado = configuracionPaginaPublica.asesores[indice];
     configuracionPaginaPublica.asesores.splice(indice, 1);
@@ -4855,6 +4947,7 @@ function eliminarAsesorPaginaPublica(indice) {
 
 async function guardarConfiguracionPaginaPublica() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede guardar esta configuración");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que termine de cargar la configuración antes de guardar");
     const instagramOriginal = document.getElementById("admin-public-instagram")?.value.trim() || "";
     const tiktokOriginal = document.getElementById("admin-public-tiktok")?.value.trim() || "";
     const instagram = normalizarUrlRedSocialPublica(instagramOriginal, "instagram");
@@ -4886,6 +4979,599 @@ async function guardarConfiguracionPaginaPublica() {
     } finally {
         liberarBoton();
     }
+}
+
+function normalizarEquipoVerde(datos = {}) {
+    const base = EQUIPO_VERDE_POR_DEFECTO;
+    const capacitaciones = (Array.isArray(datos.capacitaciones) ? datos.capacitaciones : base.capacitaciones)
+        .slice(0, 8).map((item, indice) => ({
+            id: /^[a-z0-9-]{1,32}$/.test(String(item?.id ?? indice)) ? String(item.id ?? indice) : String(indice),
+            titulo: textoPaginaPublica(item?.titulo, "", 80),
+            descripcion: textoPaginaPublica(item?.descripcion, "", 700)
+        })).filter(item => item.titulo && item.descripcion);
+    const eventos = (Array.isArray(datos.eventos) ? datos.eventos : base.eventos)
+        .slice(0, 18).map(valor => textoPaginaPublica(valor, "", 80)).filter(Boolean);
+    const contactoWhatsapp = datos.contactoWhatsapp === undefined
+        ? base.contactoWhatsapp : normalizarWhatsappConsulta(datos.contactoWhatsapp);
+    const mapa = datos.mapa === undefined ? base.mapa : String(datos.mapa || "").trim();
+    return {
+        nombre: textoPaginaPublica(datos.nombre, base.nombre, 60),
+        portadaEtiqueta: textoPaginaPublica(datos.portadaEtiqueta, base.portadaEtiqueta, 100),
+        introduccion: textoPaginaPublica(datos.introduccion === "Logística y eventos" ? "" : datos.introduccion, base.introduccion, 180),
+        portadaDescripcion: textoPaginaPublica(datos.portadaDescripcion, base.portadaDescripcion, 500),
+        muestrasTitulo: textoPaginaPublica(datos.muestrasTitulo, base.muestrasTitulo, 80),
+        muestrasDescripcion: textoPaginaPublica(datos.muestrasDescripcion, base.muestrasDescripcion, 300),
+        rifaTitulo: textoPaginaPublica(datos.rifaTitulo, base.rifaTitulo, 80),
+        rifaDescripcion: String(datos.rifaDescripcion === undefined ? base.rifaDescripcion : datos.rifaDescripcion || "").trim().slice(0, 500),
+        capacitacionesTitulo: textoPaginaPublica(datos.capacitacionesTitulo, base.capacitacionesTitulo, 80),
+        capacitacionesDescripcion: textoPaginaPublica(datos.capacitacionesDescripcion, base.capacitacionesDescripcion, 500),
+        eventosTitulo: textoPaginaPublica(datos.eventosTitulo, base.eventosTitulo, 80),
+        eventosDescripcion: textoPaginaPublica(datos.eventosDescripcion, base.eventosDescripcion, 500),
+        contactosTitulo: textoPaginaPublica(datos.contactosTitulo, base.contactosTitulo, 80),
+        contactosDescripcion: textoPaginaPublica(datos.contactosDescripcion, base.contactosDescripcion, 500),
+        capacitaciones: capacitaciones.length ? capacitaciones : base.capacitaciones.map((item, indice) => ({ ...item, id: String(indice) })),
+        eventos: eventos.length ? eventos : [...base.eventos],
+        contactoCargo: textoPaginaPublica(datos.contactoCargo, base.contactoCargo, 100),
+        contactoNombre: textoPaginaPublica(datos.contactoNombre, base.contactoNombre, 100),
+        contactoWhatsapp: /^\d{10}$/.test(contactoWhatsapp) ? contactoWhatsapp : "",
+        direccion: String(datos.direccion === undefined ? base.direccion : datos.direccion || "").trim().slice(0, 180),
+        mapa: mapa && obtenerUrlHttpSegura(mapa)?.startsWith("https://") ? mapa.slice(0, 500) : ""
+    };
+}
+
+function imagenEquipoVerde(clave) {
+    return mediosEquipoVerde[clave] || IMAGENES_EQUIPO_VERDE_POR_DEFECTO[clave] || "";
+}
+
+function renderEquipoVerde() {
+    const textos = {
+        "team-sidebar-name": equipoVerde.nombre,
+        "team-footer-name": equipoVerde.nombre,
+        "team-home-eyebrow": equipoVerde.portadaEtiqueta,
+        "team-home-title": equipoVerde.introduccion,
+        "team-home-description": equipoVerde.portadaDescripcion,
+        "team-showcase-title": equipoVerde.muestrasTitulo,
+        "team-showcase-description": equipoVerde.muestrasDescripcion,
+        "team-rifa-title": equipoVerde.rifaTitulo,
+        "team-rifa-description": equipoVerde.rifaDescripcion,
+        "team-capacitaciones-title": equipoVerde.capacitacionesTitulo,
+        "team-capacitaciones-description": equipoVerde.capacitacionesDescripcion,
+        "team-eventos-title": equipoVerde.eventosTitulo,
+        "team-eventos-description": equipoVerde.eventosDescripcion,
+        "team-contactos-title": equipoVerde.contactosTitulo,
+        "team-contactos-description": equipoVerde.contactosDescripcion,
+        "team-contact-role": equipoVerde.contactoCargo,
+        "team-contact-name": equipoVerde.contactoNombre
+    };
+    Object.entries(textos).forEach(([id, valor]) => asignarTextoPaginaPublica(id, valor));
+    ["team-sidebar-logo", "team-home-logo", "team-rifa-image"].forEach((id, indice) => {
+        const elemento = document.getElementById(id);
+        if(elemento) elemento.src = imagenEquipoVerde(indice === 2 ? "rifa" : "logo");
+    });
+    const fotoPortada = document.getElementById("team-home-photo");
+    if(fotoPortada) fotoPortada.src = imagenEquipoVerde(`capacitacion-${equipoVerde.capacitaciones[0]?.id}`) || IMAGENES_EQUIPO_VERDE_POR_DEFECTO["capacitacion-0"];
+    [["team-preview-events", 1], ["team-preview-training", 2]].forEach(([id, indice]) => {
+        const imagen = document.getElementById(id);
+        if(imagen) imagen.src = imagenEquipoVerde(`capacitacion-${equipoVerde.capacitaciones[indice]?.id}`) || IMAGENES_EQUIPO_VERDE_POR_DEFECTO[`capacitacion-${indice}`];
+    });
+    const cartelPrevio = document.getElementById("team-preview-rifa");
+    if(cartelPrevio) cartelPrevio.src = imagenEquipoVerde("rifa");
+    const whatsapp = document.getElementById("team-contact-whatsapp");
+    [whatsapp, document.getElementById("team-hero-whatsapp")].forEach(enlace => {
+        if(!enlace) return;
+        enlace.hidden = !equipoVerde.contactoWhatsapp;
+        if(equipoVerde.contactoWhatsapp) enlace.href = `https://wa.me/57${equipoVerde.contactoWhatsapp}`;
+        else enlace.removeAttribute("href");
+    });
+    const direccion = document.getElementById("team-contact-location");
+    if(direccion) {
+        direccion.textContent = equipoVerde.direccion;
+        direccion.hidden = !equipoVerde.direccion;
+        if(equipoVerde.mapa) direccion.href = equipoVerde.mapa;
+        else direccion.removeAttribute("href");
+    }
+    const capacitaciones = document.getElementById("team-training-grid");
+    if(capacitaciones) {
+        capacitaciones.replaceChildren();
+        equipoVerde.capacitaciones.forEach(item => {
+            const tarjeta = document.createElement("article");
+            const imagen = document.createElement("img");
+            const src = imagenEquipoVerde(`capacitacion-${item.id}`);
+            imagen.hidden = !src;
+            if(src) imagen.src = src;
+            imagen.alt = item.titulo;
+            imagen.loading = "lazy";
+            const titulo = document.createElement("h2");
+            titulo.textContent = item.titulo;
+            const descripcion = document.createElement("p");
+            descripcion.textContent = item.descripcion;
+            tarjeta.append(imagen, titulo, descripcion);
+            capacitaciones.appendChild(tarjeta);
+        });
+    }
+    renderCarruselEquipoVerde();
+    renderMuestrasEquipoVerde();
+    const eventos = document.getElementById("team-events-grid");
+    if(eventos) {
+        eventos.replaceChildren();
+        const iconos = ["fa-crown", "fa-heart", "fa-bus", "fa-cake-candles", "fa-graduation-cap", "fa-face-laugh-beam", "fa-star"];
+        equipoVerde.eventos.forEach((nombre, indice) => {
+            const tarjeta = document.createElement("article");
+            const icono = document.createElement("i");
+            icono.className = `fa-solid ${iconos[indice % iconos.length]}`;
+            icono.setAttribute("aria-hidden", "true");
+            const numero = document.createElement("span");
+            numero.textContent = String(indice + 1).padStart(2, "0");
+            const titulo = document.createElement("h2");
+            titulo.textContent = nombre;
+            const enlace = document.createElement("a");
+            enlace.href = "#web";
+            enlace.textContent = "Cotizar evento";
+            tarjeta.append(numero, icono, titulo, enlace);
+            eventos.appendChild(tarjeta);
+        });
+    }
+    const slot = document.getElementById("admin-team-media-slot");
+    if(slot) {
+        const anterior = slot.value;
+        slot.querySelectorAll('option[value^="capacitacion-"]').forEach(opcion => opcion.remove());
+        equipoVerde.capacitaciones.forEach(item => {
+            const opcion = document.createElement("option");
+            opcion.value = `capacitacion-${item.id}`;
+            opcion.textContent = `Capacitación: ${item.titulo}`;
+            slot.appendChild(opcion);
+        });
+        if([...slot.options].some(opcion => opcion.value === anterior)) slot.value = anterior;
+    }
+}
+
+function renderCarruselEquipoVerde() {
+    const contenedor = document.getElementById("team-carousel");
+    const imagen = document.getElementById("team-carousel-image");
+    const puntos = document.getElementById("team-carousel-dots");
+    if(!contenedor || !imagen || !puntos) return;
+    const fotos = equipoVerde.capacitaciones
+        .map(item => ({ titulo: item.titulo, src: imagenEquipoVerde(`capacitacion-${item.id}`) }))
+        .filter(item => item.src);
+    contenedor.hidden = !fotos.length;
+    if(!fotos.length) return;
+    carruselEquipoVerdeIndice = ((carruselEquipoVerdeIndice % fotos.length) + fotos.length) % fotos.length;
+    imagen.src = fotos[carruselEquipoVerdeIndice].src;
+    imagen.alt = fotos[carruselEquipoVerdeIndice].titulo;
+    puntos.replaceChildren();
+    fotos.forEach((item, indice) => {
+        const boton = document.createElement("button");
+        boton.type = "button";
+        boton.setAttribute("aria-label", `Ver foto ${indice + 1}: ${item.titulo}`);
+        boton.setAttribute("aria-current", indice === carruselEquipoVerdeIndice ? "true" : "false");
+        boton.addEventListener("click", () => { carruselEquipoVerdeIndice = indice; renderCarruselEquipoVerde(); });
+        puntos.appendChild(boton);
+    });
+    contenedor.querySelectorAll(":scope > button").forEach(boton => { boton.hidden = fotos.length < 2; });
+}
+
+function moverCarruselEquipoVerde(direccion) {
+    carruselEquipoVerdeIndice += direccion;
+    renderCarruselEquipoVerde();
+}
+
+function normalizarMuestraEquipoVerde(id, datos = {}) {
+    const contenido = String(datos.contenido || "");
+    return {
+        id,
+        titulo: String(datos.titulo || "").trim().slice(0, 80),
+        descripcion: String(datos.descripcion || "").trim().slice(0, 250),
+        contenido: esComprobanteSeguro(contenido) && contenido.length <= 900000 ? contenido : ""
+    };
+}
+
+function renderMuestrasEquipoVerde() {
+    const escenario = document.getElementById("team-showcase-stage");
+    const imagen = document.getElementById("team-showcase-image");
+    const puntos = document.getElementById("team-showcase-dots");
+    if(!escenario || !imagen || !puntos) return;
+    const fotos = muestrasEquipoVerde.length ? muestrasEquipoVerde : MUESTRAS_EQUIPO_VERDE_POR_DEFECTO;
+    muestraEquipoVerdeIndice = ((muestraEquipoVerdeIndice % fotos.length) + fotos.length) % fotos.length;
+    const foto = fotos[muestraEquipoVerdeIndice];
+    imagen.src = foto.contenido;
+    imagen.alt = foto.titulo;
+    asignarTextoPaginaPublica("team-showcase-count", `${String(muestraEquipoVerdeIndice + 1).padStart(2, "0")} / ${String(fotos.length).padStart(2, "0")}`);
+    asignarTextoPaginaPublica("team-showcase-photo-title", foto.titulo);
+    asignarTextoPaginaPublica("team-showcase-photo-description", foto.descripcion);
+    escenario.querySelectorAll(".team-showcase-previous, .team-showcase-next").forEach(boton => { boton.hidden = fotos.length < 2; });
+    puntos.replaceChildren();
+    fotos.forEach((item, indice) => {
+        const boton = document.createElement("button");
+        boton.type = "button";
+        boton.setAttribute("aria-label", `Ver foto ${indice + 1}: ${item.titulo}`);
+        boton.setAttribute("aria-current", indice === muestraEquipoVerdeIndice ? "true" : "false");
+        boton.addEventListener("click", () => { muestraEquipoVerdeIndice = indice; renderMuestrasEquipoVerde(); });
+        puntos.appendChild(boton);
+    });
+    if(!escenario.dataset.gestosRegistrados) {
+        let inicio = null;
+        escenario.addEventListener("touchstart", evento => {
+            if(evento.target.closest("button") || evento.touches.length !== 1) return;
+            inicio = { x: evento.touches[0].clientX, y: evento.touches[0].clientY };
+        }, { passive: true });
+        escenario.addEventListener("touchend", evento => {
+            if(!inicio || evento.changedTouches.length !== 1) return;
+            const dx = evento.changedTouches[0].clientX - inicio.x;
+            const dy = evento.changedTouches[0].clientY - inicio.y;
+            inicio = null;
+            if(Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.4) moverMuestraEquipoVerde(dx < 0 ? 1 : -1);
+        }, { passive: true });
+        escenario.dataset.gestosRegistrados = "true";
+    }
+}
+
+function moverMuestraEquipoVerde(direccion) {
+    muestraEquipoVerdeIndice += direccion;
+    renderMuestrasEquipoVerde();
+}
+
+function renderAdminMuestrasEquipoVerde() {
+    const lista = document.getElementById("admin-team-showcase-list");
+    if(!lista) return;
+    lista.replaceChildren();
+    if(!muestrasEquipoVerde.length) {
+        const vacio = document.createElement("p");
+        vacio.textContent = "Aún no hay fotos publicadas. La portada muestra las imágenes de ejemplo incluidas.";
+        lista.appendChild(vacio);
+        return;
+    }
+    muestrasEquipoVerde.forEach(foto => {
+        const tarjeta = document.createElement("div");
+        const imagen = document.createElement("img");
+        imagen.src = foto.contenido;
+        imagen.alt = foto.titulo;
+        imagen.loading = "lazy";
+        const datos = document.createElement("div");
+        const titulo = document.createElement("strong");
+        titulo.textContent = foto.titulo;
+        const descripcion = document.createElement("span");
+        descripcion.textContent = foto.descripcion;
+        const acciones = document.createElement("div");
+        const editar = document.createElement("button");
+        editar.className = "btn-mini btn-edit";
+        editar.type = "button";
+        editar.textContent = "EDITAR";
+        editar.addEventListener("click", () => editarMuestraEquipoVerde(foto.id));
+        const eliminar = document.createElement("button");
+        eliminar.className = "btn-mini btn-delete";
+        eliminar.type = "button";
+        eliminar.textContent = "ELIMINAR";
+        eliminar.addEventListener("click", () => eliminarMuestraEquipoVerde(foto.id));
+        acciones.append(editar, eliminar);
+        datos.append(titulo, descripcion, acciones);
+        tarjeta.append(imagen, datos);
+        lista.appendChild(tarjeta);
+    });
+}
+
+async function cargarMuestrasEquipoVerde(forzar = false) {
+    if(cargaMuestrasEquipoVerdeEnCurso) {
+        await cargaMuestrasEquipoVerdeEnCurso;
+        if(!forzar) return muestrasEquipoVerdeCargadas;
+    }
+    if(muestrasEquipoVerdeCargadas && !forzar) return true;
+    cargaMuestrasEquipoVerdeEnCurso = (async () => {
+        try {
+            await FIRESTORE_READY;
+            const snapshot = await db.collection(COLECCION_MUESTRAS_EQUIPO_VERDE)
+                .orderBy("creado", "desc").limit(MAXIMO_MUESTRAS_EQUIPO_VERDE).get();
+            muestrasEquipoVerde = snapshot.docs
+                .map(documento => normalizarMuestraEquipoVerde(documento.id, documento.data()))
+                .filter(foto => foto.titulo && foto.contenido);
+            muestrasEquipoVerdeCargadas = true;
+            muestraEquipoVerdeIndice = 0;
+            renderMuestrasEquipoVerde();
+            renderAdminMuestrasEquipoVerde();
+            return true;
+        } catch(error) {
+            console.error("No se pudieron cargar las fotos de muestra", error);
+            if(esAdministradorActual()) manejarError(error, "No se pudieron cargar las fotos del carrusel. Publica las reglas nuevas");
+            renderMuestrasEquipoVerde();
+            return false;
+        }
+    })().finally(() => { cargaMuestrasEquipoVerdeEnCurso = null; });
+    return cargaMuestrasEquipoVerdeEnCurso;
+}
+
+function cancelarEdicionMuestraEquipoVerde() {
+    muestraEquipoVerdeEnEdicionId = "";
+    for(const id of ["admin-team-showcase-title", "admin-team-showcase-description", "admin-team-showcase-file"]) {
+        const campo = document.getElementById(id);
+        if(campo) campo.value = "";
+    }
+    const publicar = document.getElementById("admin-team-showcase-publish");
+    const cancelar = document.getElementById("admin-team-showcase-cancel");
+    if(publicar) publicar.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> AGREGAR FOTO';
+    if(cancelar) cancelar.hidden = true;
+}
+
+function editarMuestraEquipoVerde(id) {
+    if(!esAdministradorActual()) return;
+    const foto = muestrasEquipoVerde.find(item => item.id === id);
+    if(!foto) return notify("⚠️ La foto ya no está disponible");
+    muestraEquipoVerdeEnEdicionId = id;
+    document.getElementById("admin-team-showcase-title").value = foto.titulo;
+    document.getElementById("admin-team-showcase-description").value = foto.descripcion;
+    document.getElementById("admin-team-showcase-file").value = "";
+    document.getElementById("admin-team-showcase-publish").innerHTML = '<i class="fa-solid fa-floppy-disk"></i> GUARDAR FOTO';
+    document.getElementById("admin-team-showcase-cancel").hidden = false;
+    document.getElementById("admin-team-showcase-title").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function publicarMuestraEquipoVerde() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede agregar fotos");
+    const titulo = document.getElementById("admin-team-showcase-title")?.value.trim() || "";
+    const descripcion = document.getElementById("admin-team-showcase-description")?.value.trim() || "";
+    const archivo = document.getElementById("admin-team-showcase-file")?.files?.[0];
+    if(!titulo) return notify("⚠️ Escribe un título para la foto");
+    const liberar = bloquearBotonActual("SUBIENDO...");
+    try {
+        if(!(await cargarMuestrasEquipoVerde(true))) return;
+        const anterior = muestrasEquipoVerde.find(item => item.id === muestraEquipoVerdeEnEdicionId);
+        if(muestraEquipoVerdeEnEdicionId && !anterior) return notify("⚠️ La foto ya no está disponible. Recarga la lista");
+        if(!anterior && muestrasEquipoVerde.length >= MAXIMO_MUESTRAS_EQUIPO_VERDE) return notify("⚠️ Máximo 12 fotos. Elimina una para continuar");
+        if(!archivo && !anterior) return notify("⚠️ Selecciona una fotografía");
+        const contenido = archivo ? await procesarImagenBoletaVirtual(archivo) : anterior.contenido;
+        const datos = { titulo: titulo.slice(0, 80), descripcion: descripcion.slice(0, 250), contenido };
+        if(anterior) await db.collection(COLECCION_MUESTRAS_EQUIPO_VERDE).doc(anterior.id).update(datos);
+        else await db.collection(COLECCION_MUESTRAS_EQUIPO_VERDE).add({
+            ...datos, creado: fechaServidor(), creadoPor: normalizarEmailCuenta(auth.currentUser?.email)
+        });
+        cancelarEdicionMuestraEquipoVerde();
+        await cargarMuestrasEquipoVerde(true);
+        notify(anterior ? "✅ Foto actualizada" : "✅ Foto agregada al carrusel");
+    } catch(error) { manejarError(error, "No se pudo guardar la foto"); }
+    finally { liberar(); }
+}
+
+async function eliminarMuestraEquipoVerde(id) {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede eliminar fotos");
+    const foto = muestrasEquipoVerde.find(item => item.id === id);
+    if(!foto || !confirm(`¿Eliminar “${foto.titulo}” del carrusel?`)) return;
+    const liberar = bloquearBotonActual("ELIMINANDO...");
+    try {
+        await db.collection(COLECCION_MUESTRAS_EQUIPO_VERDE).doc(id).delete();
+        if(muestraEquipoVerdeEnEdicionId === id) cancelarEdicionMuestraEquipoVerde();
+        await cargarMuestrasEquipoVerde(true);
+        notify("✅ Foto eliminada");
+    } catch(error) { manejarError(error, "No se pudo eliminar la foto"); }
+    finally { liberar(); }
+}
+
+function renderPaginaEquipoVerde(pagina = "inicio") {
+    const paginas = ["inicio", "rifa", "capacitaciones", "eventos", "contactos"];
+    const elegida = paginas.includes(pagina) ? pagina : "inicio";
+    paginas.forEach(nombre => {
+        const seccion = document.getElementById(`team-page-${nombre}`);
+        if(seccion) seccion.hidden = nombre !== elegida;
+    });
+    document.querySelectorAll("#team-navigation [data-team-page]").forEach(enlace => {
+        if(enlace.dataset.teamPage === elegida) enlace.setAttribute("aria-current", "page");
+        else enlace.removeAttribute("aria-current");
+    });
+    const vista = document.getElementById("view-auth");
+    if(vista) vista.scrollTop = 0;
+}
+
+function leerCapacitacionesEquipoVerde() {
+    return [...document.querySelectorAll("#admin-team-training-list > div")].map(fila => ({
+        id: fila.dataset.id,
+        titulo: fila.querySelector("input")?.value.trim() || "",
+        descripcion: fila.querySelector("textarea")?.value.trim() || ""
+    }));
+}
+
+function leerEventosEquipoVerde() {
+    return [...document.querySelectorAll("#admin-team-events-list input")].map(input => input.value.trim());
+}
+
+function renderEditorEquipoVerde(capacitaciones = equipoVerde.capacitaciones, eventos = equipoVerde.eventos) {
+    const listaCapacitaciones = document.getElementById("admin-team-training-list");
+    const listaEventos = document.getElementById("admin-team-events-list");
+    if(!listaCapacitaciones || !listaEventos) return;
+    listaCapacitaciones.replaceChildren();
+    capacitaciones.forEach(item => {
+        const fila = document.createElement("div");
+        fila.dataset.id = item.id;
+        const tituloLabel = document.createElement("label");
+        tituloLabel.textContent = "Nombre";
+        const titulo = document.createElement("input");
+        titulo.maxLength = 80;
+        titulo.value = item.titulo;
+        tituloLabel.appendChild(titulo);
+        const descripcionLabel = document.createElement("label");
+        descripcionLabel.textContent = "Descripción";
+        const descripcion = document.createElement("textarea");
+        descripcion.maxLength = 700;
+        descripcion.rows = 2;
+        descripcion.value = item.descripcion;
+        descripcionLabel.appendChild(descripcion);
+        const borrar = document.createElement("button");
+        borrar.type = "button";
+        borrar.className = "btn-mini btn-delete";
+        borrar.textContent = "ELIMINAR";
+        borrar.addEventListener("click", () => {
+            if(listaCapacitaciones.children.length <= 1) return notify("⚠️ Conserva al menos una capacitación");
+            fila.remove();
+        });
+        fila.append(tituloLabel, borrar, descripcionLabel);
+        listaCapacitaciones.appendChild(fila);
+    });
+    listaEventos.replaceChildren();
+    eventos.forEach(nombre => {
+        const fila = document.createElement("div");
+        const label = document.createElement("label");
+        label.textContent = "Tipo de evento";
+        const input = document.createElement("input");
+        input.maxLength = 80;
+        input.value = nombre;
+        label.appendChild(input);
+        const borrar = document.createElement("button");
+        borrar.type = "button";
+        borrar.className = "btn-mini btn-delete";
+        borrar.textContent = "ELIMINAR";
+        borrar.addEventListener("click", () => {
+            if(listaEventos.children.length <= 1) return notify("⚠️ Conserva al menos un tipo de evento");
+            fila.remove();
+        });
+        fila.append(label, borrar);
+        listaEventos.appendChild(fila);
+    });
+}
+
+function sincronizarEditorEquipoVerde() {
+    const campos = {
+        "admin-team-name": equipoVerde.nombre, "admin-team-eyebrow": equipoVerde.portadaEtiqueta,
+        "admin-team-intro": equipoVerde.introduccion, "admin-team-home-description": equipoVerde.portadaDescripcion,
+        "admin-team-showcase-heading": equipoVerde.muestrasTitulo, "admin-team-showcase-intro": equipoVerde.muestrasDescripcion,
+        "admin-team-rifa-title": equipoVerde.rifaTitulo, "admin-team-rifa-description": equipoVerde.rifaDescripcion,
+        "admin-team-training-title": equipoVerde.capacitacionesTitulo, "admin-team-training-description": equipoVerde.capacitacionesDescripcion,
+        "admin-team-events-title": equipoVerde.eventosTitulo, "admin-team-events-description": equipoVerde.eventosDescripcion,
+        "admin-team-contacts-title": equipoVerde.contactosTitulo, "admin-team-contacts-description": equipoVerde.contactosDescripcion,
+        "admin-team-role": equipoVerde.contactoCargo,
+        "admin-team-contact-name": equipoVerde.contactoNombre, "admin-team-whatsapp": equipoVerde.contactoWhatsapp,
+        "admin-team-address": equipoVerde.direccion, "admin-team-map": equipoVerde.mapa
+    };
+    Object.entries(campos).forEach(([id, valor]) => {
+        const input = document.getElementById(id);
+        if(input) input.value = valor;
+    });
+    renderEditorEquipoVerde();
+}
+
+function agregarCapacitacionEquipoVerde() {
+    if(!esAdministradorActual()) return;
+    const capacitaciones = leerCapacitacionesEquipoVerde();
+    if(capacitaciones.length >= 8) return notify("⚠️ Máximo ocho capacitaciones");
+    capacitaciones.push({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, titulo: "", descripcion: "" });
+    renderEditorEquipoVerde(capacitaciones, leerEventosEquipoVerde());
+}
+
+function agregarEventoEquipoVerde() {
+    if(!esAdministradorActual()) return;
+    const eventos = leerEventosEquipoVerde();
+    if(eventos.length >= 18) return notify("⚠️ Máximo dieciocho tipos de evento");
+    eventos.push("");
+    renderEditorEquipoVerde(leerCapacitacionesEquipoVerde(), eventos);
+}
+
+async function cargarEquipoVerde(forzar = false) {
+    if(cargaEquipoVerdeEnCurso) return cargaEquipoVerdeEnCurso;
+    if(equipoVerdeCargado && !forzar) return true;
+    cargaEquipoVerdeEnCurso = (async () => {
+        try {
+            await FIRESTORE_READY;
+            const [documento, imagenes] = await Promise.all([
+                db.collection("configuracion").doc(DOCUMENTO_EQUIPO_VERDE).get(),
+                db.collection(COLECCION_MEDIOS_EQUIPO_VERDE).get()
+            ]);
+            const nuevosMedios = {};
+            imagenes.forEach(doc => {
+                const contenido = String(doc.data()?.contenido || "");
+                if(/^(logo|rifa|capacitacion-[a-z0-9-]{1,32})$/.test(doc.id) && esComprobanteSeguro(contenido)) nuevosMedios[doc.id] = contenido;
+            });
+            mediosEquipoVerde = nuevosMedios;
+            equipoVerde = normalizarEquipoVerde(documento.exists ? documento.data() : {});
+            equipoVerdeCargado = true;
+            renderEquipoVerde();
+            if(esAdministradorActual()) sincronizarEditorEquipoVerde();
+            return true;
+        } catch(error) {
+            console.error("No se pudo cargar Equipo Verde", error);
+            if(esAdministradorActual()) manejarError(error, "No se pudo cargar Equipo Verde. Publica las reglas nuevas");
+            renderEquipoVerde();
+            return false;
+        }
+    })().finally(() => { cargaEquipoVerdeEnCurso = null; });
+    return cargaEquipoVerdeEnCurso;
+}
+
+async function guardarEquipoVerde() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar Equipo Verde");
+    if(!equipoVerdeCargado && !(await cargarEquipoVerde())) return notify("⚠️ No se pudo cargar la configuración actual");
+    const valor = id => document.getElementById(id)?.value.trim() || "";
+    const capacitaciones = leerCapacitacionesEquipoVerde();
+    const eventos = leerEventosEquipoVerde();
+    if(!capacitaciones.length || capacitaciones.some(item => !item.titulo || !item.descripcion)) return notify("⚠️ Completa el nombre y la descripción de cada capacitación");
+    if(!eventos.length || eventos.some(nombre => !nombre)) return notify("⚠️ Completa los nombres de los eventos");
+    const telefono = normalizarWhatsappConsulta(valor("admin-team-whatsapp"));
+    if(valor("admin-team-whatsapp") && !/^\d{10}$/.test(telefono)) return notify("⚠️ WhatsApp: ingresa 10 dígitos o deja el campo vacío");
+    const mapa = valor("admin-team-map");
+    if(mapa && !obtenerUrlHttpSegura(mapa)?.startsWith("https://")) return notify("⚠️ El mapa debe usar un enlace https:// válido");
+    const requerido = ["admin-team-name", "admin-team-eyebrow", "admin-team-intro", "admin-team-home-description", "admin-team-showcase-heading", "admin-team-showcase-intro", "admin-team-rifa-title", "admin-team-training-title", "admin-team-training-description", "admin-team-events-title", "admin-team-events-description", "admin-team-contacts-title", "admin-team-contacts-description", "admin-team-role", "admin-team-contact-name"];
+    if(requerido.some(id => !valor(id))) return notify("⚠️ Completa los títulos y el nombre del contacto");
+    const nueva = normalizarEquipoVerde({
+        nombre: valor("admin-team-name"), portadaEtiqueta: valor("admin-team-eyebrow"),
+        introduccion: valor("admin-team-intro"), portadaDescripcion: valor("admin-team-home-description"),
+        muestrasTitulo: valor("admin-team-showcase-heading"), muestrasDescripcion: valor("admin-team-showcase-intro"),
+        rifaTitulo: valor("admin-team-rifa-title"), rifaDescripcion: valor("admin-team-rifa-description"),
+        capacitacionesTitulo: valor("admin-team-training-title"), capacitacionesDescripcion: valor("admin-team-training-description"),
+        eventosTitulo: valor("admin-team-events-title"), eventosDescripcion: valor("admin-team-events-description"),
+        contactosTitulo: valor("admin-team-contacts-title"), contactosDescripcion: valor("admin-team-contacts-description"),
+        capacitaciones, eventos,
+        contactoCargo: valor("admin-team-role"), contactoNombre: valor("admin-team-contact-name"),
+        contactoWhatsapp: telefono, direccion: valor("admin-team-address"), mapa
+    });
+    const eliminar = equipoVerde.capacitaciones
+        .filter(item => !nueva.capacitaciones.some(actual => actual.id === item.id))
+        .map(item => `capacitacion-${item.id}`);
+    const liberar = bloquearBotonActual("GUARDANDO...");
+    try {
+        await db.collection("configuracion").doc(DOCUMENTO_EQUIPO_VERDE).set({
+            ...nueva, actualizado: fechaServidor(), actualizadoPor: normalizarEmailCuenta(auth.currentUser?.email)
+        });
+        equipoVerde = nueva;
+        for(const clave of eliminar) {
+            await db.collection(COLECCION_MEDIOS_EQUIPO_VERDE).doc(clave).delete();
+            delete mediosEquipoVerde[clave];
+        }
+        renderEquipoVerde();
+        sincronizarEditorEquipoVerde();
+        notify("✅ Página Equipo Verde actualizada");
+    } catch(error) {
+        manejarError(error, "No se pudo guardar Equipo Verde");
+    } finally { liberar(); }
+}
+
+async function guardarImagenEquipoVerde() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar imágenes");
+    if(!equipoVerdeCargado && !(await cargarEquipoVerde())) return notify("⚠️ Primero publica las reglas nuevas");
+    const clave = document.getElementById("admin-team-media-slot")?.value || "";
+    const archivo = document.getElementById("admin-team-media-file")?.files?.[0];
+    if(!archivo || !/^(logo|rifa|capacitacion-[a-z0-9-]{1,32})$/.test(clave)) return notify("⚠️ Elige una imagen y una fotografía");
+    if(clave.startsWith("capacitacion-") && !equipoVerde.capacitaciones.some(item => `capacitacion-${item.id}` === clave)) return notify("⚠️ Guarda primero la capacitación nueva");
+    const liberar = bloquearBotonActual("SUBIENDO...");
+    try {
+        const original = archivo.type === "image/png" && archivo.size <= 600000 ? await leerArchivoComoDataUrl(archivo) : "";
+        const contenido = original && original.length <= 850000 ? original : await procesarImagenBoletaVirtual(archivo);
+        await db.collection(COLECCION_MEDIOS_EQUIPO_VERDE).doc(clave).set({
+            contenido, actualizado: fechaServidor(), actualizadoPor: normalizarEmailCuenta(auth.currentUser?.email)
+        });
+        mediosEquipoVerde[clave] = contenido;
+        document.getElementById("admin-team-media-file").value = "";
+        renderEquipoVerde();
+        notify("✅ Imagen actualizada");
+    } catch(error) { manejarError(error, "No se pudo subir la imagen"); }
+    finally { liberar(); }
+}
+
+async function restaurarImagenEquipoVerde() {
+    if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede editar imágenes");
+    const clave = document.getElementById("admin-team-media-slot")?.value || "";
+    if(!/^(logo|rifa|capacitacion-[a-z0-9-]{1,32})$/.test(clave)) return;
+    const liberar = bloquearBotonActual("RESTAURANDO...");
+    try {
+        await db.collection(COLECCION_MEDIOS_EQUIPO_VERDE).doc(clave).delete();
+        delete mediosEquipoVerde[clave];
+        renderEquipoVerde();
+        notify("✅ Imagen original restaurada");
+    } catch(error) { manejarError(error, "No se pudo restaurar la imagen"); }
+    finally { liberar(); }
 }
 
 function obtenerVideoYoutubePublico(valor) {
@@ -5139,7 +5825,7 @@ async function cargarGaleriaPublica(forzar = false) {
                 contenedor.innerHTML = '<div class="public-gallery-empty"><i class="fa-solid fa-triangle-exclamation"></i><strong>No se pudo cargar la galería</strong><span>Revisa la conexión e inténtalo nuevamente.</span></div>';
             }
             if(esAdministradorActual()) manejarError(error, "No se pudo cargar la galería pública");
-            return [];
+            return null;
         }
     })().finally(() => {
         cargaGaleriaPublicaEnCurso = null;
@@ -5194,6 +5880,7 @@ function editarMedioPublico(id) {
 
 async function publicarMedioPublico() {
     if(!esAdministradorActual()) return notify("⛔ Solo el administrador puede publicar en la galería");
+    if(!configuracionPaginaPublicaCargada) return notify("⚠️ Espera a que cargue la página web antes de publicar");
     if(categoriasPaginaPublicaPendientes) return notify("⚠️ Guarda toda la página web antes de publicar en una categoría nueva o modificada");
     const tipo = document.getElementById("admin-public-media-type")?.value === "video" ? "video" : "imagen";
     const categoria = document.getElementById("admin-public-media-category")?.value || "";
@@ -5206,7 +5893,9 @@ async function publicarMedioPublico() {
     const esEdicion = Boolean(medioAnterior);
     const liberarBoton = bloquearBotonActual(esEdicion ? "GUARDANDO..." : "PUBLICANDO...");
     try {
-        if(!esEdicion) await cargarGaleriaPublica(true);
+        if(!esEdicion && await cargarGaleriaPublica(true) === null) {
+            return notify("⚠️ No se pudo comprobar el espacio de la galería. Inténtalo nuevamente");
+        }
         if(!esEdicion && galeriaPublica.length >= MAXIMO_PUBLICACIONES_GALERIA) {
             return notify(`⚠️ La galería admite máximo ${MAXIMO_PUBLICACIONES_GALERIA} publicaciones. Elimina una antes de continuar`);
         }
@@ -5327,20 +6016,24 @@ function enviarCotizacionPublica(evento) {
     enlace.remove();
 }
 
-function abrirAccesoInicial(tipo) {
+function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio") {
     const selector = document.getElementById("auth-access-choice");
     const accesoUsuario = document.getElementById("auth-user-access");
     const accesoComprador = document.getElementById("auth-buyer-access");
     const accesoPublico = document.getElementById("auth-public-access");
+    const accesoEquipo = document.getElementById("auth-team-access");
     const vistaAcceso = document.getElementById("view-auth");
-    if(!selector || !accesoUsuario || !accesoComprador || !accesoPublico || !vistaAcceso) return;
+    if(!selector || !accesoUsuario || !accesoComprador || !accesoPublico || !accesoEquipo || !vistaAcceso) return;
 
     selector.style.display = "none";
     accesoUsuario.style.display = tipo === "usuario" ? "block" : "none";
     accesoComprador.style.display = tipo === "comprador" ? "block" : "none";
     accesoPublico.style.display = tipo === "pagina" ? "block" : "none";
-    vistaAcceso.classList.toggle("public-site-open", tipo === "pagina");
-    const ruta = tipo === "pagina" ? "web" : tipo;
+    accesoEquipo.style.display = tipo === "equipo" ? "block" : "none";
+    vistaAcceso.classList.toggle("public-site-open", tipo === "pagina" || tipo === "equipo");
+    vistaAcceso.closest(".main-wrapper")?.classList.toggle("team-page-open", tipo === "equipo");
+    const ruta = tipo === "pagina" ? "web" : tipo === "equipo"
+        ? `team-verde${subpaginaEquipo === "inicio" ? "" : `/${subpaginaEquipo}`}` : tipo;
     if(location.hash !== `#${ruta}`) history.pushState(null, "", `#${ruta}`);
 
     if(tipo === "usuario") toggleAuth("login");
@@ -5352,6 +6045,12 @@ function abrirAccesoInicial(tipo) {
         cargarGaleriaPublica();
         cargarConfiguracionPaginaPublica();
     }
+    if(tipo === "equipo") {
+        renderPaginaEquipoVerde(subpaginaEquipo);
+        renderEquipoVerde();
+        cargarEquipoVerde();
+        cargarMuestrasEquipoVerde();
+    }
 }
 
 function volverSeleccionAcceso() {
@@ -5359,14 +6058,17 @@ function volverSeleccionAcceso() {
     const accesoUsuario = document.getElementById("auth-user-access");
     const accesoComprador = document.getElementById("auth-buyer-access");
     const accesoPublico = document.getElementById("auth-public-access");
+    const accesoEquipo = document.getElementById("auth-team-access");
     const vistaAcceso = document.getElementById("view-auth");
     const resultados = document.getElementById("buyer-lookup-results");
     if(selector) selector.style.display = "flex";
     if(accesoUsuario) accesoUsuario.style.display = "none";
     if(accesoComprador) accesoComprador.style.display = "none";
     if(accesoPublico) accesoPublico.style.display = "none";
+    if(accesoEquipo) accesoEquipo.style.display = "none";
     if(vistaAcceso) {
         vistaAcceso.classList.remove("public-site-open");
+        vistaAcceso.closest(".main-wrapper")?.classList.remove("team-page-open");
         vistaAcceso.scrollTop = 0;
     }
     if(resultados) resultados.replaceChildren();
@@ -5379,7 +6081,8 @@ function volverSeleccionAcceso() {
 
 function aplicarRutaAccesoDesdeEnlace() {
     const ruta = location.hash.replace(/^#/, "").toLowerCase();
-    const publica = ["web", "pagina", "comprador"].includes(ruta);
+    const paginaEquipo = /^team-verde(?:\/(inicio|rifa|capacitaciones|eventos|contactos))?$/.exec(ruta);
+    const publica = ["web", "pagina", "comprador"].includes(ruta) || Boolean(paginaEquipo);
     if(auth.currentUser && !publica) {
         document.getElementById("view-auth").style.display = "none";
         document.getElementById("view-home").style.display = "flex";
@@ -5390,10 +6093,13 @@ function aplicarRutaAccesoDesdeEnlace() {
     if(ruta === "usuario") abrirAccesoInicial("usuario");
     else if(ruta === "comprador") abrirAccesoInicial("comprador");
     else if(ruta === "web" || ruta === "pagina") abrirAccesoInicial("pagina");
+    else if(paginaEquipo) abrirAccesoInicial("equipo", paginaEquipo[1] || "inicio");
     else volverSeleccionAcceso();
+    cargarConfiguracionPaginaPublica();
 }
 
 window.addEventListener("hashchange", aplicarRutaAccesoDesdeEnlace);
+window.addEventListener("popstate", aplicarRutaAccesoDesdeEnlace);
 if(document.readyState === "loading") document.addEventListener("DOMContentLoaded", aplicarRutaAccesoDesdeEnlace, { once: true });
 else aplicarRutaAccesoDesdeEnlace();
 
@@ -5724,6 +6430,7 @@ function toggleAuth(view) { if(view === 'reg') { document.getElementById('auth-l
 function calcularEdad(fecha) {
     if(!fecha) return "---";
     const fNac = new Date(`${fecha}T00:00:00`), fHoy = new Date();
+    if(Number.isNaN(fNac.getTime()) || fNac > fHoy) return "---";
     let e = fHoy.getFullYear() - fNac.getFullYear();
     if(fHoy.getMonth() < fNac.getMonth() || (fHoy.getMonth() === fNac.getMonth() && fHoy.getDate() < fNac.getDate())) e--;
     return e + " Años";
@@ -5819,7 +6526,8 @@ async function exportarVentasExcel() {
             if(filterEst !== "Todos" && b.estado !== filterEst) return;
             
             exportContador++;
-            rows.push([exportContador, b.n, col.toUpperCase(), b.recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado, convertirFechaFirestore(b.creado)?.toLocaleDateString() || '---']);
+            const recreador = String(b.recreador || obtenerNombreCompletoUsuario(allUsers.find(u => u.id === b.vendedor) || {}, "---"));
+            rows.push([exportContador, b.n || '---', col.toUpperCase(), recreador.toUpperCase(), b.c || b.comprador || '---', b.t || b.whatsapp || '---', b.estado || 'Pendiente', convertirFechaFirestore(b.creado)?.toLocaleDateString() || '---']);
         });
         const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Ventas");
@@ -5836,6 +6544,7 @@ async function exportarVentasExcel() {
 let anunciosFlotantesData = [];
 let anuncioTimer = null;
 let anuncioListaTimer = null;
+const estadisticasAnunciosEnMemoria = new Map();
 
 function obtenerFechaLimiteAnuncio(valor) {
     if(typeof valor === "number") return valor;
@@ -5879,18 +6588,20 @@ function anuncioFlotanteEstaVigente(anuncio, ahora = Date.now()) {
 
 function obtenerClaveEstadisticasAnuncio(anuncio) {
     const version = anuncio.version || obtenerMilisegundosFecha(anuncio.timestamp) || "actual";
-    return `anuncio_stats_${anuncio.id}_${version}`;
+    const cuenta = normalizarEmailCuenta(auth.currentUser?.email) || "sin-cuenta";
+    return `anuncio_stats_${cuenta}_${anuncio.id}_${version}`;
 }
 
 function leerEstadisticasAnuncio(anuncio) {
+    const clave = obtenerClaveEstadisticasAnuncio(anuncio);
     try {
-        const guardadas = JSON.parse(localStorage.getItem(obtenerClaveEstadisticasAnuncio(anuncio)));
+        const guardadas = JSON.parse(localStorage.getItem(clave) || "null") || estadisticasAnunciosEnMemoria.get(clave);
         return {
             count: Number(guardadas?.count) || 0,
             lastShow: Number(guardadas?.lastShow) || 0
         };
     } catch(error) {
-        return { count: 0, lastShow: 0 };
+        return estadisticasAnunciosEnMemoria.get(clave) || { count: 0, lastShow: 0 };
     }
 }
 
@@ -5948,7 +6659,13 @@ function evaluarAnuncioCiclo() {
     mostrarAnuncioFlotante(siguiente.anuncio.texto, siguiente.anuncio.color, siguiente.anuncio.duracion);
     siguiente.stats.count++;
     siguiente.stats.lastShow = now;
-    localStorage.setItem(obtenerClaveEstadisticasAnuncio(siguiente.anuncio), JSON.stringify(siguiente.stats));
+    const clave = obtenerClaveEstadisticasAnuncio(siguiente.anuncio);
+    estadisticasAnunciosEnMemoria.set(clave, { ...siguiente.stats });
+    try {
+        localStorage.setItem(clave, JSON.stringify(siguiente.stats));
+    } catch(error) {
+        // La sesión sigue respetando los intervalos aunque el navegador bloquee el almacenamiento.
+    }
 
     const esperaSiguiente = Math.max(1500, (Math.max(1, Number(siguiente.anuncio.duracion) || 10) * 1000) + 600);
     anuncioTimer = setTimeout(evaluarAnuncioCiclo, esperaSiguiente);
@@ -6274,107 +6991,63 @@ function renderBoletasParaPagar() {
 }
 
 // 2. Lógica para capturar y subir todos los datos
-function enviarComprobantePago() {
-    const checkboxes = document.querySelectorAll('.chk-boleta-pago:checked');
-    if(checkboxes.length === 0) {
-        if(typeof notify === "function") return notify("⚠️ Selecciona al menos una boleta para pagar");
-        else return alert("⚠️ Selecciona al menos una boleta para pagar");
-    }
-    
-    const monto = document.getElementById('pago-monto').value;
+async function enviarComprobantePago() {
+    if(!auth.currentUser || !currentUserData) return notify("⚠️ Inicia sesión para registrar un pago");
+    const btn = document.getElementById('btn-enviar-pago');
+    if(btn?.disabled) return;
+    const checkboxes = [...document.querySelectorAll('.chk-boleta-pago:checked')];
+    if(!checkboxes.length) return notify("⚠️ Selecciona al menos una boleta para pagar");
+    if(checkboxes.length > 200) return notify("⚠️ Puedes solicitar hasta 200 boletas en un pago");
+
+    const monto = document.getElementById('pago-monto').value.trim();
     const metodo = document.getElementById('pago-metodo').value;
     const receptor = document.getElementById('pago-receptor').value.trim();
     const capacitacion = document.getElementById('pago-capacitacion').value;
-    
-    if(!monto || !metodo || !receptor || !capacitacion) {
-        if(typeof notify === "function") return notify("⚠️ Completa todos los datos de la entrega");
-        else return alert("⚠️ Completa todos los datos de la entrega");
+    if(!/^[1-9]\d{0,11}$/.test(monto)) return notify("⚠️ Ingresa un valor positivo, sin puntos ni decimales");
+    if(!metodo || !receptor || !capacitacion) return notify("⚠️ Completa todos los datos de la entrega");
+
+    const boletasSeleccionadas = checkboxes.map(chk => {
+        const registro = allBoletas.find(boleta => boleta.id === chk.value);
+        return registro && registro.vendedor === auth.currentUser.email && registro.estado === 'Pendiente'
+            ? { id: registro.id, n: registro.n } : null;
+    });
+    const idsSeleccionados = new Set(boletasSeleccionadas.map(boleta => boleta?.id));
+    if(idsSeleccionados.size !== boletasSeleccionadas.length || boletasSeleccionadas.includes(null)) {
+        return notify("⚠️ Actualiza la lista y selecciona únicamente tus boletas pendientes");
     }
 
     const fileInput = document.getElementById('input-comprobante-pago');
-    const file = fileInput.files[0];
-    if(!file) {
-        if(typeof notify === "function") return notify("⚠️ Sube la foto del comprobante");
-        else return alert("⚠️ Sube la foto del comprobante");
+    const archivo = fileInput?.files?.[0];
+    if(!archivo) return notify("⚠️ Sube la foto del comprobante");
+    if(btn) {
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> PROCESANDO...';
+        btn.disabled = true;
     }
-    if(!file.type || !file.type.startsWith("image/")) {
-        if(typeof notify === "function") return notify("⚠️ El comprobante debe ser una imagen válida");
-        else return alert("⚠️ El comprobante debe ser una imagen válida");
-    }
-    
-    const btn = document.getElementById('btn-enviar-pago');
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> PROCESANDO...';
-    btn.disabled = true;
-    
-    let boletasSeleccionadas = [];
-    checkboxes.forEach(chk => boletasSeleccionadas.push({ id: chk.value, n: chk.getAttribute('data-n') }));
-    
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = function(event) {
-        const img = new Image();
-        img.src = event.target.result;
-        img.onload = async function() {
-            const canvas = document.createElement('canvas');
-            const MAX_WIDTH = 600; 
-            let width = img.width;
-            let height = img.height;
-            
-            if (width > MAX_WIDTH) {
-                height *= MAX_WIDTH / width;
-                width = MAX_WIDTH;
-            }
-            
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
-            
-            const base64Url = canvas.toDataURL('image/jpeg', 0.5); 
-            
-            try {
-                await db.collection("solicitudes_pago").add({
-                    recreadorEmail: auth.currentUser.email,
-                    recreadorNombre: obtenerNombreCompletoUsuario(currentUserData),
-                    equipo: currentUserData.color || "Gris",
-                    boletas: boletasSeleccionadas,
-                    monto: monto,
-                    metodo: metodo,
-                    receptor: receptor,
-                    capacitacion: capacitacion,
-                    comprobanteUrl: base64Url,
-                    estado: 'Pendiente',
-                    creado: fechaServidor()
-                });
-                
-                if(typeof notify === "function") notify("✅ Solicitud enviada a administración");
-                else alert("✅ Solicitud enviada a administración");
-                
-                document.getElementById('modal-pago').style.display = 'none';
-                fileInput.value = "";
-                document.getElementById('pago-monto').value = "";
-                document.getElementById('pago-metodo').value = "";
-                document.getElementById('pago-receptor').value = "";
-                document.getElementById('pago-capacitacion').value = "";
 
-            } catch (err) {
-                manejarError(err, "No se pudo enviar la solicitud de pago");
-            } finally {
-                btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD';
-                btn.disabled = false;
-            }
-        };
-        img.onerror = function() {
-            notify("❌ No se pudo procesar la imagen. Intenta con otra foto.");
+    try {
+        const comprobanteUrl = await procesarImagenBoletaVirtual(archivo);
+        await db.collection("solicitudes_pago").add({
+            recreadorEmail: auth.currentUser.email,
+            recreadorNombre: obtenerNombreCompletoUsuario(currentUserData),
+            equipo: currentUserData.color || "Gris",
+            boletas: boletasSeleccionadas,
+            monto, metodo, receptor, capacitacion, comprobanteUrl,
+            estado: 'Pendiente', creado: fechaServidor()
+        });
+        document.getElementById('modal-pago').style.display = 'none';
+        fileInput.value = "";
+        for(const id of ['pago-monto', 'pago-metodo', 'pago-receptor', 'pago-capacitacion']) {
+            document.getElementById(id).value = "";
+        }
+        notify("✅ Solicitud enviada a administración");
+    } catch(error) {
+        manejarError(error, "No se pudo enviar la solicitud de pago");
+    } finally {
+        if(btn) {
             btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD';
             btn.disabled = false;
-        };
-    };
-    reader.onerror = function() {
-        notify("❌ No se pudo leer el archivo de tu dispositivo.");
-        btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> ENVIAR SOLICITUD';
-        btn.disabled = false;
-    };
+        }
+    }
 }
 
 // 3. Escuchador para Coordinador General y Administrador con los pagos PENDIENTES
@@ -6502,8 +7175,12 @@ async function verificarPago(solicitudId, aprobado) {
                 throw new Error("Esta solicitud ya fue procesada");
             }
 
-            if(!Array.isArray(d.boletas) || d.boletas.length === 0) {
+            if(!Array.isArray(d.boletas) || d.boletas.length === 0 || d.boletas.length > 200) {
                 throw new Error("La solicitud no contiene boletas válidas");
+            }
+            const idsBoletas = d.boletas.map(boleta => String(boleta?.id || ""));
+            if(new Set(idsBoletas).size !== idsBoletas.length) {
+                throw new Error("La solicitud contiene boletas repetidas");
             }
 
             const boletasPreparadas = await Promise.all(d.boletas.map(async b => {
@@ -6512,6 +7189,9 @@ async function verificarPago(solicitudId, aprobado) {
                 const documento = await referencia.get();
                 if(!documento.exists) throw new Error(`La boleta ${b.n || "seleccionada"} ya no existe`);
                 const datos = documento.data();
+                if(datos.vendedor !== d.recreadorEmail || datos.estado !== "Pendiente") {
+                    throw new Error(`La boleta ${datos.n || b.n || "seleccionada"} no está pendiente a nombre de este vendedor`);
+                }
                 const equipo = await obtenerEquipoRegistradorBoleta(datos);
                 const datosConsulta = crearDatosConsultaBoleta({ ...datos, equipo, estado: "Activa" }, b.id);
                 const consultaRef = datosConsulta

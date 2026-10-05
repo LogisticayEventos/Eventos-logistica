@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="color-scheme" content="dark light">
     <meta id="theme-color-meta" name="theme-color" content="#05080f">
+    <link rel="icon" href="data:,">
     <title>Logistica & Eventos | Control</title>
     <script>
         (() => {
@@ -136,6 +137,10 @@
 
     <div class="main-wrapper">
         <div id="view-auth">
+            <nav class="floating-public-links" aria-label="Accesos rápidos públicos">
+                <a id="floating-team-link" href="#team-verde" aria-label="Ver página de Equipo Verde" title="Equipo Verde"><i class="fa-solid fa-leaf" aria-hidden="true"></i><span>Equipo Verde</span></a>
+                <button id="floating-tiktok-link" type="button" onclick="abrirTikTokPublico()" aria-label="Visitar TikTok" title="TikTok"><i class="fa-brands fa-tiktok" aria-hidden="true"></i><span>TikTok</span></button>
+            </nav>
             <div class="auth-theme-toolbar">
                 <button class="theme-toggle" type="button" onclick="cambiarTema()" aria-label="Cambiar tema de la página">
                     <i class="fa-solid fa-desktop" aria-hidden="true"></i>
@@ -297,6 +302,93 @@
                     <div class="public-footer-brand"><strong>LOGÍSTICA &amp; EVENTOS</strong><span id="public-footer-tagline">Organización, talento y experiencias.</span></div>
                     <button type="button" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver al acceso</button>
                 </footer>
+            </div>
+            <div id="auth-team-access" class="auth-access-panel team-site" style="display:none;">
+                <aside class="team-sidebar">
+                    <div class="team-brand">
+                        <img id="team-sidebar-logo" src="assets/equipo-verde-emblema.webp" loading="lazy" alt="Emblema de Equipo Verde">
+                        <div><small>LOGÍSTICA &amp; EVENTOS</small><strong id="team-sidebar-name">EQUIPO VERDE</strong></div>
+                    </div>
+                    <span class="team-sidebar-caption">DESCUBRE NUESTRO MUNDO</span>
+                    <nav id="team-navigation" aria-label="Secciones de Equipo Verde">
+                        <a href="#team-verde" data-team-page="inicio"><i class="fa-solid fa-house"></i><span>Inicio</span></a>
+                        <a href="#team-verde/rifa" data-team-page="rifa"><i class="fa-solid fa-ticket"></i><span>Rifa</span></a>
+                        <a href="#team-verde/capacitaciones" data-team-page="capacitaciones"><i class="fa-solid fa-graduation-cap"></i><span>Capacitaciones</span></a>
+                        <a href="#team-verde/eventos" data-team-page="eventos"><i class="fa-solid fa-champagne-glasses"></i><span>Eventos</span></a>
+                        <a href="#team-verde/contactos" data-team-page="contactos"><i class="fa-solid fa-headset"></i><span>Contactos</span></a>
+                    </nav>
+                    <div class="team-sidebar-bottom">
+                        <span>PERSONAS · EXPERIENCIAS · MOMENTOS</span>
+                        <button class="team-back" type="button" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver a Logística &amp; Eventos</button>
+                    </div>
+                </aside>
+                <main class="team-main">
+                    <section id="team-page-inicio" class="team-page team-home">
+                        <div class="team-hero">
+                            <div class="team-hero-copy">
+                                <span id="team-home-eyebrow" class="team-kicker">EQUIPO VERDE · LOGÍSTICA &amp; EVENTOS</span>
+                                <h1 id="team-home-title">Creamos experiencias que dejan huella</h1>
+                                <p id="team-home-description">Un equipo que reúne creatividad, preparación y energía para transformar cada encuentro en un gran recuerdo.</p>
+                                <div class="team-hero-actions">
+                                    <a class="team-button team-button-primary" href="#team-verde/eventos">Explorar eventos <i class="fa-solid fa-arrow-right"></i></a>
+                                    <a id="team-hero-whatsapp" class="team-button team-button-outline" href="https://wa.me/573224343263" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i> Hablar con el equipo</a>
+                                </div>
+                            </div>
+                            <div class="team-hero-visual">
+                                <img id="team-home-photo" class="team-hero-photo" src="assets/equipo-verde-capacitacion-0.jpg" loading="lazy" alt="Experiencia de Equipo Verde">
+                                <div class="team-hero-logo"><img id="team-home-logo" src="assets/equipo-verde-emblema.webp" loading="lazy" alt="Emblema de Equipo Verde"></div>
+                                <span class="team-hero-sticker"><i class="fa-solid fa-sparkles"></i> HECHO PARA RECORDAR</span>
+                            </div>
+                        </div>
+                        <section class="team-showcase" aria-labelledby="team-showcase-title">
+                            <div class="team-showcase-heading">
+                                <span class="team-kicker">MOMENTOS DEL EQUIPO</span>
+                                <h2 id="team-showcase-title">Experiencias en imágenes</h2>
+                                <p id="team-showcase-description">Conoce algunos momentos de nuestros eventos y capacitaciones.</p>
+                            </div>
+                            <div id="team-showcase-stage" class="team-showcase-stage" aria-label="Carrusel de fotos de muestra">
+                                <div class="team-showcase-frame">
+                                    <img id="team-showcase-image" src="assets/equipo-verde-capacitacion-0.jpg" alt="Foto de muestra del Equipo Verde" loading="lazy">
+                                    <button class="team-showcase-previous" type="button" onclick="moverMuestraEquipoVerde(-1)" aria-label="Foto anterior"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                                    <button class="team-showcase-next" type="button" onclick="moverMuestraEquipoVerde(1)" aria-label="Foto siguiente"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                                </div>
+                                <div class="team-showcase-caption"><span id="team-showcase-count">01 / 04</span><strong id="team-showcase-photo-title">Recreación</strong><p id="team-showcase-photo-description"></p></div>
+                            </div>
+                            <div id="team-showcase-dots" class="team-showcase-dots" aria-label="Elegir foto de muestra"></div>
+                        </section>
+                        <div class="team-home-heading"><span>LO QUE HACEMOS</span><h2>Un equipo para cada momento</h2><p>Explora nuestros eventos, formación y experiencias.</p></div>
+                        <div class="team-feature-grid">
+                            <a class="team-feature-card" href="#team-verde/eventos"><img id="team-preview-events" src="assets/equipo-verde-capacitacion-1.jpg" loading="lazy" alt="Eventos"><span>01 / EXPERIENCIAS</span><strong>Eventos</strong><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                            <a class="team-feature-card" href="#team-verde/capacitaciones"><img id="team-preview-training" src="assets/equipo-verde-capacitacion-2.jpg" loading="lazy" alt="Capacitaciones"><span>02 / FORMACIÓN</span><strong>Capacitaciones</strong><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                            <a class="team-feature-card" href="#team-verde/rifa"><img id="team-preview-rifa" src="assets/equipo-verde-rifa.webp" loading="lazy" alt="Rifa"><span>03 / OPORTUNIDADES</span><strong>Rifa</strong><i class="fa-solid fa-arrow-up-right-from-square"></i></a>
+                            <a class="team-feature-card team-feature-contact" href="#team-verde/contactos"><i class="fa-solid fa-comments"></i><span>04 / CONVERSEMOS</span><strong>Contactos</strong><small>Hablemos de tu próximo evento.</small><b>CONOCER MÁS <i class="fa-solid fa-arrow-right"></i></b></a>
+                        </div>
+                    </section>
+                    <section id="team-page-rifa" class="team-page" hidden>
+                        <div class="team-section-heading"><span class="team-kicker">UNA OPORTUNIDAD PARA COMPARTIR</span><h1 id="team-rifa-title">Rifa</h1><p id="team-rifa-description">Conoce nuestra rifa vigente y consulta todos los detalles con el equipo.</p></div>
+                        <div class="team-rifa-layout"><div class="team-rifa-frame"><img id="team-rifa-image" class="team-rifa-poster" src="assets/equipo-verde-rifa.webp" loading="lazy" alt="Cartel de la rifa de Equipo Verde"></div><div class="team-rifa-aside"><i class="fa-solid fa-gift"></i><strong>Una experiencia para compartir</strong><p>Mira el cartel y consulta directamente con el equipo si quieres participar.</p><a class="team-button team-button-primary" href="#team-verde/contactos">Consultar la rifa <i class="fa-solid fa-arrow-right"></i></a></div></div>
+                    </section>
+                    <section id="team-page-capacitaciones" class="team-page" hidden>
+                        <div class="team-section-heading"><span class="team-kicker">CRECEMOS JUNTOS</span><h1 id="team-capacitaciones-title">Capacitaciones</h1><p id="team-capacitaciones-description">Aprende haciendo y desarrolla habilidades para ofrecer experiencias de calidad.</p></div>
+                        <div id="team-carousel" class="team-carousel" aria-label="Fotografías de capacitaciones">
+                            <button type="button" onclick="moverCarruselEquipoVerde(-1)" aria-label="Foto anterior"><i class="fa-solid fa-chevron-left"></i></button>
+                            <img id="team-carousel-image" alt="Fotografía de capacitación" loading="lazy">
+                            <button type="button" onclick="moverCarruselEquipoVerde(1)" aria-label="Foto siguiente"><i class="fa-solid fa-chevron-right"></i></button>
+                            <div id="team-carousel-dots" class="team-carousel-dots" aria-label="Elegir fotografía"></div>
+                        </div>
+                        <div id="team-training-grid" class="team-training-grid"></div>
+                    </section>
+                    <section id="team-page-eventos" class="team-page" hidden>
+                        <div class="team-section-heading"><span class="team-kicker">DISEÑADOS PARA DISFRUTAR</span><h1 id="team-eventos-title">Eventos</h1><p id="team-eventos-description">Celebraciones y planes pensados para que cada detalle cuente.</p></div>
+                        <div id="team-events-grid" class="team-events-grid"></div>
+                        <div class="team-events-cta"><span>¿Tienes un evento en mente?</span><a class="team-button team-button-primary" href="#web">Solicitar cotización <i class="fa-solid fa-arrow-right"></i></a></div>
+                    </section>
+                    <section id="team-page-contactos" class="team-page" hidden>
+                        <div class="team-section-heading"><span class="team-kicker">ESTAMOS AQUÍ PARA AYUDARTE</span><h1 id="team-contactos-title">Hablemos</h1><p id="team-contactos-description">Cuéntanos qué necesitas y construyamos juntos una experiencia memorable.</p></div>
+                        <div class="team-contact-layout"><div class="team-contact-card"><span class="team-contact-icon"><i class="fa-solid fa-headset"></i></span><small>CONTACTO DIRECTO</small><span id="team-contact-role">Coordinador Equipo Verde</span><strong id="team-contact-name">Fran Santamaria</strong><a id="team-contact-whatsapp" class="team-button team-button-primary" href="https://wa.me/573224343263" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-whatsapp"></i> Hablar por WhatsApp</a></div><div class="team-location-card"><i class="fa-solid fa-location-dot"></i><small>ENCUÉNTRANOS</small><a id="team-contact-location" href="#" target="_blank" rel="noopener noreferrer"></a><p>Consulta la ubicación o escríbenos para conocer más.</p></div></div>
+                    </section>
+                    <footer class="team-footer"><span>© <span id="team-footer-name">Equipo Verde</span> · Logística &amp; Eventos</span><a href="#team-verde/contactos">Hablemos <i class="fa-solid fa-arrow-right"></i></a></footer>
+                </main>
             </div>
         </div>
 
@@ -849,6 +941,60 @@
                                 <button class="btn-mini btn-add admin-public-config-save" type="button" onclick="guardarConfiguracionPaginaPublica()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR TODA LA PÁGINA WEB</button>
                             </section>
 
+                        </div>
+
+                        <div id="admin-team-card" class="admin-card full-width admin-team-card">
+                            <p class="admin-card-title"><i class="fa-solid fa-leaf"></i> ADMINISTRAR EQUIPO VERDE</p>
+                            <p>Edita la portada, rifa, capacitaciones, eventos y contactos de la página del botón flotante.</p>
+                            <div class="admin-team-fields">
+                                <label><span>Nombre del equipo</span><input id="admin-team-name" maxlength="60" type="text"></label>
+                                <label><span>Etiqueta de portada</span><input id="admin-team-eyebrow" maxlength="100" type="text"></label>
+                                <label><span>Título principal de portada</span><input id="admin-team-intro" maxlength="180" type="text"></label>
+                                <label><span>Descripción de portada</span><textarea id="admin-team-home-description" maxlength="500" rows="3"></textarea></label>
+                                <label><span>Título del carrusel de muestras</span><input id="admin-team-showcase-heading" maxlength="80" type="text"></label>
+                                <label><span>Descripción del carrusel</span><textarea id="admin-team-showcase-intro" maxlength="300" rows="2"></textarea></label>
+                                <label><span>Título de Rifa</span><input id="admin-team-rifa-title" maxlength="80" type="text"></label>
+                                <label><span>Texto debajo del cartel (opcional)</span><textarea id="admin-team-rifa-description" maxlength="500" rows="2"></textarea></label>
+                                <label><span>Título de Capacitaciones</span><input id="admin-team-training-title" maxlength="80" type="text"></label>
+                                <label><span>Descripción de Capacitaciones</span><textarea id="admin-team-training-description" maxlength="500" rows="2"></textarea></label>
+                                <label><span>Título de Eventos</span><input id="admin-team-events-title" maxlength="80" type="text"></label>
+                                <label><span>Descripción de Eventos</span><textarea id="admin-team-events-description" maxlength="500" rows="2"></textarea></label>
+                                <label><span>Título de Contactos</span><input id="admin-team-contacts-title" maxlength="80" type="text"></label>
+                                <label><span>Descripción de Contactos</span><textarea id="admin-team-contacts-description" maxlength="500" rows="2"></textarea></label>
+                                <label><span>Cargo mostrado</span><input id="admin-team-role" maxlength="100" type="text"></label>
+                                <label><span>Nombre de contacto</span><input id="admin-team-contact-name" maxlength="100" type="text"></label>
+                                <label><span>WhatsApp de contacto (10 dígitos)</span><input id="admin-team-whatsapp" type="tel" inputmode="numeric" maxlength="14"></label>
+                                <label><span>Dirección</span><input id="admin-team-address" maxlength="180" type="text"></label>
+                                <label><span>Enlace de Google Maps (opcional)</span><input id="admin-team-map" maxlength="500" type="url" placeholder="https://maps.app.goo.gl/..."></label>
+                            </div>
+                            <h4>CAPACITACIONES</h4>
+                            <div id="admin-team-training-list" class="admin-team-list"></div>
+                            <button class="btn-mini btn-secondary" type="button" onclick="agregarCapacitacionEquipoVerde()"><i class="fa-solid fa-plus"></i> AGREGAR CAPACITACIÓN</button>
+                            <h4>TIPOS DE EVENTO</h4>
+                            <div id="admin-team-events-list" class="admin-team-list"></div>
+                            <button class="btn-mini btn-secondary" type="button" onclick="agregarEventoEquipoVerde()"><i class="fa-solid fa-plus"></i> AGREGAR TIPO</button>
+                            <div class="admin-team-actions"><button class="btn-mini btn-add" type="button" onclick="guardarEquipoVerde()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR EQUIPO VERDE</button><a href="#team-verde" target="_blank" rel="noopener noreferrer">VER PÁGINA</a></div>
+                            <h4>IMÁGENES DE LA PÁGINA</h4>
+                            <p>Selecciona una imagen y súbela por separado. El cartel, el emblema y las fotos originales están incluidos como respaldo.</p>
+                            <div class="admin-team-media-form">
+                                <label><span>Imagen que quieres cambiar</span><select id="admin-team-media-slot"><option value="logo">Emblema de portada</option><option value="rifa">Cartel de la rifa</option></select></label>
+                                <label><span>Foto nueva (PNG, JPG o WEBP)</span><input id="admin-team-media-file" type="file" accept="image/png,image/jpeg,image/webp"></label>
+                                <button class="btn-mini btn-add" type="button" onclick="guardarImagenEquipoVerde()"><i class="fa-solid fa-cloud-arrow-up"></i> SUBIR IMAGEN</button>
+                                <button class="btn-mini btn-secondary" type="button" onclick="restaurarImagenEquipoVerde()"><i class="fa-solid fa-rotate-left"></i> RESTAURAR ORIGINAL</button>
+                            </div>
+                            <h4>FOTOS DE MUESTRA · CARRUSEL DE PORTADA</h4>
+                            <p>Agrega hasta 12 fotografías. Puedes cambiar el título, la descripción o la foto más adelante. Si no publicas ninguna, se verán las imágenes de muestra incluidas en la página.</p>
+                            <div class="admin-team-showcase-form">
+                                <label><span>Título de la foto</span><input id="admin-team-showcase-title" maxlength="80" type="text" placeholder="Ejemplo: Celebración infantil"></label>
+                                <label><span>Descripción breve (opcional)</span><textarea id="admin-team-showcase-description" maxlength="250" rows="2" placeholder="Un momento de nuestro equipo"></textarea></label>
+                                <label><span>Fotografía (JPG, PNG o WEBP)</span><input id="admin-team-showcase-file" type="file" accept="image/jpeg,image/png,image/webp"></label>
+                                <div class="admin-team-showcase-actions">
+                                    <button id="admin-team-showcase-publish" class="btn-mini btn-add" type="button" onclick="publicarMuestraEquipoVerde()"><i class="fa-solid fa-cloud-arrow-up"></i> AGREGAR FOTO</button>
+                                    <button id="admin-team-showcase-cancel" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionMuestraEquipoVerde()" hidden>CANCELAR EDICIÓN</button>
+                                </div>
+                            </div>
+                            <div id="admin-team-showcase-list" class="admin-team-showcase-list"></div>
+                            <small>El botón flotante de TikTok usa el campo «Enlace de TikTok» en Redes y asesores de cotización, arriba.</small>
                         </div>
 
                         <div id="admin-edit-panel-code" class="admin-card">
