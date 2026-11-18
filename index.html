@@ -60,7 +60,7 @@
             estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
         })();
     </script>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=3.11.0">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -166,29 +166,53 @@
             </div>
 
             <div id="auth-user-access" class="auth-access-panel" style="display:none;">
-                <button type="button" class="auth-access-back" onclick="volverSeleccionAcceso()"><i class="fa-solid fa-arrow-left"></i> Volver</button>
-                <div id="auth-login" class="form-group">
-                    <input type="email" id="login-email" placeholder="Usuario (correo electrónico)">
-                    <input type="password" id="login-pass" placeholder="Contraseña">
-                    <button class="btn-primary" onclick="handleLogin()">INGRESAR</button>
-                    <p class="toggle-text" style="color:var(--text-muted); text-align: center; margin-top: 10px;">¿Nuevo? <a href="#" onclick="event.preventDefault(); toggleAuth('reg')" style="color:var(--accent);">Crear cuenta</a></p>
-                </div>
-                <div id="auth-register" class="form-group" style="display:none;">
-                    <input type="text" id="reg-nombre" placeholder="Nombre">
-                    <input type="text" id="reg-apellido" placeholder="Apellido">
-                    <input type="email" id="reg-email" placeholder="Correo">
-                    <input type="password" id="reg-pass" placeholder="Clave (6+ carac.)">
-                    <select id="reg-color" class="dynamic-colors">
-                        <option value="" disabled selected>Color de Equipo</option>
-                        <option value="Verde">Verde</option>
-                        <option value="Naranja">Naranja</option>
-                        <option value="Azul">Azul</option>
-                        <option value="Rojo">Rojo</option>
+                <button type="button" id="auth-user-back" class="auth-access-back" onclick="volverSeleccionAcceso()">← Volver</button>
+                <form id="auth-login" class="form-group auth-card" onsubmit="event.preventDefault(); handleLogin()">
+                    <h2>Inicia sesión</h2>
+                    <label for="login-email">Correo electrónico</label>
+                    <input type="email" id="login-email" required autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="tu@correo.com">
+                    <label for="login-pass">Contraseña</label>
+                    <div class="auth-password"><input type="password" id="login-pass" required autocomplete="current-password"><button type="button" class="auth-eye" aria-controls="login-pass" aria-pressed="false" onclick="alternarClave(this)">Mostrar</button></div>
+                    <button id="auth-login-submit" class="btn-primary" type="submit">Ingresar</button>
+                    <button class="auth-text-action" type="button" onclick="toggleAuth('reset', true)">Olvidé mi contraseña</button>
+                    <p>¿Primera vez aquí? <button class="auth-text-action" type="button" onclick="toggleAuth('reg', true)">Crear cuenta</button></p>
+                </form>
+                <form id="auth-register" class="form-group auth-card" style="display:none;" onsubmit="event.preventDefault(); registrarConCodigo()">
+                    <h2 id="reg-titulo">Crea tu cuenta</h2>
+                    <p id="reg-explica">Necesitas el código de invitación que te dio tu coordinador.</p>
+                    <label for="reg-nombre">Nombre</label><input type="text" id="reg-nombre" required maxlength="80" autocomplete="given-name">
+                    <label for="reg-apellido">Apellido</label><input type="text" id="reg-apellido" required maxlength="80" autocomplete="family-name">
+                    <div id="reg-credenciales" class="auth-fields">
+                        <label for="reg-email">Correo electrónico</label><input type="email" id="reg-email" required autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="tu@correo.com">
+                        <label for="reg-pass">Contraseña <small>(mínimo 6 caracteres)</small></label>
+                        <div class="auth-password"><input type="password" id="reg-pass" required minlength="6" autocomplete="new-password"><button type="button" class="auth-eye" aria-controls="reg-pass" aria-pressed="false" onclick="alternarClave(this)">Mostrar</button></div>
+                    </div>
+                    <label for="reg-color">Equipo</label>
+                    <select id="reg-color" class="dynamic-colors" required>
+                        <option value="" disabled selected>Selecciona tu equipo</option>
+                        <option>Verde</option><option>Naranja</option><option>Azul</option><option>Rojo</option>
                     </select>
-                    <input type="text" id="reg-invite" placeholder="CÓDIGO DE ACCESO">
-                    <button class="btn-primary" onclick="registrarConCodigo()">REGISTRARME</button>
-                    <p class="toggle-text" style="color:var(--text-muted); text-align: center; margin-top: 10px;"><a href="#" onclick="event.preventDefault(); toggleAuth('login')" style="color:var(--accent);">Volver al ingreso</a></p>
+                    <label for="reg-invite">Código de invitación</label>
+                    <input type="text" id="reg-invite" required minlength="4" autocapitalize="none" spellcheck="false" autocomplete="off" placeholder="Tal como te lo dieron">
+                    <button id="auth-register-submit" class="btn-primary" type="submit">Crear cuenta</button>
+                    <button id="reg-volver" class="auth-text-action" type="button" onclick="toggleAuth('login', true)">Ya tengo cuenta · Ingresar</button>
+                    <button id="reg-salir" class="auth-text-action" type="button" hidden onclick="handleLogout()">Usar otra cuenta</button>
+                </form>
+                <form id="auth-reset" class="form-group auth-card" style="display:none;" onsubmit="event.preventDefault(); recuperarClave()">
+                    <h2>Recupera tu contraseña</h2>
+                    <p>Escribe el correo con el que te registraste. Recibirás un enlace para elegir una contraseña nueva.</p>
+                    <label for="reset-email">Correo de tu cuenta</label>
+                    <input type="email" id="reset-email" required autocomplete="email" autocapitalize="none" spellcheck="false" placeholder="tu@correo.com">
+                    <button id="auth-reset-submit" class="btn-primary" type="submit">Enviar enlace</button>
+                    <button class="auth-text-action" type="button" onclick="toggleAuth('login', true)">Volver al ingreso</button>
+                </form>
+                <div id="auth-account" class="form-group auth-card" style="display:none;">
+                    <h2 id="estado-perfil-titulo">Abriendo tu cuenta</h2>
+                    <p id="estado-perfil-texto" role="status"></p>
+                    <button id="estado-perfil-reintentar" type="button" class="btn-primary" onclick="reintentarPerfil()" hidden>Reintentar</button>
+                    <button class="auth-text-action" type="button" onclick="handleLogout()">Usar otra cuenta</button>
                 </div>
+                <p id="auth-feedback" role="status" aria-live="polite" aria-atomic="true"></p>
             </div>
 
             <div id="auth-buyer-access" class="auth-access-panel" style="display:none;">
@@ -559,18 +583,23 @@
                         </div>
                         <div class="card-brand-footer">SENTINELS WEB ID</div>
                     </div>
-                    <div id="perfil-edit-form" class="form-group" style="display:none; margin-top:15px;">
-                        <input type="number" id="edit-doc" placeholder="Documento de Identidad">
-                        <input type="tel" id="edit-tel" placeholder="WhatsApp">
+                    <form id="perfil-edit-form" class="form-group" style="display:none; margin-top:15px;" onsubmit="event.preventDefault(); guardarPerfil()">
+                        <p class="profile-help">Completa estos datos para activar tu perfil. Verifica tu equipo antes de guardar.</p>
+                        <label for="edit-doc">Documento de identidad · 10 dígitos</label>
+                        <input type="text" id="edit-doc" inputmode="numeric" maxlength="10" placeholder="Documento de identidad">
+                        <label for="edit-tel">WhatsApp · 10 dígitos</label>
+                        <input type="tel" id="edit-tel" inputmode="numeric" maxlength="10" placeholder="WhatsApp">
+                        <label for="edit-nacimiento">Fecha de nacimiento</label>
                         <input type="date" id="edit-nacimiento">
-                        <select id="edit-color" class="dynamic-colors">
+                        <label for="edit-color">Equipo</label>
+                        <select id="edit-color" class="dynamic-colors" onchange="delete this.dataset.pendiente">
                             <option value="Verde">Verde</option>
                             <option value="Naranja">Naranja</option>
                             <option value="Azul">Azul</option>
                             <option value="Rojo">Rojo</option>
                         </select>
-                        <button class="btn-primary" onclick="guardarPerfil()">GUARDAR DATOS</button>
-                    </div>
+                        <button type="submit" class="btn-primary" id="perfil-guardar">Guardar datos</button>
+                    </form>
                 </section>
 
                 <section id="sec-usuarios-adm" class="section-content">
@@ -1033,6 +1062,18 @@
             <button onclick="handleLogout()" class="btn-logout">CERRAR SESIÓN</button>
         </div>
     </div>
-    <script defer src="script.js"></script>
+    <aside id="app-inicio-aviso" role="status" hidden>
+        <strong>No se pudo abrir la página todavía.</strong>
+        <span>Comprueba tu conexión y vuelve a cargarla.</span>
+        <button type="button" onclick="location.reload()">Volver a cargar</button>
+    </aside>
+    <script>
+        (() => {
+            const comprobar = () => { document.getElementById("app-inicio-aviso").hidden = window.logisticaAplicacionLista === true; };
+            setTimeout(comprobar, 15000);
+            document.addEventListener("DOMContentLoaded", comprobar, { once:true });
+        })();
+    </script>
+    <script defer src="script.js?v=3.11.0"></script>
 </body>
 </html>

@@ -123,7 +123,7 @@ const FIRESTORE_READY = (() => {
         console.warn("La caché persistente no está disponible; la app continuará en línea", error);
     });
 })();
-const AUTH_READY = auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(error => {
+auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL).catch(error => {
     console.warn("No fue posible fijar la persistencia local de la sesión", error);
 });
 
@@ -798,12 +798,16 @@ function obtenerMensajeError(error) {
     if(codigo.includes("permission-denied")) return "No tienes permisos para realizar esta acción.";
     if(codigo.includes("unavailable") || codigo.includes("network-request-failed")) return "No hay conexión con Firebase. Revisa tu internet.";
     if(codigo.includes("unauthenticated") || codigo.includes("user-token-expired") || codigo.includes("id-token-expired")) return "Tu sesión venció. Cierra sesión e ingresa nuevamente.";
-    if(codigo.includes("wrong-password") || codigo.includes("user-not-found") || codigo.includes("invalid-credential")) return "Correo o contraseña incorrectos.";
+    if(codigo.includes("wrong-password") || codigo.includes("user-not-found") || codigo.includes("invalid-credential") || codigo.includes("invalid-login-credentials")) return "Correo o contraseña incorrectos.";
     if(codigo.includes("invalid-email")) return "El correo electrónico no es válido.";
     if(codigo.includes("email-already-in-use")) return "Este correo ya está registrado.";
     if(codigo.includes("weak-password")) return "La contraseña debe tener al menos 6 caracteres.";
     if(codigo.includes("too-many-requests")) return "Demasiados intentos. Espera unos minutos antes de volver a intentar.";
 
+    if(codigo.includes("password-does-not-meet-requirements")) return "Esta contraseña no cumple los requisitos de tu cuenta. Prueba con una más larga que combine mayúsculas, minúsculas, números y un símbolo.";
+    if(codigo.includes("user-disabled")) return "Esta cuenta está deshabilitada. Contacta al administrador.";
+    if(codigo.includes("operation-not-allowed") || codigo.includes("unauthorized-domain")) return "El acceso por correo no está habilitado en este sitio. Avisa al administrador.";
+    if(codigo.includes("auth/")) return "No se pudo completar la solicitud. Vuelve a intentarlo.";
     return String(error?.message || "Ocurrió un error inesperado en el servidor.");
 }
 
@@ -874,7 +878,6 @@ let categoriasPaginaPublicaPendientes = false;
 let servicioPaginaPublicaEnEdicion = -1;
 let publicacionGaleriaEnEdicionId = "";
 
-let currentInviteCode = "CARGANDO...";
 let listadoCodigos = [];
 const equiposGuardadosIniciales = cargarEquiposGuardados();
 let listadoEquipos = equiposGuardadosIniciales.lista;
@@ -950,7 +953,7 @@ function esAdministradorActual() {
 
 function puedeVerPaginaEquipoVerde() {
     return Boolean(auth.currentUser && currentUserData
-        && normalizarClaveColor(currentUserData.color) === "verde");
+        && currentUserData.email === auth.currentUser.email && normalizarClaveColor(currentUserData.color) === "verde");
 }
 
 function actualizarAccesosEquipoVerde() {
@@ -1008,9 +1011,9 @@ function detenerEscuchadoresPagosAdministracion() {
     comprobantesTemp = {};
 }
 
-function detenerEscuchadoresPrivados() {
+function detenerEscuchadoresPrivados(conservarPerfil = false) {
     if(unsubscribeSeguridad) unsubscribeSeguridad();
-    if(unsubscribeUsuarioActual) unsubscribeUsuarioActual();
+    if(!conservarPerfil && unsubscribeUsuarioActual) unsubscribeUsuarioActual();
     if(unsubscribeAnuncioFlotante) unsubscribeAnuncioFlotante();
     if(unsubscribeConfiguracionPagos) unsubscribeConfiguracionPagos();
     if(unsubscribeConfiguracionBoletasVirtuales) unsubscribeConfiguracionBoletasVirtuales();
@@ -1023,7 +1026,9 @@ function detenerEscuchadoresPrivados() {
     detenerEscuchadoresDatos();
 
     unsubscribeSeguridad = null;
-    unsubscribeUsuarioActual = null;
+    if(!conservarPerfil) unsubscribeUsuarioActual = null;
+    listadoCodigos = [];
+    filtroCodigoGlobal = "Todos";
     unsubscribeAnuncioFlotante = null;
     unsubscribeConfiguracionPagos = null;
     unsubscribeConfiguracionBoletasVirtuales = null;
@@ -1033,53 +1038,190 @@ function detenerEscuchadoresPrivados() {
     ultimoIngresoActualizadoEmail = "";
 }
 
-auth.onAuthStateChanged(async user => {
-    await Promise.all([FIRESTORE_READY, AUTH_READY]);
+const IDS_PANTALLAS_ACCESO = { login: "auth-login", reg: "auth-register", reset: "auth-reset", perfil: "auth-account" };
+let pantallaAcceso = "login";
+let estadoPerfil = "espera";
+let generacionPerfil = 0;
+let temporizadorPerfil = null;
+let detalleAlta = "";
+let correoDelAlta = "";
+let ultimoUidAcceso = null;
 
-    if (user) {
-        currentUserData = null;
-        actualizarAccesosEquipoVerde();
-        // createUserWithEmailAndPassword inicia sesión antes de que el perfil
-        // termine de guardarse. Durante ese intervalo no se debe cargar la vista.
-        if(registroEnCurso) return;
+function avisoAcceso(texto = "", tipo = "") {
+    const aviso = document.getElementById("auth-feedback");
+    aviso.textContent = texto;
+    aviso.dataset.tipo = tipo;
+}
 
-        document.getElementById('view-auth').style.display = 'none';
-        document.getElementById('view-home').style.display = 'flex';
-        sesionIniciada = false; 
-        listenConfiguracionPagosLista();
-        listenConfiguracionBoletasVirtuales();
-        loadUser();
-        if(['#web', '#pagina', '#comprador'].includes(location.hash) || location.hash.startsWith('#team-verde')) aplicarRutaAccesoDesdeEnlace();
-    } else {
+function alternarClave(boton, mostrar) {
+    const campo = document.getElementById(boton.getAttribute("aria-controls"));
+    const visible = mostrar === undefined ? campo.type === "password" : mostrar;
+    campo.type = visible ? "text" : "password";
+    boton.textContent = visible ? "Ocultar" : "Mostrar";
+    boton.setAttribute("aria-label", visible ? "Ocultar contraseña" : "Mostrar contraseña");
+    boton.setAttribute("aria-pressed", String(visible));
+}
+
+function toggleAuth(vista, enfocar = false) {
+    const reparando = vista === "reg" && Boolean(auth.currentUser) && estadoPerfil === "falta";
+    const correoAnterior = document.getElementById(pantallaAcceso === "reg" ? "reg-email" : pantallaAcceso === "reset" ? "reset-email" : "login-email").value.trim();
+    if(vista !== pantallaAcceso) {
+        if(pantallaAcceso === "login") document.getElementById("login-pass").value = "";
+        if(pantallaAcceso === "reg") document.getElementById("reg-pass").value = "";
+    }
+    pantallaAcceso = vista;
+    for(const [clave, id] of Object.entries(IDS_PANTALLAS_ACCESO)) {
+        document.getElementById(id).style.display = clave === vista ? "flex" : "none";
+    }
+    document.getElementById("reg-credenciales").hidden = reparando;
+    document.getElementById("reg-email").disabled = reparando;
+    document.getElementById("reg-pass").disabled = reparando;
+    document.getElementById("reg-volver").hidden = reparando;
+    document.getElementById("reg-salir").hidden = !reparando;
+    document.getElementById("auth-user-back").hidden = reparando || vista === "perfil";
+    document.getElementById("reg-titulo").textContent = reparando ? "Completa tu registro" : "Crea tu cuenta";
+    document.getElementById("reg-explica").textContent = reparando
+        ? "Tu sesión está abierta con " + auth.currentUser.email + ". Confirma estos datos para terminar."
+        : "Necesitas el código de invitación que te dio tu coordinador.";
+    document.getElementById("auth-register-submit").textContent = reparando ? "Guardar mi perfil" : "Crear cuenta";
+    document.querySelectorAll(".auth-eye").forEach(boton => alternarClave(boton, false));
+    avisoAcceso();
+    if(enfocar) {
+        const destino = vista === "reset" ? "reset-email" : vista === "login" ? "login-email" : "reg-nombre";
+        if(vista === "reset" && correoAnterior) document.getElementById(destino).value = correoAnterior;
+        if(vista === "login" && correoAnterior) document.getElementById(destino).value = correoAnterior;
+        if(vista === "reg" && !document.getElementById("reg-email").value) document.getElementById("reg-email").value = correoAnterior;
+        document.getElementById(destino)?.focus();
+    }
+}
+
+function bloquearEnvioAcceso(id, texto) {
+    const boton = document.getElementById(id);
+    if(boton.disabled) return null;
+    const original = boton.textContent;
+    boton.disabled = true;
+    boton.textContent = texto;
+    boton.form.setAttribute("aria-busy", "true");
+    return () => {
+        boton.disabled = false;
+        boton.textContent = original;
+        boton.form.removeAttribute("aria-busy");
+    };
+}
+
+function esperarAcceso(promesa, ms = 18000) {
+    // Un plazo termina la espera visual; no implica que Firebase haya cancelado la operación.
+    let timer;
+    return Promise.race([promesa, new Promise((_, rechazar) => {
+        timer = setTimeout(() => rechazar(Object.assign(new Error("Tiempo de espera agotado"), {code:"acceso/espera"})), ms);
+    })]).finally(() => clearTimeout(timer));
+}
+
+function esErrorRedAcceso(err) {
+    return /network-request-failed|unavailable|deadline-exceeded|acceso\/espera/.test(err?.code || "") || navigator.onLine === false;
+}
+
+function rutaAbiertaAlPublico() {
+    return /^#(web|pagina|comprador)$/i.test(location.hash);
+}
+
+function mostrarPuertaPerfil() {
+    if(!auth.currentUser || currentUserData || rutaAbiertaAlPublico()) return;
+    const base = document.getElementById("view-auth");
+    base.style.display = "block";
+    base.classList.remove("public-site-open");
+    base.closest(".main-wrapper")?.classList.remove("team-page-open");
+    document.getElementById("view-home").style.display = "none";
+    for(const id of ["auth-access-choice", "auth-buyer-access", "auth-public-access", "auth-team-access"]) {
+        document.getElementById(id).style.display = "none";
+    }
+    document.getElementById("auth-user-access").style.display = "block";
+    if(estadoPerfil === "falta") {
+        toggleAuth("reg");
+        if(detalleAlta) avisoAcceso(detalleAlta, "error");
+        return;
+    }
+    toggleAuth("perfil");
+    const espera = estadoPerfil === "espera";
+    document.getElementById("estado-perfil-titulo").textContent = espera ? "Abriendo tu cuenta" : "No se pudo verificar tu perfil";
+    document.getElementById("estado-perfil-texto").textContent = espera ? "Estamos comprobando tu registro."
+        : estadoPerfil === "permiso" ? "Tu sesión está abierta, pero no se pudo leer tu perfil. Reintenta. Si se repite, avisa al administrador."
+        : "Comprueba tu conexión y reintenta con la misma cuenta.";
+    document.getElementById("estado-perfil-reintentar").hidden = espera;
+}
+
+function iniciarCargaPerfil() {
+    if(!auth.currentUser) return;
+    estadoPerfil = "espera";
+    mostrarPuertaPerfil();
+    loadUser();
+}
+
+function reintentarPerfil() {
+    if(!registroEnCurso && auth.currentUser) iniciarCargaPerfil();
+}
+
+function limpiarCredencialesAcceso() {
+    document.getElementById("reg-pass").value = "";
+    document.getElementById("login-pass").value = "";
+    document.querySelectorAll(".auth-eye").forEach(boton => alternarClave(boton, false));
+}
+
+auth.onAuthStateChanged(user => {
+    if((auth.currentUser?.uid ?? null) !== (user?.uid ?? null)) return;
+    const cambiaCuenta = ultimoUidAcceso !== (user?.uid ?? null);
+    if(cambiaCuenta || !user) {
+        ++generacionPerfil;
+        clearTimeout(temporizadorPerfil);
         detenerEscuchadoresPrivados();
-        document.getElementById('view-auth').style.display = 'block';
-        document.getElementById('view-home').style.display = 'none';
         currentUserData = null;
+        sesionIniciada = false;
+        estadoPerfil = "espera";
         actualizarAccesosEquipoVerde();
+    }
+    if(cambiaCuenta && !(registroEnCurso && user?.email && normalizarEmailCuenta(user.email) === correoDelAlta)) {
+        detalleAlta = "";
+        limpiarCredencialesAcceso();
+        document.getElementById("auth-register").reset();
+    }
+    ultimoUidAcceso = user?.uid ?? null;
+    if(user) {
+        // El alta inicia sesión antes de la escritura. El finally retoma la verificación incluso si hubo error.
+        if(registroEnCurso && normalizarEmailCuenta(user.email) === correoDelAlta) return;
+        if(rutaAbiertaAlPublico()) aplicarRutaAccesoDesdeEnlace();
+        iniciarCargaPerfil();
+    } else {
+        document.getElementById("view-home").style.display = "none";
+        document.getElementById("view-auth").style.display = "block";
+        if(cambiaCuenta) toggleAuth("login");
         aplicarRutaAccesoDesdeEnlace();
         listenEquipos();
     }
 });
 
+function aplicarDocumentoEquipos(doc) {
+    const datos = doc.exists ? doc.data() : {};
+    // Usar los valores autorizados por la configuración. Una lista vacía solo conserva Rojo.
+    const lista = datos.lista === undefined ? EQUIPOS_POR_DEFECTO
+        : Array.isArray(datos.lista) ? datos.lista : typeof datos.lista === "string" ? [datos.lista] : [];
+    const validos = lista.filter(equipo => typeof equipo === "string" && equipo === equipo.trim() && equipo.length >= 3 && equipo.length <= 30);
+    listadoEquipos = normalizarListaEquiposActivos(validos.length ? validos : ["Rojo"]);
+    coloresEquipos = normalizarPaletaEquipos(datos.paleta || datos.colores, listadoEquipos);
+    guardarEquiposLocalmente(listadoEquipos, coloresEquipos);
+    actualizarDesplegablesEquipos();
+    return listadoEquipos;
+}
+
 function listenEquipos() {
     if(unsubscribeEquipos) return;
-
-    // El selector debe estar listo aunque Firebase tarde o el teléfono esté
-    // recuperando la conexión. Después se sustituye por la lista más reciente.
     actualizarDesplegablesEquipos();
-
     unsubscribeEquipos = db.collection("configuracion").doc("equipos").onSnapshot(doc => {
-        const datos = doc.exists ? doc.data() : {};
-        const listaRecibida = Array.isArray(datos.lista) ? datos.lista : EQUIPOS_POR_DEFECTO;
-        listadoEquipos = normalizarListaEquiposActivos(listaRecibida);
-        coloresEquipos = normalizarPaletaEquipos(datos.paleta || datos.colores, listadoEquipos);
-        guardarEquiposLocalmente(listadoEquipos, coloresEquipos);
-        actualizarDesplegablesEquipos();
+        if(!doc.exists && doc.metadata.fromCache) return;
+        aplicarDocumentoEquipos(doc);
     }, error => {
-        if(!listadoEquipos.length) listadoEquipos = [...EQUIPOS_POR_DEFECTO];
-        if(!Object.keys(coloresEquipos).length) coloresEquipos = normalizarPaletaEquipos(null, listadoEquipos);
-        actualizarDesplegablesEquipos();
-        manejarError(error, "No se pudieron cargar los equipos");
+        unsubscribeEquipos = null;
+        // Al enviar el registro se verifican los equipos en el servidor. Nunca se da de alta con la caché.
+        console.warn("No se pudieron actualizar los equipos", error.code);
     });
 }
 
@@ -2263,17 +2405,21 @@ function abrirBoletaVirtual() {
 function actualizarDesplegablesEquipos() {
     const selects = document.querySelectorAll('.dynamic-colors');
     selects.forEach(sel => {
-        const currentVal = sel.value;
+        const currentVal = sel.dataset.pendiente || sel.value;
         const isFilter = sel.id.includes('filter');
         const isReg = sel.id === 'reg-color';
         sel.innerHTML = "";
         if(isFilter) sel.innerHTML = `<option value="Todos">Todos los Equipos</option>`;
-        if(isReg) sel.innerHTML = `<option value="" disabled ${!currentVal ? 'selected' : ''}>Color de Equipo</option>`;
+        if(isReg) sel.innerHTML = `<option value="" disabled ${!currentVal ? 'selected' : ''}>Selecciona tu equipo</option>`;
         listadoEquipos.forEach(col => {
             const colSegura = escaparHTML(col);
             sel.innerHTML += `<option value="${colSegura}">${colSegura}</option>`;
         });
-        if(currentVal && Array.from(sel.options).some(opcion => opcion.value === currentVal)) sel.value = currentVal;
+        if(currentVal && Array.from(sel.options).some(opcion => opcion.value === currentVal)) {
+            sel.value = currentVal;
+            delete sel.dataset.pendiente;
+        } else if(sel.dataset.pendiente) sel.selectedIndex = -1;
+        else if(isReg) sel.value = "";
         else if(isFilter) sel.value = "Todos";
     });
     const container = document.getElementById('com-destinatarios-list');
@@ -2499,23 +2645,31 @@ async function guardarConfiguracionPagosLista() {
     }
 }
 
+function codigosDeConfiguracion(datos) {
+    const activos = datos.listaCodigos === undefined ? datos.codigoInvitacion : datos.listaCodigos;
+    const valores = Array.isArray(activos) ? activos : [activos];
+    return [...new Set(valores.filter(codigo => typeof codigo === "string" && codigo.length >= 4))];
+}
+
 function listenInviteCode() {
     if(unsubscribeSeguridad) return;
-
     unsubscribeSeguridad = db.collection("configuracion").doc("seguridad").onSnapshot(doc => {
-        if (doc.exists) {
-            const data = doc.data();
-            listadoCodigos = data.listaCodigos ? data.listaCodigos : (data.codigoInvitacion ? [data.codigoInvitacion] : ["LOGISTICA001"]);
-            currentInviteCode = listadoCodigos[listadoCodigos.length - 1]; 
-            actualizarPanelCodigosMultiples();
-            actualizarFiltroGlobalCodigos();
-        } else {
-            currentInviteCode = "LOGISTICA001";
-            listadoCodigos = ["LOGISTICA001"];
-            actualizarFiltroGlobalCodigos();
-        }
+        listadoCodigos = codigosDeConfiguracion(doc.exists ? doc.data() : {});
+        actualizarPanelCodigosMultiples();
+        actualizarFiltroGlobalCodigos();
     }, error => {
+        unsubscribeSeguridad = null;
         manejarError(error, "No se pudieron cargar los códigos de acceso");
+    });
+}
+
+// Leer y escribir la misma versión evita que dos administradores descarten los códigos del otro.
+async function actualizarCodigosActivos(modificar) {
+    const ref = db.collection("configuracion").doc("seguridad");
+    await db.runTransaction(async tx => {
+        const snap = await tx.get(ref);
+        const listaCodigos = modificar(codigosDeConfiguracion(snap.exists ? snap.data() : {}));
+        tx.set(ref, { listaCodigos, actualizadoPor:auth.currentUser.email, fechaCambio:fechaServidor() }, {merge:true});
     });
 }
 
@@ -2543,6 +2697,7 @@ function actualizarPanelCodigosMultiples() {
     const listDiv = document.getElementById('admin-invite-codes-list');
     if(listDiv) {
         listDiv.innerHTML = "";
+        if(!listadoCodigos.length) listDiv.textContent = "Crea el primer código para habilitar nuevos registros.";
         listadoCodigos.forEach(cod => {
             const codigoSeguro = escaparHTML(cod);
             const codigoEvento = codificarDatoEvento(cod);
@@ -2564,17 +2719,13 @@ async function agregarCodigoInvitacion() {
     const input = document.getElementById('new-invite-code');
     const nuevoCodigo = input.value.trim();
     if(nuevoCodigo.length < 4) return notify("⚠️ El código debe ser más largo");
-    if(listadoCodigos.includes(nuevoCodigo)) return notify("⚠️ El código ya existe");
-    
-    const nuevaLista = [...listadoCodigos, nuevoCodigo];
     const liberarBoton = bloquearBotonActual("GUARDANDO...");
 
     try {
-        await db.collection("configuracion").doc("seguridad").set({
-            listaCodigos: nuevaLista,
-            actualizadoPor: auth.currentUser.email,
-            fechaCambio: fechaServidor()
-        }, {merge: true});
+        await actualizarCodigosActivos(activos => {
+            if(activos.includes(nuevoCodigo)) throw new Error("Ese código ya existe.");
+            return [...activos, nuevoCodigo];
+        });
         notify("✅ Código añadido"); 
         input.value = ""; 
     } catch(error) {
@@ -2591,14 +2742,13 @@ function actualizarCodigoInvitacion() {
 async function eliminarCodigoInvitacion(cod) {
     if(listadoCodigos.length <= 1) return notify("⚠️ Debe haber al menos un código");
     if(!confirm(`¿Eliminar el código "${cod}"?`)) return;
-    const nuevaLista = listadoCodigos.filter(c => c !== cod);
     const liberarBoton = bloquearBotonActual("ELIMINANDO...");
 
     try {
-        await db.collection("configuracion").doc("seguridad").update({
-            listaCodigos: nuevaLista,
-            actualizadoPor: auth.currentUser.email,
-            fechaCambio: fechaServidor()
+        await actualizarCodigosActivos(activos => {
+            if(activos.length <= 1) throw new Error("Conserva al menos un código activo.");
+            if(!activos.includes(cod)) throw new Error("Este código ya no está activo.");
+            return activos.filter(actual => actual !== cod);
         });
         notify("🗑️ Código eliminado");
     } catch(error) {
@@ -2609,23 +2759,38 @@ async function eliminarCodigoInvitacion(cod) {
 }
 
 function loadUser() {
-    const email = auth.currentUser.email;
+    const usuario = auth.currentUser;
+    if(!usuario) return;
+    const email = usuario.email;
+    const intento = ++generacionPerfil;
+    const vigente = () => auth.currentUser?.uid === usuario.uid && intento === generacionPerfil;
     if(unsubscribeUsuarioActual) unsubscribeUsuarioActual();
+    clearTimeout(temporizadorPerfil);
+    temporizadorPerfil = setTimeout(() => {
+        if(vigente() && !currentUserData && estadoPerfil === "espera") {
+            estadoPerfil = "red";
+            mostrarPuertaPerfil();
+        }
+    }, 12000);
 
     const usuarioRef = db.collection("usuarios").doc(email);
-    unsubscribeUsuarioActual = usuarioRef.onSnapshot(doc => {
+    unsubscribeUsuarioActual = usuarioRef.onSnapshot({ includeMetadataChanges:true }, doc => {
+        if(!vigente()) return;
+        // Un resultado de caché vacío no demuestra que falte el perfil. Tampoco abrir datos privados
+        // desde un perfil no confirmado o una escritura local aún no aceptada por el servidor.
+        if(doc.metadata.fromCache || doc.metadata.hasPendingWrites) return;
+        clearTimeout(temporizadorPerfil);
         if(!doc.exists) {
+            if(currentUserData) detenerEscuchadoresPrivados(true);
             currentUserData = null;
+            sesionIniciada = false;
+            estadoPerfil = "falta";
             actualizarAccesosEquipoVerde();
-            document.getElementById('p-full-name').innerText = "CARGANDO PERFIL...";
-            document.getElementById('p-initials').innerText = "...";
-            document.getElementById('user-rank-badge').innerText = "CARGANDO";
-            document.querySelectorAll('.nav-item').forEach(btn => {
-                btn.style.pointerEvents = 'none';
-                btn.style.opacity = '0.3';
-            });
+            listenEquipos();
+            if(!registroEnCurso) mostrarPuertaPerfil();
             return;
         }
+        estadoPerfil = "listo";
 
         const d = doc.data();
         const nombre = String(d.nombre || "").trim();
@@ -2637,8 +2802,20 @@ function loadUser() {
         currentUserData = d;
         currentUserData.email = email;
         actualizarAccesosEquipoVerde();
-        if(location.hash.startsWith("#team-verde")
-            && (!perfilAnteriorCargado || accesoEquipoAnterior !== puedeVerPaginaEquipoVerde())) {
+        if(!perfilAnteriorCargado) {
+            detalleAlta = "";
+            limpiarCredencialesAcceso();
+            document.getElementById("auth-register").reset();
+            document.getElementById("edit-doc").value = d.doc || "";
+            document.getElementById("edit-tel").value = d.tel || "";
+            document.getElementById("edit-nacimiento").value = d.nacimiento || "";
+            const selectEquipo = document.getElementById("edit-color");
+            selectEquipo.dataset.pendiente = d.color || "";
+            actualizarDesplegablesEquipos();
+            listenConfiguracionPagosLista();
+            listenConfiguracionBoletasVirtuales();
+            aplicarRutaAccesoDesdeEnlace();
+        } else if(/^#team-verde/i.test(location.hash) && accesoEquipoAnterior !== puedeVerPaginaEquipoVerde()) {
             aplicarRutaAccesoDesdeEnlace();
         }
         actualizarContactoPagoLista();
@@ -2648,8 +2825,7 @@ function loadUser() {
         if(ultimoIngresoActualizadoEmail !== email) {
             ultimoIngresoActualizadoEmail = email;
             usuarioRef.update({ lastLogin: fechaServidor() }).catch(error => {
-                ultimoIngresoActualizadoEmail = "";
-                manejarError(error, "No se pudo actualizar la hora de conexión");
+                if(vigente()) manejarError(error, "No se pudo actualizar la hora de conexión");
             });
         }
 
@@ -2772,9 +2948,14 @@ function loadUser() {
             sesionIniciada = true;
         }
     }, error => {
+        if(!vigente()) return;
+        clearTimeout(temporizadorPerfil);
+        if(currentUserData) detenerEscuchadoresPrivados(true);
         currentUserData = null;
+        sesionIniciada = false;
+        estadoPerfil = error.code === "permission-denied" ? "permiso" : "red";
         actualizarAccesosEquipoVerde();
-        manejarError(error, "No se pudo cargar tu perfil");
+        mostrarPuertaPerfil();
     });
 }
 
@@ -2940,50 +3121,71 @@ function showSection(id) {
 }
 
 async function registrarConCodigo() {
-    const n = document.getElementById('reg-nombre').value.trim();
-    const a = document.getElementById('reg-apellido').value.trim();
-    const e = document.getElementById('reg-email').value.trim().toLowerCase();
-    const p = document.getElementById('reg-pass').value;
-    const col = String(document.getElementById('reg-color').value || "").trim();
-    const c = document.getElementById('reg-invite').value.trim();
+    if(registroEnCurso) return;
+    const form = document.getElementById("auth-register");
+    if(!form.reportValidity()) return;
+    const anterior = auth.currentUser;
+    if(anterior && estadoPerfil !== "falta") { reintentarPerfil(); return; }
+    const campo = id => document.getElementById(id);
+    const nombre = campo("reg-nombre").value.trim(), apellido = campo("reg-apellido").value.trim();
+    const equipoElegido = campo("reg-color").value;
+    const clave = anterior ? "" : campo("reg-pass").value;
+    const codigo = campo("reg-invite").value.trim(); // Conservar exactamente el código del coordinador.
+    const correo = normalizarEmailCuenta(anterior?.email || campo("reg-email").value);
+    if(!nombre || !apellido || nombre.length > 80 || apellido.length > 80)
+        return avisoAcceso("Escribe tu nombre y apellido, de hasta 80 caracteres cada uno.", "error");
+    if(codigo.length < 4) return avisoAcceso("El código de invitación debe tener al menos 4 caracteres.", "error");
+    if(!equipoElegido) return avisoAcceso("Selecciona tu equipo.", "error");
+    if(navigator.onLine === false) return avisoAcceso("Conéctate a internet para guardar tu registro. Tus datos siguen en el formulario.", "error");
 
-    if(!n || !a || !e || !p || !col || !c) return notify("⚠️ Completa todos los datos del registro");
-    if(!listadoEquipos.some(equipo => normalizarClaveColor(equipo) === normalizarClaveColor(col))) {
-        actualizarDesplegablesEquipos();
-        return notify("⚠️ Ese equipo ya no está disponible. Selecciona nuevamente el color");
-    }
-
-    let credencial = null;
+    const liberar = bloquearEnvioAcceso("auth-register-submit", "Comprobando…");
+    if(!liberar) return;
     registroEnCurso = true;
-    const liberarBoton = bloquearBotonActual("REGISTRANDO...");
-
+    correoDelAlta = correo;
+    let etapa = "equipos", mensaje = "";
     try {
-        credencial = await auth.createUserWithEmailAndPassword(e, p);
-        await credencial.user.getIdToken(true);
-        await db.collection("usuarios").doc(credencial.user.email).set({
-            nombre: n,
-            apellido: a,
-            color: col,
-            creado: fechaServidor(),
-            rango: 'Recreador',
-            inscripcion: 'NO',
-            codigoInvitacion: c
-        });
-        notify("✅ Registro completado correctamente");
-        location.reload();
+        avisoAcceso("Comprobando que tu equipo sigue activo…");
+        const equiposDoc = await esperarAcceso(db.collection("configuracion").doc("equipos").get({source:"server"}));
+        const equiposAhora = aplicarDocumentoEquipos(equiposDoc);
+        const color = equiposAhora.find(equipo => normalizarClaveColor(equipo) === normalizarClaveColor(equipoElegido));
+        if(!color) throw Object.assign(new Error("Ese equipo ya no está activo. Selecciona uno de la lista actualizada."), {code:"acceso/equipo"});
+        if(anterior ? auth.currentUser?.uid !== anterior.uid : Boolean(auth.currentUser))
+            throw Object.assign(new Error("La sesión cambió. Vuelve a ingresar con tu cuenta."), {code:"acceso/sesion"});
+        etapa = "cuenta";
+        avisoAcceso(anterior ? "Comprobando tu sesión…" : "Creando tu cuenta…");
+        const user = anterior || (await esperarAcceso(auth.createUserWithEmailAndPassword(correo, clave))).user;
+        limpiarCredencialesAcceso();
+        etapa = "perfil";
+        await esperarAcceso(user.getIdToken());
+        if(auth.currentUser?.uid !== user.uid) throw Object.assign(new Error("La sesión cambió. Ingresa de nuevo."), {code:"acceso/sesion"});
+        avisoAcceso("Guardando tu perfil…");
+        const ref = db.collection("usuarios").doc(user.email);
+        await esperarAcceso(db.runTransaction(async tx => {
+            if(auth.currentUser?.uid !== user.uid) throw Object.assign(new Error("La sesión cambió. Ingresa de nuevo."), {code:"acceso/sesion"});
+            const snap = await tx.get(ref);
+            if(!snap.exists) tx.set(ref, { nombre, apellido, color, creado: fechaServidor(),
+                rango:"Recreador", inscripcion:"NO", codigoInvitacion:codigo });
+        }));
+        detalleAlta = "";
     } catch(err) {
-        if(credencial?.user) {
-            await credencial.user.delete().catch(errorLimpieza => {
-                console.error("No se pudo revertir el usuario incompleto:", errorLimpieza);
-            });
-            if(auth.currentUser) await auth.signOut().catch(() => {});
-        }
-
-        if(err.code === 'permission-denied') notify("❌ Firebase rechazó el código o el color. Publica las reglas incluidas en esta actualización");
-        else manejarError(err, "No se pudo completar el registro");
+        if(esErrorRedAcceso(err)) mensaje = etapa === "cuenta"
+            ? "No pudimos confirmar si la cuenta se creó. Comprueba internet e intenta ingresar con este mismo correo."
+            : "No pudimos confirmar el registro. Comprueba tu conexión y reintenta con el mismo correo.";
+        else if(err.code === "permission-denied") mensaje = etapa === "perfil"
+            ? "No se autorizó el registro. Revisa con tu coordinador que el código esté activo y escrito igual, incluidas las mayúsculas. Si es correcto, avisa al administrador."
+            : "No se pudo consultar la lista de equipos. Reintenta o avisa al administrador.";
+        else if(err.code === "auth/email-already-in-use") {
+            campo("login-email").value = correo;
+            toggleAuth("login");
+            mensaje = "Este correo ya tiene una cuenta. Ingresa para continuar tu registro o pulsa «Olvidé mi contraseña».";
+        } else mensaje = obtenerMensajeError(err);
+        detalleAlta = mensaje;
+        avisoAcceso(mensaje, "error");
     } finally {
         registroEnCurso = false;
-        liberarBoton();
+        correoDelAlta = "";
+        liberar();
+        if(auth.currentUser && normalizarEmailCuenta(auth.currentUser.email) === correo) iniciarCargaPerfil();
     }
 }
 
@@ -3791,19 +3993,27 @@ async function guardarPerfil() {
     if(!col) return notify("⚠️ Selecciona tu equipo");
     const fechaNacimiento = new Date(`${nac}T00:00:00`);
     if(!Number.isFinite(fechaNacimiento.getTime()) || fechaNacimiento > new Date()) return notify("⚠️ Revisa la fecha de nacimiento");
-    const liberarBoton = bloquearBotonActual("GUARDANDO...");
+    const usuario = auth.currentUser;
+    if(!usuario || !currentUserData) return notify("Ingresa con tu cuenta para guardar el perfil.");
+    if(navigator.onLine === false) return notify("Sin conexión. Tus datos siguen en el formulario.");
+    const nombre = obtenerNombreCompletoUsuario(currentUserData);
+    const liberar = bloquearEnvioAcceso("perfil-guardar", "Guardando…");
+    if(!liberar) return;
     try {
-        await db.collection("usuarios").doc(auth.currentUser.email).update({ doc: doc, tel: tel, nacimiento: nac, color: col });
+        await esperarAcceso(db.collection("usuarios").doc(usuario.email).update({ doc, tel, nacimiento:nac, color:col }));
+        if(auth.currentUser?.uid !== usuario.uid) return;
         try {
-            await sincronizarConsultasUsuarioEditado(auth.currentUser.email, obtenerNombreCompletoUsuario(currentUserData), col, tel);
-            notify("✅ Perfil y contactos de boletas actualizados");
+            await esperarAcceso(sincronizarConsultasUsuarioEditado(usuario.email, nombre, col, tel));
+            if(auth.currentUser?.uid === usuario.uid) notify("✅ Perfil guardado.");
         } catch(error) {
-            notify("⚠️ Perfil guardado; no se pudieron actualizar todas las consultas. Vuelve a guardar para reintentar.");
+            if(auth.currentUser?.uid === usuario.uid) notify("Perfil guardado. Si algún contacto de boleta no se actualizó, avisa al administrador.");
         }
     } catch(error) {
-        manejarError(error, "No se pudo guardar el perfil");
+        if(auth.currentUser?.uid !== usuario.uid) return;
+        if(esErrorRedAcceso(error)) notify("No se pudo confirmar el guardado. Revisa tu conexión y vuelve a intentar si el perfil sigue incompleto.");
+        else manejarError(error, "No se pudo guardar el perfil");
     } finally {
-        liberarBoton();
+        liberar();
     }
 }
 
@@ -6055,6 +6265,7 @@ function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio", actualizarRuta = t
     const vistaAcceso = document.getElementById("view-auth");
     if(!selector || !accesoUsuario || !accesoComprador || !accesoPublico || !accesoEquipo || !vistaAcceso) return;
 
+    const usuarioYaVisible = accesoUsuario.style.display === "block";
     selector.style.display = "none";
     accesoUsuario.style.display = tipo === "usuario" ? "block" : "none";
     accesoComprador.style.display = tipo === "comprador" ? "block" : "none";
@@ -6066,7 +6277,7 @@ function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio", actualizarRuta = t
         ? `team-verde${subpaginaEquipo === "inicio" ? "" : `/${subpaginaEquipo}`}` : tipo;
     if(actualizarRuta && location.hash !== `#${ruta}`) history.pushState(null, "", `#${ruta}`);
 
-    if(tipo === "usuario") toggleAuth("login");
+    if(tipo === "usuario" && !usuarioYaVisible) toggleAuth("login");
     if(tipo === "comprador") {
         document.getElementById("buyer-lookup-ticket")?.focus();
     }
@@ -6084,6 +6295,12 @@ function abrirAccesoInicial(tipo, subpaginaEquipo = "inicio", actualizarRuta = t
 }
 
 function volverSeleccionAcceso() {
+    limpiarCredencialesAcceso();
+    if(auth.currentUser && !currentUserData) {
+        history.replaceState(null, "", location.pathname + location.search);
+        mostrarPuertaPerfil();
+        return;
+    }
     const selector = document.getElementById("auth-access-choice");
     const accesoUsuario = document.getElementById("auth-user-access");
     const accesoComprador = document.getElementById("auth-buyer-access");
@@ -6110,6 +6327,10 @@ function volverSeleccionAcceso() {
 }
 
 function aplicarRutaAccesoDesdeEnlace() {
+    if(auth.currentUser && !currentUserData && !rutaAbiertaAlPublico()) {
+        if(!registroEnCurso) mostrarPuertaPerfil();
+        return;
+    }
     const ruta = location.hash.replace(/^#/, "").toLowerCase();
     const paginaEquipo = /^team-verde(?:\/(inicio|rifa|capacitaciones|eventos|contactos))?$/.exec(ruta);
     if(paginaEquipo) {
@@ -6117,11 +6338,6 @@ function aplicarRutaAccesoDesdeEnlace() {
             document.getElementById("view-auth").style.display = "block";
             document.getElementById("view-home").style.display = "none";
             abrirAccesoInicial("usuario", "inicio", false);
-            return;
-        }
-        if(!currentUserData) {
-            document.getElementById("view-auth").style.display = "none";
-            document.getElementById("view-home").style.display = "flex";
             return;
         }
         if(!puedeVerPaginaEquipoVerde()) {
@@ -6139,11 +6355,15 @@ function aplicarRutaAccesoDesdeEnlace() {
     }
     document.getElementById("view-auth").style.display = "block";
     document.getElementById("view-home").style.display = "none";
-    if(ruta === "usuario") abrirAccesoInicial("usuario");
-    else if(ruta === "comprador") abrirAccesoInicial("comprador");
-    else if(ruta === "web" || ruta === "pagina") abrirAccesoInicial("pagina");
-    else if(paginaEquipo) abrirAccesoInicial("equipo", paginaEquipo[1] || "inicio");
-    else volverSeleccionAcceso();
+    // Al navegar con Atrás o abrir un enlace, no volver a agregar la misma ruta al historial.
+    if(ruta === "usuario") abrirAccesoInicial("usuario", "inicio", false);
+    else if(ruta === "comprador") abrirAccesoInicial("comprador", "inicio", false);
+    else if(ruta === "web" || ruta === "pagina") abrirAccesoInicial("pagina", "inicio", false);
+    else if(paginaEquipo) abrirAccesoInicial("equipo", paginaEquipo[1] || "inicio", false);
+    else {
+        if(location.hash) history.replaceState(null, "", location.pathname + location.search);
+        volverSeleccionAcceso();
+    }
     cargarConfiguracionPaginaPublica();
 }
 
@@ -6449,18 +6669,41 @@ async function sincronizarConsultaCompradores() {
 }
 
 async function handleLogin() {
-    const e = document.getElementById('login-email').value.trim();
-    const p = document.getElementById('login-pass').value;
-    if(!e || !p) return notify("⚠️ Ingresa tu correo y contraseña");
-
-    const liberarBoton = bloquearBotonActual("INGRESANDO...");
+    const form = document.getElementById("auth-login");
+    if(!form.reportValidity()) return;
+    const email = normalizarEmailCuenta(document.getElementById("login-email").value);
+    const pass = document.getElementById("login-pass").value;
+    const liberar = bloquearEnvioAcceso("auth-login-submit", "Ingresando…");
+    if(!liberar) return;
     try {
-        await auth.signInWithEmailAndPassword(e, p);
+        avisoAcceso("Comprobando tus datos…");
+        const credencial = await esperarAcceso(auth.signInWithEmailAndPassword(email, pass));
+        limpiarCredencialesAcceso();
+        if(credencial.user && auth.currentUser?.uid === credencial.user.uid && !currentUserData && !unsubscribeUsuarioActual) iniciarCargaPerfil();
     } catch(error) {
-        manejarError(error, "No se pudo iniciar sesión");
-    } finally {
-        liberarBoton();
-    }
+        if(pantallaAcceso === "login") avisoAcceso(esErrorRedAcceso(error) ? "No se pudo confirmar el ingreso. Revisa tu conexión y reintenta." : obtenerMensajeError(error), "error");
+    } finally { liberar(); }
+}
+
+async function recuperarClave() {
+    const form = document.getElementById("auth-reset");
+    if(!form.reportValidity()) return;
+    const correo = normalizarEmailCuenta(document.getElementById("reset-email").value);
+    const liberar = bloquearEnvioAcceso("auth-reset-submit", "Enviando…");
+    if(!liberar) return;
+    const resultado = "Si existe una cuenta con este correo, recibirás un enlace para crear tu contraseña. Revisa también la carpeta de spam.";
+    try {
+        auth.languageCode = "es";
+        avisoAcceso("Solicitando el enlace…");
+        await esperarAcceso(auth.sendPasswordResetEmail(correo));
+        if(pantallaAcceso === "reset") avisoAcceso(resultado);
+    } catch(error) {
+        if(pantallaAcceso !== "reset") return;
+        if(error.code === "auth/user-not-found") avisoAcceso(resultado);
+        else avisoAcceso(esErrorRedAcceso(error)
+            ? "No se pudo confirmar el envío. Revisa tu correo y tu conexión antes de volver a intentarlo."
+            : obtenerMensajeError(error), "error");
+    } finally { liberar(); }
 }
 
 async function handleLogout() {
@@ -6474,8 +6717,6 @@ async function handleLogout() {
         liberarBoton();
     }
 }
-function toggleAuth(view) { if(view === 'reg') { document.getElementById('auth-login').style.display = 'none'; document.getElementById('auth-register').style.display = 'flex'; } else { document.getElementById('auth-register').style.display = 'none'; document.getElementById('auth-login').style.display = 'flex'; } }
-
 function calcularEdad(fecha) {
     if(!fecha) return "---";
     const fNac = new Date(`${fecha}T00:00:00`), fHoy = new Date();
@@ -7456,3 +7697,7 @@ async function exportarPagosExcel() {
         liberarBoton();
     }
 }
+
+// Si no se pudo cargar Firebase o este archivo, el HTML ofrece recargar.
+window.logisticaAplicacionLista = true;
+document.getElementById("app-inicio-aviso").hidden = true;
