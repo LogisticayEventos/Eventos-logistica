@@ -845,6 +845,12 @@ let currentUserData = null;
 let allUsers = [];
 let allBoletas = [];
 let allComunicados = [];
+const metricasComunicados = new Map();
+const unsubscribeMetricasComunicados = new Map();
+const comunicadosVistosSesion = new Set();
+let observerComunicados = null;
+let errorMetricasComunicadosNotificado = false;
+let comunicadoGuardando = false;
 let configuracionPagoLista = normalizarConfiguracionPagosLista();
 let qrPagoPendiente = "";
 let configuracionBoletasVirtuales = normalizarConfiguracionBoletasVirtuales(CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO);
@@ -979,6 +985,7 @@ function detenerEscuchadoresDatos() {
     if(unsubscribeUsuarios) unsubscribeUsuarios();
     if(unsubscribeBoletas) unsubscribeBoletas();
     if(unsubscribeComunicados) unsubscribeComunicados();
+    detenerMetricasComunicados();
 
     unsubscribeUsuarios = null;
     unsubscribeBoletas = null;
@@ -2424,11 +2431,14 @@ function actualizarDesplegablesEquipos() {
     });
     const container = document.getElementById('com-destinatarios-list');
     if(container) {
-        container.innerHTML = `<label><input type="checkbox" name="dest-color" value="Todos" checked><span>TODOS</span></label>`;
+        const anteriores = new Set([...container.querySelectorAll('input[name="dest-color"]:checked')].map(casilla => casilla.value));
+        if(!anteriores.size) anteriores.add("Todos");
+        container.innerHTML = `<label><input type="checkbox" name="dest-color" value="Todos" onchange="sincronizarDestinatariosComunicado(this)" ${anteriores.has("Todos") ? "checked" : ""}><span>TODOS</span></label>`;
         listadoEquipos.forEach(col => {
             const colSegura = escaparHTML(col);
-            container.innerHTML += `<label><input type="checkbox" name="dest-color" value="${colSegura}"><span>${escaparHTML(String(col).toUpperCase())}</span></label>`;
+            container.innerHTML += `<label><input type="checkbox" name="dest-color" value="${colSegura}" onchange="sincronizarDestinatariosComunicado(this)" ${anteriores.has(col) ? "checked" : ""}><span>${escaparHTML(String(col).toUpperCase())}</span></label>`;
         });
+        sincronizarDestinatariosComunicado();
     }
 
     if(esAdministradorActual()) {
@@ -2883,7 +2893,7 @@ function loadUser() {
         document.getElementById('admin-edit-panel-code').style.display = esAdmin ? 'block' : 'none';
         document.getElementById('admin-delete-staff-code-panel').style.display = esAdmin ? 'block' : 'none';
         document.getElementById('global-code-filter').style.display = esRecreador ? 'none' : 'block';
-        document.getElementById('admin-com-form').style.display = (esAdmin || esCGeneral) ? 'flex' : 'none';
+        document.getElementById('admin-com-form').style.display = (esAdmin || esCGeneral) ? 'block' : 'none';
         document.getElementById('admin-floating-announcement').style.display = esAdmin ? 'block' : 'none';
         document.getElementById('admin-payment-settings').style.display = esAdmin ? 'block' : 'none';
         if(esAdmin) {
@@ -3393,36 +3403,276 @@ function renderBoletas() {
 
 }
 
-function renderComunicados() {
-    if(!currentUserData) return;
-    const email = auth.currentUser.email;
-    const r = (email === ADMIN_EMAIL) ? "Administrador" : (currentUserData.rango || "Recreador");
-    const esAdmin = (r === "Administrador"), esCGeneral = (r === "Coordinador General");
-    const userColor = currentUserData.color || "Gris";
-
-    let htmlComunicados = "";
-    allComunicados.forEach(c => { 
-        if (!(esAdmin || esCGeneral)) {
-            const destinatarios = c.destinatarios || ["Todos"];
-            if (!destinatarios.includes("Todos") && !destinatarios.includes(userColor)) return;
-        }
-        const comunicadoIdEvento = codificarDatoEvento(c.id);
-        const del = esAdmin ? `<button class="del-com-btn" onclick="eliminarComunicado(decodeURIComponent('${comunicadoIdEvento}'))">✕</button>` : '';
-        let extraInfo = "", countdownHtml = "", docBtn = "";
-        const enlaceSeguro = obtenerUrlHttpSegura(c.linkDoc);
-        if(enlaceSeguro) docBtn = `<a href="${escaparHTML(enlaceSeguro)}" target="_blank" rel="noopener noreferrer" class="com-doc-link">📁 CLICK AQUI</a>`;
-        if(c.fechaEv) {
-            const fEv = new Date(c.fechaEv + "T" + (c.horaEv || "00:00")), hoy = new Date();
-            const dias = Math.ceil((fEv - hoy) / (1000 * 60 * 60 * 24));
-            extraInfo = `<div class="com-meta-box"><span>📅 ${escaparHTML(c.fechaEv)}</span>${c.horaEv ? `<span>⏰ ${escaparHTML(c.horaEv)}</span>` : ''}${c.lugarEv ? `<span>📍 ${escaparHTML(c.lugarEv)}</span>` : ''}</div>`;
-            if(dias > 0) countdownHtml = `<div class="com-countdown">Faltan <b>${dias}</b> días</div>`;
-            else if (dias === 0) countdownHtml = `<div class="com-countdown today">¡Es Hoy!</div>`;
-        }
-        const fechaPublicacion = convertirFechaFirestore(c.fecha);
-        htmlComunicados += `<div class="com-card">${del}<div class="com-header"><span class="com-tag">INFO</span><h3>${escaparHTML(c.titulo)}</h3></div><p class="com-body">${escaparHTML(c.mensaje)}</p>${extraInfo}${docBtn}${countdownHtml}<div class="com-footer">Publicado: ${fechaPublicacion ? fechaPublicacion.toLocaleDateString() : '---'}</div></div>`;
-    });
-    document.getElementById('comunicados-list').innerHTML = htmlComunicados;
+function puedeGestionarComunicadosActual() {
+    return puedeGestionarPagosActual();
 }
+
+function normalizarTipoComunicado(comunicado = {}) {
+    return comunicado.tipo === "evento" ? "evento" : "anuncio";
+}
+
+function comunicadoVisibleParaUsuario(comunicado = {}) {
+    if(puedeGestionarComunicadosActual()) return true;
+    const destinatarios = Array.isArray(comunicado.destinatarios) ? comunicado.destinatarios : ["Todos"];
+    if(destinatarios.includes("Todos")) return true;
+    const equipoActual = normalizarClaveColor(currentUserData?.color);
+    return destinatarios.some(equipo => normalizarClaveColor(equipo) === equipoActual);
+}
+
+function formatearFechaComunicado(valor) {
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(String(valor || ""))) return "---";
+    const [anio, mes, dia] = String(valor).split("-").map(Number);
+    return new Intl.DateTimeFormat("es-CO", { day:"2-digit", month:"short", year:"numeric" }).format(new Date(anio, mes - 1, dia));
+}
+
+function formatearPagoComunicado(valor) {
+    const total = Number(valor);
+    return Number.isFinite(total) && total >= 0
+        ? new Intl.NumberFormat("es-CO", { style:"currency", currency:"COP", maximumFractionDigits:0 }).format(total)
+        : "$0";
+}
+
+function obtenerMetricasComunicado(id) {
+    return metricasComunicados.get(id) || { vistos:0, asisten:0, noAsisten:0, miRespuesta:"" };
+}
+
+function detenerMetricasComunicados() {
+    unsubscribeMetricasComunicados.forEach(cancelar => cancelar());
+    unsubscribeMetricasComunicados.clear();
+    metricasComunicados.clear();
+    comunicadosVistosSesion.clear();
+    if(observerComunicados) observerComunicados.disconnect();
+    observerComunicados = null;
+    errorMetricasComunicadosNotificado = false;
+}
+
+function escucharMetricasComunicado(id) {
+    if(!auth.currentUser || unsubscribeMetricasComunicados.has(id)) return;
+    const uid = auth.currentUser.uid;
+    const cancelar = db.collection("comunicados").doc(id).collection("respuestas").onSnapshot(snapshot => {
+        const metricas = { vistos:0, asisten:0, noAsisten:0, miRespuesta:"" };
+        snapshot.forEach(documento => {
+            const respuesta = documento.data() || {};
+            if(respuesta.visto === true) metricas.vistos++;
+            if(respuesta.respuesta === "asiste") metricas.asisten++;
+            if(respuesta.respuesta === "no_asiste") metricas.noAsisten++;
+            if(documento.id === uid) metricas.miRespuesta = ["asiste", "no_asiste"].includes(respuesta.respuesta) ? respuesta.respuesta : "";
+        });
+        metricasComunicados.set(id, metricas);
+        renderComunicados();
+    }, error => {
+        unsubscribeMetricasComunicados.delete(id);
+        console.warn("No se pudieron cargar las métricas del comunicado", id, error.code);
+        if(!errorMetricasComunicadosNotificado && puedeGestionarComunicadosActual()) {
+            errorMetricasComunicadosNotificado = true;
+            notify("Publica las reglas incluidas en esta versión para activar vistas y asistencias.");
+        }
+    });
+    unsubscribeMetricasComunicados.set(id, cancelar);
+}
+
+function sincronizarMetricasComunicados(comunicadosVisibles) {
+    const ids = new Set(comunicadosVisibles.map(comunicado => comunicado.id));
+    unsubscribeMetricasComunicados.forEach((cancelar, id) => {
+        if(ids.has(id)) return;
+        cancelar();
+        unsubscribeMetricasComunicados.delete(id);
+        metricasComunicados.delete(id);
+    });
+    ids.forEach(escucharMetricasComunicado);
+}
+
+async function registrarVistaComunicado(id) {
+    const usuario = auth.currentUser;
+    if(!usuario || !currentUserData) return;
+    const clave = `${usuario.uid}:${id}`;
+    if(comunicadosVistosSesion.has(clave)) return;
+    comunicadosVistosSesion.add(clave);
+    const referencia = db.collection("comunicados").doc(id).collection("respuestas").doc(usuario.uid);
+    try {
+        await db.runTransaction(async transaction => {
+            const documento = await transaction.get(referencia);
+            if(documento.exists && documento.data().visto === true) return;
+            const datos = { visto:true, actualizado:fechaServidor() };
+            if(!documento.exists) datos.respuesta = "";
+            transaction.set(referencia, datos, { merge:true });
+        });
+    } catch(error) {
+        comunicadosVistosSesion.delete(clave);
+        console.warn("No se pudo registrar la vista", id, error.code);
+    }
+}
+
+function observarComunicadosVisibles() {
+    if(observerComunicados) observerComunicados.disconnect();
+    const tarjetas = [...document.querySelectorAll(".com-card[data-com-id]")];
+    if(typeof IntersectionObserver !== "function") {
+        tarjetas.forEach(tarjeta => registrarVistaComunicado(tarjeta.dataset.comId));
+        return;
+    }
+    observerComunicados = new IntersectionObserver(entradas => {
+        entradas.forEach(entrada => {
+            if(!entrada.isIntersecting || entrada.intersectionRatio < 0.35) return;
+            registrarVistaComunicado(entrada.target.dataset.comId);
+            observerComunicados?.unobserve(entrada.target);
+        });
+    }, { threshold:[0.35] });
+    tarjetas.forEach(tarjeta => observerComunicados.observe(tarjeta));
+}
+
+async function responderAsistenciaComunicado(id, respuesta) {
+    if(!["asiste", "no_asiste"].includes(respuesta)) return;
+    const usuario = auth.currentUser;
+    const comunicado = allComunicados.find(item => item.id === id);
+    if(!usuario || !currentUserData) return notify("Inicia sesión para responder.");
+    if(!comunicado || normalizarTipoComunicado(comunicado) !== "evento" || !comunicadoVisibleParaUsuario(comunicado)) {
+        return notify("Este evento ya no está disponible para tu equipo.");
+    }
+    const referencia = db.collection("comunicados").doc(id).collection("respuestas").doc(usuario.uid);
+    const liberar = bloquearBotonActual("GUARDANDO…");
+    try {
+        await referencia.set({ visto:true, respuesta, actualizado:fechaServidor() }, { merge:true });
+        comunicadosVistosSesion.add(`${usuario.uid}:${id}`);
+        notify(respuesta === "asiste" ? "✅ Confirmaste tu asistencia" : "Respuesta guardada: no asistiré");
+    } catch(error) {
+        manejarError(error, "No se pudo guardar tu respuesta");
+    } finally {
+        liberar();
+    }
+}
+
+function renderComunicados() {
+    const contenedor = document.getElementById("comunicados-list");
+    if(!contenedor || !currentUserData || !auth.currentUser) return;
+    const puedeGestionar = puedeGestionarComunicadosActual();
+    const visibles = allComunicados.filter(comunicadoVisibleParaUsuario);
+    sincronizarMetricasComunicados(visibles);
+
+    if(!visibles.length) {
+        contenedor.innerHTML = '<div class="com-empty"><i class="fa-regular fa-bell-slash"></i><p>No hay anuncios ni eventos para tu equipo.</p></div>';
+        return;
+    }
+
+    contenedor.innerHTML = visibles.map(comunicado => {
+        const idEvento = codificarDatoEvento(comunicado.id);
+        const tipo = normalizarTipoComunicado(comunicado);
+        const esEvento = tipo === "evento";
+        const estado = comunicado.estadoEvento === "Confirmado" ? "Confirmado" : "Por confirmar";
+        const confirmado = estado === "Confirmado";
+        const enlace = obtenerUrlHttpSegura(comunicado.linkDoc);
+        const metricas = obtenerMetricasComunicado(comunicado.id);
+        const destinatarios = Array.isArray(comunicado.destinatarios) && comunicado.destinatarios.length ? comunicado.destinatarios : ["Todos"];
+        const fechaPublicacion = convertirFechaFirestore(comunicado.fecha);
+        const claseGestion = puedeGestionar ? " has-management" : "";
+        const accionesGestion = puedeGestionar ? `<div class="com-card-actions">
+            <button type="button" class="com-card-action" onclick="editarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Editar publicación"><i class="fa-solid fa-pen"></i></button>
+            <button type="button" class="com-card-action is-delete" onclick="eliminarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Eliminar publicación"><i class="fa-solid fa-trash"></i></button>
+        </div>` : "";
+        const estadoHtml = esEvento ? `<span class="com-event-status ${confirmado ? "confirmed" : "pending"}"><i class="fa-solid fa-circle"></i>${escaparHTML(estado.toUpperCase())}</span>` : "";
+        const detalles = esEvento ? `<div class="com-event-details">
+            <div class="com-event-detail"><i class="fa-solid fa-location-dot"></i><div><span>Ubicación</span><strong>${escaparHTML(comunicado.ubicacion || "Por definir")}</strong></div></div>
+            <div class="com-event-detail"><i class="fa-solid fa-people-group"></i><div><span>Punto de encuentro</span><strong>${escaparHTML(comunicado.puntoEncuentro || "Por definir")}</strong></div></div>
+            <div class="com-event-detail"><i class="fa-regular fa-calendar"></i><div><span>Fecha</span><strong>${escaparHTML(formatearFechaComunicado(comunicado.fechaInicio))} – ${escaparHTML(formatearFechaComunicado(comunicado.fechaFin))}</strong></div></div>
+            <div class="com-event-detail"><i class="fa-regular fa-clock"></i><div><span>Hora de inicio</span><strong>${escaparHTML(comunicado.horaInicio || "Por definir")}</strong></div></div>
+            <div class="com-event-detail is-payment"><i class="fa-solid fa-money-bill-wave"></i><div><span>Pago total</span><strong>${escaparHTML(formatearPagoComunicado(comunicado.pagoTotal))}</strong></div></div>
+        </div>` : "";
+        const documento = enlace ? `<a href="${escaparHTML(enlace)}" target="_blank" rel="noopener noreferrer" class="com-doc-link"><i class="fa-solid fa-paperclip"></i> Abrir enlace o documento</a>` : "";
+        const respuesta = metricas.miRespuesta;
+        const asistencia = esEvento ? `<div class="com-response-panel">
+            <strong>¿Asistirás a este evento?</strong>
+            <div class="com-response-actions">
+                <button type="button" class="com-response-button is-yes ${respuesta === "asiste" ? "active" : ""}" aria-pressed="${respuesta === "asiste"}" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'asiste')"><i class="fa-solid fa-check"></i> Sí asistiré</button>
+                <button type="button" class="com-response-button is-no ${respuesta === "no_asiste" ? "active" : ""}" aria-pressed="${respuesta === "no_asiste"}" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'no_asiste')"><i class="fa-solid fa-xmark"></i> No asistiré</button>
+            </div>
+            <p class="com-my-response">${respuesta === "asiste" ? "Tu respuesta: asistiré" : respuesta === "no_asiste" ? "Tu respuesta: no asistiré" : "Todavía no has respondido"}</p>
+        </div>` : "";
+        const estadisticas = `<div class="com-stats ${esEvento ? "" : "is-single"}" aria-label="Estadísticas de la publicación">
+            <span class="com-stat"><i class="fa-regular fa-eye"></i><strong>${metricas.vistos}</strong><small>Lo vieron</small></span>
+            ${esEvento ? `<span class="com-stat"><i class="fa-solid fa-user-check"></i><strong>${metricas.asisten}</strong><small>Asisten</small></span><span class="com-stat"><i class="fa-solid fa-user-xmark"></i><strong>${metricas.noAsisten}</strong><small>No asisten</small></span>` : ""}
+        </div>`;
+
+        return `<article class="com-card ${esEvento ? "is-event" : "is-announcement"}${claseGestion}" data-com-id="${escaparHTML(comunicado.id)}" style="--event-status-color:${confirmado ? "var(--success)" : "var(--warning)"}">
+            ${accionesGestion}
+            <div class="com-header"><span class="com-tag">${esEvento ? "EVENTO" : "INFO"}</span>${estadoHtml}<h3>${escaparHTML(comunicado.titulo || "Sin título")}</h3></div>
+            <p class="com-body">${escaparHTML(comunicado.mensaje || "")}</p>
+            ${detalles}${documento}
+            <p class="com-targets"><i class="fa-solid fa-users"></i> Visible para: ${escaparHTML(destinatarios.join(", "))}</p>
+            ${asistencia}${estadisticas}
+            <div class="com-footer">Publicado: ${fechaPublicacion ? fechaPublicacion.toLocaleDateString("es-CO") : "---"}</div>
+        </article>`;
+    }).join("");
+    observarComunicadosVisibles();
+}
+
+function cambiarTipoComunicado(tipo) {
+    const esEvento = tipo === "evento";
+    document.querySelectorAll('input[name="com-tipo"]').forEach(radio => { radio.checked = radio.value === (esEvento ? "evento" : "anuncio"); });
+    const campos = document.getElementById("com-event-fields");
+    campos.hidden = !esEvento;
+    campos.querySelectorAll("input,select").forEach(campo => {
+        campo.disabled = !esEvento;
+        campo.required = esEvento;
+    });
+    document.querySelector("#com-publicar span").textContent = document.getElementById("com-edit-id").value
+        ? "GUARDAR CAMBIOS" : esEvento ? "PUBLICAR EVENTO" : "PUBLICAR ANUNCIO";
+    actualizarEstadoFormularioEvento();
+}
+
+function actualizarEstadoFormularioEvento() {
+    const campo = document.getElementById("com-estado-evento");
+    campo.dataset.status = campo.value === "Confirmado" ? "confirmado" : "pendiente";
+}
+
+function sincronizarDestinatariosComunicado(cambio) {
+    const casillas = [...document.querySelectorAll('input[name="dest-color"]')];
+    const todos = casillas.find(casilla => casilla.value === "Todos");
+    if(cambio?.value === "Todos" && cambio.checked) casillas.forEach(casilla => { if(casilla !== cambio) casilla.checked = false; });
+    else if(cambio?.value !== "Todos" && cambio?.checked && todos) todos.checked = false;
+    if(!casillas.some(casilla => casilla.checked) && todos) todos.checked = true;
+}
+
+function limpiarFormularioComunicado(cerrar = false) {
+    const formulario = document.getElementById("com-editor-form");
+    formulario.reset();
+    document.getElementById("com-edit-id").value = "";
+    document.getElementById("com-cancelar-edicion").hidden = true;
+    cambiarTipoComunicado("anuncio");
+    document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = casilla.value === "Todos"; });
+    actualizarEstadoFormularioEvento();
+    if(cerrar) document.getElementById("admin-com-form").open = false;
+}
+
+function cancelarEdicionComunicado() {
+    limpiarFormularioComunicado(false);
+    notify("Edición cancelada");
+}
+
+function editarComunicado(id) {
+    if(!puedeGestionarComunicadosActual()) return notify("No tienes permiso para editar publicaciones.");
+    const comunicado = allComunicados.find(item => item.id === id);
+    if(!comunicado) return notify("La publicación ya no está disponible.");
+    const tipo = normalizarTipoComunicado(comunicado);
+    const valor = (campo, dato) => { document.getElementById(campo).value = dato ?? ""; };
+    valor("com-edit-id", comunicado.id);
+    valor("com-titulo", comunicado.titulo);
+    valor("com-mensaje", comunicado.mensaje);
+    valor("com-estado-evento", comunicado.estadoEvento === "Confirmado" ? "Confirmado" : "Por confirmar");
+    valor("com-ubicacion", comunicado.ubicacion || comunicado.lugarEv);
+    valor("com-fecha-inicio", comunicado.fechaInicio || comunicado.fechaEv);
+    valor("com-fecha-fin", comunicado.fechaFin || comunicado.fechaEv);
+    valor("com-hora-inicio", comunicado.horaInicio || comunicado.horaEv);
+    valor("com-punto-encuentro", comunicado.puntoEncuentro);
+    valor("com-pago-total", comunicado.pagoTotal || "");
+    valor("com-link-doc", comunicado.linkDoc);
+    const elegidos = Array.isArray(comunicado.destinatarios) ? comunicado.destinatarios : ["Todos"];
+    document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = elegidos.includes(casilla.value); });
+    cambiarTipoComunicado(tipo);
+    document.getElementById("com-cancelar-edicion").hidden = false;
+    const panel = document.getElementById("admin-com-form");
+    panel.open = true;
+    panel.scrollIntoView({ behavior:"smooth", block:"start" });
+}
+
 
 function renderUsuarios() {
     if(!currentUserData) return;
@@ -3846,51 +4096,89 @@ async function eliminarBoletaEntregada(num, usuarioId = auth.currentUser.email) 
     }
 }
 
-async function eliminarComunicado(id) {
-    const liberarBoton = bloquearBotonActual("...");
+async function eliminarRespuestasComunicado(id) {
+    const coleccion = db.collection("comunicados").doc(id).collection("respuestas");
+    while(true) {
+        const snapshot = await coleccion.limit(400).get();
+        if(snapshot.empty) return;
+        const lote = db.batch();
+        snapshot.docs.forEach(documento => lote.delete(documento.ref));
+        await lote.commit();
+        if(snapshot.size < 400) return;
+    }
+}
 
+async function eliminarComunicado(id) {
+    if(!puedeGestionarComunicadosActual()) return notify("No tienes permiso para eliminar publicaciones.");
+    const comunicado = allComunicados.find(item => item.id === id);
+    if(!comunicado) return notify("La publicación ya no está disponible.");
+    if(!confirm(`¿Eliminar “${comunicado.titulo || "esta publicación"}” y sus respuestas?`)) return;
+    const liberar = bloquearBotonActual("ELIMINANDO…");
     try {
+        await eliminarRespuestasComunicado(id);
         await db.collection("comunicados").doc(id).delete();
-        notify("🗑️ Comunicado eliminado");
+        notify("🗑️ Publicación eliminada");
     } catch(error) {
-        manejarError(error, "No se pudo eliminar el comunicado");
+        manejarError(error, "No se pudo eliminar la publicación");
     } finally {
-        liberarBoton();
+        liberar();
     }
 }
 
 async function publicarComunicado() {
-    const t = document.getElementById('com-titulo').value.trim();
-    const m = document.getElementById('com-mensaje').value.trim();
-    const fE = document.getElementById('com-fecha-ev').value;
-    const hE = document.getElementById('com-hora-ev').value;
-    const lE = document.getElementById('com-lugar-ev').value.trim();
-    const linkOriginal = document.getElementById('com-link-doc').value.trim();
-    const linkD = obtenerUrlHttpSegura(linkOriginal);
-    const destCheckboxes = document.querySelectorAll('input[name="dest-color"]:checked');
-    let destinatarios = Array.from(destCheckboxes).map(cb => cb.value);
-    if(destinatarios.length === 0) return notify("⚠️ Selecciona al menos un destinatario");
+    if(comunicadoGuardando) return;
+    if(!puedeGestionarComunicadosActual()) return notify("No tienes permiso para publicar.");
+    const formulario = document.getElementById("com-editor-form");
+    if(!formulario.reportValidity()) return;
+    const valor = id => String(document.getElementById(id).value ?? "").trim();
+    const editId = valor("com-edit-id");
+    const tipo = document.querySelector('input[name="com-tipo"]:checked')?.value === "evento" ? "evento" : "anuncio";
+    const titulo = valor("com-titulo");
+    const mensaje = valor("com-mensaje");
+    const linkOriginal = valor("com-link-doc");
+    const linkDoc = obtenerUrlHttpSegura(linkOriginal);
+    let destinatarios = [...document.querySelectorAll('input[name="dest-color"]:checked')].map(casilla => casilla.value);
     if(destinatarios.includes("Todos")) destinatarios = ["Todos"];
-    if(!t || !m) return notify("⚠️ Título y mensaje obligatorios");
-    if(linkOriginal && !linkD) return notify("⚠️ El enlace debe comenzar con http:// o https://");
-    const liberarBoton = bloquearBotonActual("PUBLICANDO...");
+    if(!destinatarios.length) return notify("Selecciona al menos un equipo.");
+    if(!titulo || !mensaje) return notify("El título y la información son obligatorios.");
+    if(linkOriginal && !linkDoc) return notify("El enlace debe comenzar con http:// o https://.");
 
+    let estadoEvento = "", ubicacion = "", fechaInicio = "", fechaFin = "", horaInicio = "", puntoEncuentro = "", pagoTotal = 0;
+    if(tipo === "evento") {
+        estadoEvento = valor("com-estado-evento") === "Confirmado" ? "Confirmado" : "Por confirmar";
+        ubicacion = valor("com-ubicacion");
+        fechaInicio = valor("com-fecha-inicio");
+        fechaFin = valor("com-fecha-fin");
+        horaInicio = valor("com-hora-inicio");
+        puntoEncuentro = valor("com-punto-encuentro");
+        pagoTotal = Number(valor("com-pago-total"));
+        if(!ubicacion || !fechaInicio || !fechaFin || !horaInicio || !puntoEncuentro || !Number.isSafeInteger(pagoTotal) || pagoTotal < 1 || pagoTotal > 100000000) {
+            return notify("Completa correctamente todos los datos del evento.");
+        }
+        if(fechaFin < fechaInicio) return notify("La fecha de finalización no puede ser anterior a la fecha de inicio.");
+    }
+
+    const datos = { tipo, titulo, mensaje, destinatarios, estadoEvento, ubicacion, fechaInicio, fechaFin,
+        horaInicio, puntoEncuentro, pagoTotal, linkDoc, actualizado:fechaServidor() };
+    const liberar = bloquearBotonActual(editId ? "GUARDANDO…" : "PUBLICANDO…");
+    comunicadoGuardando = true;
     try {
-        await db.collection("comunicados").add({ titulo: t, mensaje: m, destinatarios: destinatarios, fechaEv: fE, horaEv: hE, lugarEv: lE, linkDoc: linkD, fecha: fechaServidor() });
-        document.getElementById('com-titulo').value = "";
-        document.getElementById('com-mensaje').value = "";
-        document.getElementById('com-fecha-ev').value = "";
-        document.getElementById('com-hora-ev').value = "";
-        document.getElementById('com-lugar-ev').value = "";
-        document.getElementById('com-link-doc').value = "";
-        document.querySelectorAll('input[name="dest-color"]').forEach(cb => cb.checked = (cb.value === "Todos"));
-        notify("🚀 Publicado");
+        if(editId) {
+            if(!allComunicados.some(item => item.id === editId)) throw new Error("La publicación ya no existe.");
+            await db.collection("comunicados").doc(editId).update(datos);
+        } else {
+            await db.collection("comunicados").add({ ...datos, fecha:fechaServidor() });
+        }
+        limpiarFormularioComunicado(true);
+        notify(editId ? "✅ Publicación actualizada" : tipo === "evento" ? "✅ Evento publicado" : "✅ Anuncio publicado");
     } catch(error) {
-        manejarError(error, "No se pudo publicar el comunicado");
+        manejarError(error, editId ? "No se pudo actualizar la publicación" : "No se pudo publicar");
     } finally {
-        liberarBoton();
+        comunicadoGuardando = false;
+        liberar();
     }
 }
+
 
 async function inscribirBoleta() {
     if(ventaEnCurso) return;

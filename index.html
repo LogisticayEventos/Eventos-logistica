@@ -60,7 +60,7 @@
             estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=3.11.0">
+    <link rel="stylesheet" href="style.css?v=3.12.0">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -442,20 +442,45 @@
             </nav>
             <div class="content-scroll">
                 <section id="sec-comunicados" class="section-content">
-                    <div id="admin-com-form" style="display:none;" class="form-group admin-panel-lite">
-                        <input type="text" id="com-titulo" placeholder="Título">
-                        <textarea id="com-mensaje" placeholder="Mensaje..."></textarea>
-                        <div class="color-selector-mini" id="com-destinatarios-list">
-                            <label><input type="checkbox" name="dest-color" value="Todos" checked><span>TODOS</span></label>
-                        </div>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-                            <input type="date" id="com-fecha-ev">
-                            <input type="time" id="com-hora-ev">
-                        </div>
-                        <input type="text" id="com-lugar-ev" placeholder="Lugar">
-                        <input type="url" id="com-link-doc" placeholder="Link de documento">
-                        <button class="btn-primary" onclick="publicarComunicado()">PUBLICAR</button>
-                    </div>
+                    <details id="admin-com-form" style="display:none;" class="admin-panel-lite com-composer">
+                        <summary class="com-composer-summary">
+                            <span class="com-composer-summary-icon"><i class="fa-solid fa-bullhorn"></i></span>
+                            <span><strong>Crear anuncio o evento</strong><small>Abre este panel solo cuando necesites publicar.</small></span>
+                            <i class="fa-solid fa-chevron-down com-composer-chevron" aria-hidden="true"></i>
+                        </summary>
+                        <form id="com-editor-form" class="com-composer-body" onsubmit="event.preventDefault(); publicarComunicado()">
+                            <input type="hidden" id="com-edit-id">
+                            <fieldset class="com-type-fieldset">
+                                <legend>¿Qué quieres publicar?</legend>
+                                <div class="com-type-switch">
+                                    <label><input type="radio" name="com-tipo" value="anuncio" checked onchange="cambiarTipoComunicado(this.value)"><span><i class="fa-solid fa-bullhorn"></i> Anuncio</span></label>
+                                    <label><input type="radio" name="com-tipo" value="evento" onchange="cambiarTipoComunicado(this.value)"><span><i class="fa-solid fa-calendar-check"></i> Evento</span></label>
+                                </div>
+                            </fieldset>
+                            <label class="com-field"><span>Título</span><input type="text" id="com-titulo" maxlength="200" placeholder="Título de la publicación" required></label>
+                            <label class="com-field"><span>Información</span><textarea id="com-mensaje" maxlength="5000" rows="4" placeholder="Escribe la información que verá el personal…" required></textarea></label>
+                            <fieldset class="com-team-fieldset">
+                                <legend>Equipos que pueden verlo</legend>
+                                <div class="color-selector-mini" id="com-destinatarios-list">
+                                    <label><input type="checkbox" name="dest-color" value="Todos" checked onchange="sincronizarDestinatariosComunicado(this)"><span>TODOS</span></label>
+                                </div>
+                            </fieldset>
+                            <div id="com-event-fields" class="com-event-fields" hidden>
+                                <label class="com-field com-status-field"><span>Estado del evento</span><select id="com-estado-evento" data-status="pendiente" onchange="actualizarEstadoFormularioEvento()" disabled><option value="Por confirmar">POR CONFIRMAR</option><option value="Confirmado">CONFIRMADO</option></select></label>
+                                <label class="com-field com-field-wide"><span>Ubicación del evento</span><input type="text" id="com-ubicacion" maxlength="300" placeholder="Dirección o lugar donde se realizará" disabled></label>
+                                <label class="com-field"><span>Fecha de inicio</span><input type="date" id="com-fecha-inicio" disabled></label>
+                                <label class="com-field"><span>Fecha de finalización</span><input type="date" id="com-fecha-fin" disabled></label>
+                                <label class="com-field"><span>Hora de inicio</span><input type="time" id="com-hora-inicio" disabled></label>
+                                <label class="com-field"><span>Pago total</span><div class="com-money-input"><span>$</span><input type="number" id="com-pago-total" min="1" max="100000000" step="1000" inputmode="numeric" placeholder="0" disabled></div></label>
+                                <label class="com-field com-field-wide"><span>Punto de encuentro</span><input type="text" id="com-punto-encuentro" maxlength="300" placeholder="Indica dónde y cómo debe presentarse el personal" disabled></label>
+                            </div>
+                            <label class="com-field"><span>Enlace o documento <small>(opcional)</small></span><input type="url" id="com-link-doc" maxlength="1000" placeholder="https://…"></label>
+                            <div class="com-form-actions">
+                                <button id="com-publicar" class="btn-primary" type="submit"><i class="fa-solid fa-paper-plane"></i> <span>PUBLICAR ANUNCIO</span></button>
+                                <button id="com-cancelar-edicion" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionComunicado()" hidden>Cancelar edición</button>
+                            </div>
+                        </form>
+                    </details>
 
                     <div id="virtual-ticket-user-card" class="virtual-ticket-user-card" style="display:none;">
                         <div class="virtual-ticket-user-heading">
@@ -1074,6 +1099,6 @@
             document.addEventListener("DOMContentLoaded", comprobar, { once:true });
         })();
     </script>
-    <script defer src="script.js?v=3.11.0"></script>
+    <script defer src="script.js?v=3.12.0"></script>
 </body>
 </html>
