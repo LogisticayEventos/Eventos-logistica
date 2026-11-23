@@ -652,6 +652,28 @@ function abrirWhatsappCompatibleAndroid(url) {
     return true;
 }
 
+function guardarArchivoCompatibleAndroid(nombre, tipoMime, contenidoBase64) {
+    if(!ES_APLICACION_ANDROID || !window.LogisticaAndroid || typeof window.LogisticaAndroid.saveBase64File !== "function") {
+        return false;
+    }
+
+    try {
+        window.LogisticaAndroid.saveBase64File(String(nombre || "archivo"), String(tipoMime || "application/octet-stream"), String(contenidoBase64 || ""));
+        return true;
+    } catch(error) {
+        console.warn("No se pudo entregar el archivo a Android", error);
+        return false;
+    }
+}
+
+function guardarLibroExcel(workbook, nombreArchivo) {
+    if(ES_APLICACION_ANDROID && window.LogisticaAndroid && typeof window.LogisticaAndroid.saveBase64File === "function") {
+        const contenido = XLSX.write(workbook, { bookType:"xlsx", type:"base64" });
+        if(guardarArchivoCompatibleAndroid(nombreArchivo, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", contenido)) return;
+    }
+    XLSX.writeFile(workbook, nombreArchivo);
+}
+
 document.addEventListener("click", evento => {
     if(!ES_APLICACION_ANDROID) return;
     const objetivo = evento.target instanceof Element ? evento.target : null;
@@ -851,13 +873,6 @@ const comunicadosVistosSesion = new Set();
 let observerComunicados = null;
 let errorMetricasComunicadosNotificado = false;
 let comunicadoGuardando = false;
-let configuracionNotificaciones = { vapidKey:"", urlSitio:"" };
-let cargaConfiguracionNotificaciones = null;
-let mensajeriaPush = null;
-let registroServiceWorkerPush = null;
-let suscripcionPushActiva = false;
-let sincronizacionPushEnCurso = null;
-let mensajePushEscuchado = false;
 let configuracionPagoLista = normalizarConfiguracionPagosLista();
 let qrPagoPendiente = "";
 let configuracionBoletasVirtuales = normalizarConfiguracionBoletasVirtuales(CONFIGURACION_BOLETAS_VIRTUALES_POR_DEFECTO);
@@ -1189,11 +1204,9 @@ auth.onAuthStateChanged(user => {
         clearTimeout(temporizadorPerfil);
         detenerEscuchadoresPrivados();
         currentUserData = null;
-        suscripcionPushActiva = false;
         sesionIniciada = false;
         estadoPerfil = "espera";
         actualizarAccesosEquipoVerde();
-        actualizarPanelNotificaciones();
     }
     if(cambiaCuenta && !(registroEnCurso && user?.email && normalizarEmailCuenta(user.email) === correoDelAlta)) {
         detalleAlta = "";
@@ -2396,9 +2409,15 @@ function descargarBoletaVirtual() {
     if(!boletaVirtualActual || !esComprobanteSeguro(boletaVirtualActual.imagen)) return notify("⚠️ Primero abre tu boleta virtual");
     const tipo = boletaVirtualActual.imagen.match(/^data:image\/(jpeg|png|webp);/)?.[1] || "jpg";
     const extension = tipo === "jpeg" ? "jpg" : tipo;
+    const nombreArchivo = `boleta-virtual-${boletaVirtualActual.ciclo}-ronda-${boletaVirtualActual.ronda}.${extension}`;
+    const contenidoBase64 = boletaVirtualActual.imagen.split(",", 2)[1] || "";
+    if(guardarArchivoCompatibleAndroid(nombreArchivo, `image/${tipo}`, contenidoBase64)) {
+        notify("Selecciona dónde guardar tu boleta virtual");
+        return;
+    }
     const enlace = document.createElement("a");
     enlace.href = boletaVirtualActual.imagen;
-    enlace.download = `boleta-virtual-${boletaVirtualActual.ciclo}-ronda-${boletaVirtualActual.ronda}.${extension}`;
+    enlace.download = nombreArchivo;
     document.body.appendChild(enlace);
     enlace.click();
     enlace.remove();
@@ -2820,8 +2839,6 @@ function loadUser() {
         const perfilAnteriorCargado = Boolean(currentUserData);
         currentUserData = d;
         currentUserData.email = email;
-        suscripcionPushActiva = obtenerEstadoLocalPush(usuario.uid);
-        cargarConfiguracionNotificaciones().catch(error => console.warn("Las notificaciones se reintentarán más tarde", error));
         actualizarAccesosEquipoVerde();
         if(!perfilAnteriorCargado) {
             detalleAlta = "";
@@ -2907,11 +2924,8 @@ function loadUser() {
         document.getElementById('admin-com-form').style.display = (esAdmin || esCGeneral) ? 'block' : 'none';
         document.getElementById('admin-floating-announcement').style.display = esAdmin ? 'block' : 'none';
         document.getElementById('admin-payment-settings').style.display = esAdmin ? 'block' : 'none';
-        const panelNotificacionesAdmin = document.getElementById('admin-push-settings');
-        if(panelNotificacionesAdmin) panelNotificacionesAdmin.style.display = esAdmin ? 'block' : 'none';
         if(esAdmin) {
             cargarFormularioConfiguracionPagos();
-            rellenarConfiguracionNotificacionesAdmin();
             renderAdministradorEquipos();
             renderAdministradorBoletasVirtuales();
             if(configuracionBoletasVirtuales.indiceVersion < 1) {
@@ -3417,310 +3431,13 @@ function renderBoletas() {
 
 }
 
-function normalizarConfiguracionNotificaciones(datos = {}) {
-    const vapidKey = String(datos.vapidKey || "").trim();
-    let urlSitio = String(datos.urlSitio || "").trim();
-    try {
-        const url = new URL(urlSitio);
-        url.hash = "";
-        url.search = "";
-        if(url.protocol !== "https:") urlSitio = "";
-        else urlSitio = url.href;
-    } catch(error) {
-        urlSitio = "";
-    }
-    return { vapidKey, urlSitio };
-}
-
-function claveVapidValida(clave) {
-    return /^[A-Za-z0-9_-]{80,160}$/.test(String(clave || "").trim());
-}
-
-function urlBaseActualNotificaciones() {
-    if(window.LogisticaAndroid) {
-        return "https://logisticayeventos.github.io/Eventos-logistica/";
-    }
-    try {
-        const url = new URL("./", location.href);
-        url.hash = "";
-        url.search = "";
-        return url.protocol === "https:" ? url.href : "";
-    } catch(error) {
-        return "";
-    }
-}
-
-function navegadorSoportaNotificacionesPush() {
-    return location.protocol === "https:"
-        && typeof Notification !== "undefined"
-        && "serviceWorker" in navigator
-        && typeof firebase?.messaging === "function";
-}
-
-function obtenerEstadoLocalPush(uid = auth.currentUser?.uid) {
-    if(!uid) return false;
-    try { return localStorage.getItem(`lye-push-activa-${uid}`) === "1"; }
-    catch(error) { return false; }
-}
-
-function guardarEstadoLocalPush(activo, uid = auth.currentUser?.uid) {
-    if(!uid) return;
-    try {
-        const clave = `lye-push-activa-${uid}`;
-        if(activo) localStorage.setItem(clave, "1");
-        else localStorage.removeItem(clave);
-    } catch(error) {
-        console.warn("No fue posible guardar el estado local de notificaciones", error);
-    }
-}
-
-function actualizarPanelNotificaciones() {
-    const tarjeta = document.getElementById("push-notification-card");
-    const titulo = document.getElementById("push-notification-title");
-    const descripcion = document.getElementById("push-notification-description");
-    const boton = document.getElementById("push-notification-button");
-    if(!tarjeta || !titulo || !descripcion || !boton) return;
-
-    if(!auth.currentUser || !currentUserData) {
-        tarjeta.hidden = true;
-        return;
-    }
-
-    const configurada = claveVapidValida(configuracionNotificaciones.vapidKey) && Boolean(configuracionNotificaciones.urlSitio);
-    const soportada = navegadorSoportaNotificacionesPush();
-    tarjeta.hidden = !configurada && !esAdministradorActual();
-    tarjeta.classList.remove("is-active", "is-blocked");
-    boton.hidden = false;
-    boton.disabled = false;
-
-    if(!configurada) {
-        titulo.textContent = "Notificaciones pendientes de configuración";
-        descripcion.textContent = "Guarda la clave Web Push desde Administración para habilitarlas.";
-        boton.hidden = true;
-        return;
-    }
-    if(!soportada) {
-        titulo.textContent = "Este navegador no admite avisos";
-        descripcion.textContent = "Abre la página con Chrome, Edge o un navegador compatible mediante HTTPS.";
-        boton.hidden = true;
-        return;
-    }
-    if(Notification.permission === "denied") {
-        tarjeta.classList.add("is-blocked");
-        titulo.textContent = "Notificaciones bloqueadas";
-        descripcion.textContent = "Permítelas desde la configuración del navegador y vuelve a abrir la página.";
-        boton.innerHTML = '<i class="fa-solid fa-circle-info"></i> VER AYUDA';
-        return;
-    }
-    if(Notification.permission === "granted" && suscripcionPushActiva) {
-        tarjeta.classList.add("is-active");
-        titulo.textContent = "Notificaciones activadas";
-        descripcion.textContent = `Recibirás los comunicados disponibles para ${currentUserData.color || "tu equipo"}.`;
-        boton.className = "btn-mini btn-secondary";
-        boton.innerHTML = '<i class="fa-regular fa-bell-slash"></i> DESACTIVAR';
-        return;
-    }
-
-    titulo.textContent = "Recibe los nuevos comunicados";
-    descripcion.textContent = "Activa los avisos para enterarte aunque la página esté cerrada.";
-    boton.className = "btn-mini btn-add";
-    boton.innerHTML = '<i class="fa-solid fa-bell"></i> ACTIVAR';
-}
-
-function rellenarConfiguracionNotificacionesAdmin() {
-    const clave = document.getElementById("admin-push-vapid");
-    const url = document.getElementById("admin-push-url");
-    const estado = document.getElementById("admin-push-status");
-    if(clave) clave.value = configuracionNotificaciones.vapidKey;
-    if(url) url.value = configuracionNotificaciones.urlSitio || urlBaseActualNotificaciones();
-    if(estado) estado.textContent = claveVapidValida(configuracionNotificaciones.vapidKey)
-        ? "Clave Web Push configurada. Los usuarios ya pueden activar avisos."
-        : "Falta guardar la clave pública Web Push de Firebase.";
-}
-
-async function cargarConfiguracionNotificaciones(forzar = false) {
-    if(cargaConfiguracionNotificaciones && !forzar) return cargaConfiguracionNotificaciones;
-    if(!auth.currentUser) return configuracionNotificaciones;
-    cargaConfiguracionNotificaciones = (async () => {
-        try {
-            const documento = await db.collection("configuracion").doc("notificaciones").get();
-            configuracionNotificaciones = normalizarConfiguracionNotificaciones(documento.exists ? documento.data() : {});
-            suscripcionPushActiva = obtenerEstadoLocalPush();
-            rellenarConfiguracionNotificacionesAdmin();
-            actualizarPanelNotificaciones();
-            if(suscripcionPushActiva && typeof Notification !== "undefined" && Notification.permission === "granted" && claveVapidValida(configuracionNotificaciones.vapidKey)) {
-                sincronizarSuscripcionPush(false, true).catch(error => console.warn("No se pudo renovar la suscripción push", error));
-            }
-        } catch(error) {
-            console.warn("No se pudo cargar la configuración de notificaciones", error);
-            actualizarPanelNotificaciones();
-        }
-        return configuracionNotificaciones;
-    })();
-    try { return await cargaConfiguracionNotificaciones; }
-    finally { cargaConfiguracionNotificaciones = null; }
-}
-
-function obtenerMensajeriaPush() {
-    if(!navegadorSoportaNotificacionesPush()) return null;
-    if(mensajeriaPush) return mensajeriaPush;
-    try {
-        mensajeriaPush = firebase.messaging();
-        if(!mensajePushEscuchado && typeof mensajeriaPush.onMessage === "function") {
-            mensajePushEscuchado = true;
-            mensajeriaPush.onMessage(payload => {
-                const datos = payload?.data || {};
-                const titulo = String(datos.title || "Nuevo comunicado");
-                notify(`🔔 ${titulo}: ${String(datos.body || "Entra a Inicio para verlo.")}`);
-            });
-        }
-        return mensajeriaPush;
-    } catch(error) {
-        console.warn("Firebase Messaging no está disponible", error);
-        return null;
-    }
-}
-
-async function obtenerRegistroServiceWorkerPush() {
-    if(registroServiceWorkerPush) return registroServiceWorkerPush;
-    registroServiceWorkerPush = navigator.serviceWorker.register("./firebase-messaging-sw.js?v=3.14.0", { scope:"./" });
-    try { return await registroServiceWorkerPush; }
-    catch(error) {
-        registroServiceWorkerPush = null;
-        throw error;
-    }
-}
-
-async function idDispositivoDesdeToken(token) {
-    const bytes = new TextEncoder().encode(String(token));
-    const hash = await crypto.subtle.digest("SHA-256", bytes);
-    return [...new Uint8Array(hash)].map(valor => valor.toString(16).padStart(2, "0")).join("");
-}
-
-async function guardarSuscripcionPush(token) {
-    const usuario = auth.currentUser;
-    if(!usuario || !currentUserData) throw new Error("Inicia sesión para activar notificaciones.");
-    const dispositivoId = await idDispositivoDesdeToken(token);
-    const datos = {
-        uid: usuario.uid,
-        email: usuario.email,
-        equipo: String(currentUserData.color || "").trim(),
-        rango: obtenerRangoActual(),
-        token,
-        activo: true,
-        actualizado: fechaServidor()
-    };
-    await db.collection("suscripciones_push").doc(dispositivoId).set(datos);
-    guardarEstadoLocalPush(true, usuario.uid);
-    suscripcionPushActiva = true;
-}
-
-async function sincronizarSuscripcionPush(solicitarPermiso = false, silencioso = false) {
-    if(sincronizacionPushEnCurso) return sincronizacionPushEnCurso;
-    sincronizacionPushEnCurso = (async () => {
-        if(!navegadorSoportaNotificacionesPush()) throw new Error("Este navegador no admite notificaciones web.");
-        if(!claveVapidValida(configuracionNotificaciones.vapidKey)) throw new Error("Las notificaciones todavía no están configuradas.");
-        let permiso = Notification.permission;
-        if(permiso === "default" && solicitarPermiso) permiso = await Notification.requestPermission();
-        if(permiso !== "granted") throw new Error(permiso === "denied"
-            ? "Las notificaciones están bloqueadas en el navegador."
-            : "Debes aceptar el permiso para recibir avisos.");
-        const messaging = obtenerMensajeriaPush();
-        if(!messaging) throw new Error("No fue posible iniciar el servicio de notificaciones.");
-        const serviceWorkerRegistration = await obtenerRegistroServiceWorkerPush();
-        const token = await messaging.getToken({
-            vapidKey: configuracionNotificaciones.vapidKey,
-            serviceWorkerRegistration
-        });
-        if(!token) throw new Error("El navegador no entregó una suscripción válida.");
-        await guardarSuscripcionPush(token);
-        actualizarPanelNotificaciones();
-        if(!silencioso) notify("🔔 Notificaciones activadas para este dispositivo");
-        return true;
-    })();
-    try { return await sincronizacionPushEnCurso; }
-    finally { sincronizacionPushEnCurso = null; }
-}
-
-async function desactivarNotificacionesPush() {
-    const messaging = obtenerMensajeriaPush();
-    if(!messaging) throw new Error("No fue posible abrir el servicio de notificaciones.");
-    const serviceWorkerRegistration = await obtenerRegistroServiceWorkerPush();
-    const token = await messaging.getToken({ vapidKey:configuracionNotificaciones.vapidKey, serviceWorkerRegistration });
-    if(token) {
-        const dispositivoId = await idDispositivoDesdeToken(token);
-        await db.collection("suscripciones_push").doc(dispositivoId).delete().catch(error => {
-            if(error.code !== "not-found") throw error;
-        });
-        await messaging.deleteToken(token);
-    }
-    guardarEstadoLocalPush(false);
-    suscripcionPushActiva = false;
-    actualizarPanelNotificaciones();
-    notify("Notificaciones desactivadas en este dispositivo");
-}
-
-async function alternarNotificacionesPush() {
-    if(typeof Notification !== "undefined" && Notification.permission === "denied") {
-        return notify("Abre la configuración del navegador, permite las notificaciones para esta página y vuelve a cargarla.");
-    }
-    const boton = document.getElementById("push-notification-button");
-    if(boton?.disabled) return;
-    if(boton) boton.disabled = true;
-    try {
-        if(suscripcionPushActiva) await desactivarNotificacionesPush();
-        else await sincronizarSuscripcionPush(true, false);
-    } catch(error) {
-        manejarError(error, "No se pudieron cambiar las notificaciones");
-    } finally {
-        if(boton) boton.disabled = false;
-        actualizarPanelNotificaciones();
-    }
-}
-
-async function guardarConfiguracionNotificaciones() {
-    if(!esAdministradorActual()) return notify("Solo el Administrador puede configurar las notificaciones.");
-    const vapidKey = String(document.getElementById("admin-push-vapid")?.value || "").trim();
-    const urlSitio = normalizarConfiguracionNotificaciones({
-        vapidKey,
-        urlSitio:document.getElementById("admin-push-url")?.value || urlBaseActualNotificaciones()
-    }).urlSitio;
-    if(!claveVapidValida(vapidKey)) return notify("La clave Web Push no tiene un formato válido.");
-    if(!urlSitio) return notify("Escribe la dirección HTTPS publicada de la página.");
-    const liberar = bloquearBotonActual("GUARDANDO…");
-    try {
-        await db.collection("configuracion").doc("notificaciones").set({
-            vapidKey,
-            urlSitio,
-            actualizado:fechaServidor(),
-            actualizadoPor:auth.currentUser.email
-        });
-        configuracionNotificaciones = { vapidKey, urlSitio };
-        rellenarConfiguracionNotificacionesAdmin();
-        actualizarPanelNotificaciones();
-        notify("✅ Configuración de notificaciones guardada");
-    } catch(error) {
-        manejarError(error, "No se pudo guardar la configuración de notificaciones");
-    } finally {
-        liberar();
-    }
-}
-
-function prepararSelectorNotificacionComunicado(esEdicion = false, valor = true) {
-    const campo = document.getElementById("com-notificar");
-    const etiqueta = document.getElementById("com-notificar-field");
-    if(!campo || !etiqueta) return;
-    campo.checked = valor !== false;
-    campo.disabled = esEdicion;
-    etiqueta.classList.toggle("is-editing", esEdicion);
-    const ayuda = etiqueta.querySelector("small");
-    if(ayuda) ayuda.textContent = esEdicion
-        ? "Las ediciones se guardan sin enviar un aviso duplicado."
-        : "Avisará a los dispositivos de los equipos seleccionados.";
-}
-
 function puedeGestionarComunicadosActual() {
     return puedeGestionarPagosActual();
+}
+
+function puedeVerContadorVisualizacionesActual() {
+    const rango = obtenerRangoActual();
+    return rango === "Administrador" || rango === "Coordinador General";
 }
 
 function normalizarTipoComunicado(comunicado = {}) {
@@ -3861,6 +3578,7 @@ function renderComunicados() {
     const contenedor = document.getElementById("comunicados-list");
     if(!contenedor || !currentUserData || !auth.currentUser) return;
     const puedeGestionar = puedeGestionarComunicadosActual();
+    const puedeVerVisualizaciones = puedeVerContadorVisualizacionesActual();
     const visibles = allComunicados.filter(comunicadoVisibleParaUsuario);
     sincronizarMetricasComunicados(visibles);
 
@@ -3902,18 +3620,22 @@ function renderComunicados() {
             </div>
             <p class="com-my-response">${respuesta === "asiste" ? "Tu respuesta: asistiré" : respuesta === "no_asiste" ? "Tu respuesta: no asistiré" : "Todavía no has respondido"}</p>
         </div>` : "";
-        const estadisticas = `<div class="com-stats ${esEvento ? "" : "is-single"}" aria-label="Estadísticas de la publicación">
-            <span class="com-stat"><i class="fa-regular fa-eye"></i><strong>${metricas.vistos}</strong><small>Lo vieron</small></span>
-            ${esEvento ? `<span class="com-stat"><i class="fa-solid fa-user-check"></i><strong>${metricas.asisten}</strong><small>Asisten</small></span><span class="com-stat"><i class="fa-solid fa-user-xmark"></i><strong>${metricas.noAsisten}</strong><small>No asisten</small></span>` : ""}
-        </div>`;
+        const contadorVisualizaciones = puedeVerVisualizaciones
+            ? `<span class="com-view-counter" title="${metricas.vistos} visualizaciones" aria-label="${metricas.vistos} visualizaciones"><i class="fa-regular fa-eye" aria-hidden="true"></i><strong>${metricas.vistos}</strong></span>`
+            : "";
+        const estadisticas = esEvento ? `<div class="com-stats is-attendance" aria-label="Respuestas de asistencia">
+            <span class="com-stat"><i class="fa-solid fa-user-check"></i><strong>${metricas.asisten}</strong><small>Asisten</small></span>
+            <span class="com-stat"><i class="fa-solid fa-user-xmark"></i><strong>${metricas.noAsisten}</strong><small>No asisten</small></span>
+        </div>` : "";
 
-        return `<article class="com-card ${esEvento ? "is-event" : "is-announcement"}${claseGestion}" data-com-id="${escaparHTML(comunicado.id)}" style="--event-status-color:${confirmado ? "var(--success)" : "var(--warning)"}">
+        return `<article class="com-card ${esEvento ? "is-event" : "is-announcement"}${claseGestion}${puedeVerVisualizaciones ? " has-view-counter" : ""}" data-com-id="${escaparHTML(comunicado.id)}" style="--event-status-color:${confirmado ? "var(--success)" : "var(--warning)"}">
             ${accionesGestion}
             <div class="com-header"><span class="com-tag">${esEvento ? "EVENTO" : "INFO"}</span>${estadoHtml}<h3>${escaparHTML(comunicado.titulo || "Sin título")}</h3></div>
             <p class="com-body">${escaparHTML(comunicado.mensaje || "")}</p>
             ${detalles}${documento}
             <p class="com-targets"><i class="fa-solid fa-users"></i> Visible para: ${escaparHTML(destinatarios.join(", "))}</p>
             ${asistencia}${estadisticas}
+            ${contadorVisualizaciones}
             <div class="com-footer">Publicado: ${fechaPublicacion ? fechaPublicacion.toLocaleDateString("es-CO") : "---"}</div>
         </article>`;
     }).join("");
@@ -3952,7 +3674,6 @@ function limpiarFormularioComunicado(cerrar = false) {
     formulario.reset();
     document.getElementById("com-edit-id").value = "";
     document.getElementById("com-cancelar-edicion").hidden = true;
-    prepararSelectorNotificacionComunicado(false, true);
     cambiarTipoComunicado("anuncio");
     document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = casilla.value === "Todos"; });
     actualizarEstadoFormularioEvento();
@@ -3981,7 +3702,6 @@ function editarComunicado(id) {
     valor("com-punto-encuentro", comunicado.puntoEncuentro);
     valor("com-pago-total", comunicado.pagoTotal || "");
     valor("com-link-doc", comunicado.linkDoc);
-    prepararSelectorNotificacionComunicado(true, comunicado.notificar !== false);
     const elegidos = Array.isArray(comunicado.destinatarios) ? comunicado.destinatarios : ["Todos"];
     document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = elegidos.includes(casilla.value); });
     cambiarTipoComunicado(tipo);
@@ -4476,10 +4196,8 @@ async function publicarComunicado() {
         if(fechaFin < fechaInicio) return notify("La fecha de finalización no puede ser anterior a la fecha de inicio.");
     }
 
-    const comunicadoAnterior = editId ? allComunicados.find(item => item.id === editId) : null;
-    const notificar = editId ? comunicadoAnterior?.notificar !== false : document.getElementById("com-notificar")?.checked !== false;
     const datos = { tipo, titulo, mensaje, destinatarios, estadoEvento, ubicacion, fechaInicio, fechaFin,
-        horaInicio, puntoEncuentro, pagoTotal, linkDoc, notificar, actualizado:fechaServidor() };
+        horaInicio, puntoEncuentro, pagoTotal, linkDoc, actualizado:fechaServidor() };
     const liberar = bloquearBotonActual(editId ? "GUARDANDO…" : "PUBLICANDO…");
     comunicadoGuardando = true;
     try {
@@ -7348,7 +7066,9 @@ function cargarBibliotecaExcel() {
 
     promesaCargaExcel = new Promise((resolve, reject) => {
         const script = document.createElement("script");
-        script.src = ES_APLICACION_ANDROID ? "vendor/xlsx/xlsx.full.min.js" : "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
+        script.src = location.protocol === "file:"
+            ? "vendor/xlsx/xlsx.full.min.js"
+            : "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
         script.async = true;
         script.onload = () => globalThis.XLSX
             ? resolve(globalThis.XLSX)
@@ -7392,7 +7112,7 @@ async function exportarPersonalExcel() {
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Personal");
-        XLSX.writeFile(workbook, "Reporte_Personal_Organizado.xlsx");
+        guardarLibroExcel(workbook, "Reporte_Personal_Organizado.xlsx");
         
         if(typeof notify === "function") notify("✅ Reporte organizado descargado");
     } catch (err) {
@@ -7429,7 +7149,7 @@ async function exportarVentasExcel() {
         });
         const ws = XLSX.utils.aoa_to_sheet(rows), wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Ventas");
-        XLSX.writeFile(wb, "Reporte_Ventas.xlsx");
+        guardarLibroExcel(wb, "Reporte_Ventas.xlsx");
     } catch(error) {
         manejarError(error, "No se pudo exportar el reporte de ventas");
     }
@@ -8296,7 +8016,7 @@ async function exportarPagosExcel() {
         const worksheet = XLSX.utils.json_to_sheet(data);
         const workbook = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(workbook, worksheet, "Pagos");
-        XLSX.writeFile(workbook, "Reporte_Pagos_General.xlsx");
+        guardarLibroExcel(workbook, "Reporte_Pagos_General.xlsx");
         
         if(typeof notify === "function") notify("✅ Reporte de pagos generado");
     } catch (error) {

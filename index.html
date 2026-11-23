@@ -6,8 +6,6 @@
     <meta name="color-scheme" content="dark light">
     <meta id="theme-color-meta" name="theme-color" content="#05080f">
     <link rel="icon" href="data:,">
-    <link rel="manifest" href="manifest.webmanifest?v=3.14.0">
-    <link rel="apple-touch-icon" href="assets/notificacion-192.png">
     <title>Logistica & Eventos | Control</title>
     <script>
         (() => {
@@ -33,10 +31,8 @@
     </script>
     <script>
         (() => {
-            const usarFirebaseLocal = Boolean(window.LogisticaAndroid)
-                || (/Android/i.test(navigator.userAgent) && location.protocol === "file:");
-            const usarEstilosLocales = /Android/i.test(navigator.userAgent) && location.protocol === "file:";
-            const scripts = usarFirebaseLocal
+            const usarRecursosLocales = /Android/i.test(navigator.userAgent) && location.protocol === "file:";
+            const scripts = usarRecursosLocales
                 ? [
                     "vendor/firebase/firebase-app.js",
                     "vendor/firebase/firebase-auth.js",
@@ -45,11 +41,10 @@
                 : [
                     "https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js",
                     "https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js",
-                    "https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js",
-                    "https://www.gstatic.com/firebasejs/8.10.1/firebase-messaging.js"
+                    "https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"
                 ];
 
-            const estilos = usarEstilosLocales
+            const estilos = usarRecursosLocales
                 ? [
                     "vendor/plus-jakarta-sans/latin-400.css",
                     "vendor/plus-jakarta-sans/latin-700.css",
@@ -65,7 +60,7 @@
             estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=3.14.0">
+    <link rel="stylesheet" href="style.css?v=3.14.1">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -480,22 +475,12 @@
                                 <label class="com-field com-field-wide"><span>Punto de encuentro</span><input type="text" id="com-punto-encuentro" maxlength="300" placeholder="Indica dónde y cómo debe presentarse el personal" disabled></label>
                             </div>
                             <label class="com-field"><span>Enlace o documento <small>(opcional)</small></span><input type="url" id="com-link-doc" maxlength="1000" placeholder="https://…"></label>
-                            <label id="com-notificar-field" class="com-notify-choice"><input type="checkbox" id="com-notificar" checked><span><i class="fa-regular fa-bell"></i><strong>Enviar notificación</strong><small>Avisará a los dispositivos de los equipos seleccionados.</small></span></label>
                             <div class="com-form-actions">
                                 <button id="com-publicar" class="btn-primary" type="submit"><i class="fa-solid fa-paper-plane"></i> <span>PUBLICAR ANUNCIO</span></button>
                                 <button id="com-cancelar-edicion" class="btn-mini btn-secondary" type="button" onclick="cancelarEdicionComunicado()" hidden>Cancelar edición</button>
                             </div>
                         </form>
                     </details>
-
-                    <aside id="push-notification-card" class="push-notification-card" hidden aria-live="polite">
-                        <span class="push-notification-icon"><i class="fa-regular fa-bell"></i></span>
-                        <div class="push-notification-copy">
-                            <strong id="push-notification-title">Recibe los nuevos comunicados</strong>
-                            <small id="push-notification-description">Activa los avisos para enterarte aunque la página esté cerrada.</small>
-                        </div>
-                        <button id="push-notification-button" type="button" class="btn-mini btn-add" onclick="alternarNotificacionesPush()"><i class="fa-solid fa-bell"></i> ACTIVAR</button>
-                    </aside>
 
                     <div id="virtual-ticket-user-card" class="virtual-ticket-user-card" style="display:none;">
                         <div class="virtual-ticket-user-heading">
@@ -750,17 +735,6 @@
                             </div>
 
                             <button id="admin-pago-guardar" class="btn-primary admin-payment-save" type="button" onclick="guardarConfiguracionPagosLista()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR DATOS DE PAGO</button>
-                        </div>
-
-                        <div id="admin-push-settings" class="admin-card full-width admin-push-settings-card" style="display:none;">
-                            <p class="admin-card-title"><i class="fa-solid fa-bell"></i> NOTIFICACIONES DE COMUNICADOS</p>
-                            <p class="admin-push-description">Pega una sola vez la clave pública Web Push de Firebase. La clave es pública y permite que cada usuario active avisos en sus dispositivos.</p>
-                            <div class="admin-push-grid">
-                                <label class="admin-push-field admin-push-field-full"><span>Clave pública Web Push (VAPID)</span><input id="admin-push-vapid" type="text" maxlength="160" autocomplete="off" spellcheck="false" placeholder="Copia la clave desde Firebase → Configuración → Cloud Messaging"></label>
-                                <label class="admin-push-field admin-push-field-full"><span>Dirección publicada de la página</span><input id="admin-push-url" type="url" maxlength="500" placeholder="https://logisticayeventos.github.io/Eventos-logistica/"></label>
-                            </div>
-                            <button id="admin-push-save" class="btn-primary admin-push-save" type="button" onclick="guardarConfiguracionNotificaciones()"><i class="fa-solid fa-floppy-disk"></i> GUARDAR NOTIFICACIONES</button>
-                            <small id="admin-push-status" class="admin-public-config-status">Configura la clave después de desplegar la función incluida en esta entrega.</small>
                         </div>
 
                         <div id="admin-winning-ticket-card" class="admin-card full-width admin-winning-ticket-card">
@@ -1125,6 +1099,6 @@
             document.addEventListener("DOMContentLoaded", comprobar, { once:true });
         })();
     </script>
-    <script defer src="script.js?v=3.14.0"></script>
+    <script defer src="script.js?v=3.14.1"></script>
 </body>
 </html>
