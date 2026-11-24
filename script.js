@@ -870,7 +870,9 @@ let allComunicados = [];
 const metricasComunicados = new Map();
 const unsubscribeMetricasComunicados = new Map();
 const comunicadosVistosSesion = new Set();
+const respuestasEventosEnCurso = new Set();
 let observerComunicados = null;
+let temporizadorDisponibilidadEventos = null;
 let errorMetricasComunicadosNotificado = false;
 let comunicadoGuardando = false;
 let configuracionPagoLista = normalizarConfiguracionPagosLista();
@@ -3036,6 +3038,7 @@ function initDataListeners() {
     });
 
     mostrarEstadoLista("comunicados-list", "Cargando comunicados...");
+    mostrarEstadoLista("eventos-list", "Cargando eventos...");
     unsubscribeComunicados = db.collection("comunicados").orderBy("fecha", "desc").onSnapshot(snap => {
         allComunicados = [];
         snap.forEach(doc => allComunicados.push({ id: doc.id, ...doc.data() }));
@@ -3043,6 +3046,7 @@ function initDataListeners() {
         renderComunicados();
     }, error => {
         mostrarEstadoLista("comunicados-list", "No fue posible cargar los comunicados.", "error");
+        mostrarEstadoLista("eventos-list", "No fue posible cargar los eventos.", "error");
         manejarError(error, "No se pudieron cargar los comunicados");
     });
 }
@@ -3129,6 +3133,52 @@ function inicializarSeccionesAdminPlegables() {
     });
 }
 
+function tipoComunicadoDeSeccion(id) {
+    return id === "eventos" ? "evento" : "anuncio";
+}
+
+function seccionEditorComunicadoActual() {
+    return document.getElementById("admin-com-form")?.parentElement?.id === "com-composer-slot-events"
+        ? "eventos"
+        : "comunicados";
+}
+
+function actualizarPresentacionEditorComunicado(tipo) {
+    const esEvento = tipo === "evento";
+    const editando = Boolean(document.getElementById("com-edit-id")?.value);
+    const titulo = document.getElementById("com-composer-summary-title");
+    const ayuda = document.getElementById("com-composer-summary-help");
+    const icono = document.getElementById("com-composer-summary-icon");
+    if(titulo) titulo.textContent = `${editando ? "Editar" : "Crear"} ${esEvento ? "evento" : "anuncio"}`;
+    if(ayuda) ayuda.textContent = esEvento
+        ? "Publica los datos del evento y recibe las respuestas de asistencia."
+        : "Publica información para los equipos seleccionados.";
+    if(icono) icono.className = esEvento ? "fa-solid fa-calendar-check" : "fa-solid fa-bullhorn";
+}
+
+function prepararEditorComunicadoParaSeccion(id) {
+    if(id !== "comunicados" && id !== "eventos") return;
+    const panel = document.getElementById("admin-com-form");
+    const formulario = document.getElementById("com-editor-form");
+    const destino = document.getElementById(id === "eventos" ? "com-composer-slot-events" : "com-composer-slot-home");
+    if(!panel || !formulario || !destino) return;
+
+    const tipo = tipoComunicadoDeSeccion(id);
+    const editId = document.getElementById("com-edit-id").value;
+    const comunicadoEditado = editId ? allComunicados.find(item => item.id === editId) : null;
+    if(comunicadoEditado && normalizarTipoComunicado(comunicadoEditado) !== tipo) {
+        formulario.reset();
+        document.getElementById("com-edit-id").value = "";
+        document.getElementById("com-cancelar-edicion").hidden = true;
+        document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = casilla.value === "Todos"; });
+        panel.open = false;
+    }
+
+    if(panel.parentElement !== destino) destino.appendChild(panel);
+    cambiarTipoComunicado(tipo);
+    actualizarPresentacionEditorComunicado(tipo);
+}
+
 function showSection(id) {
     const rango = obtenerRangoActual();
     if(rango === 'Recreador' && (id === 'resumen' || id === 'administracion')) id = 'boletas-ins';
@@ -3142,6 +3192,7 @@ function showSection(id) {
     if(target) target.style.display = 'block';
     const nav = document.getElementById('nav-' + id);
     if(nav) nav.classList.add('active');
+    prepararEditorComunicadoParaSeccion(id);
 
     if(id === 'administracion') {
         inicializarSeccionesAdminPlegables();
@@ -3465,6 +3516,51 @@ function formatearPagoComunicado(valor) {
         : "$0";
 }
 
+function obtenerFechaLimiteRespuestaEvento(comunicado = {}) {
+    return convertirFechaFirestore(comunicado.respuestaHasta);
+}
+
+function formatearFechaHoraEvento(valor, alternativa = "Sin fecha límite") {
+    const fecha = convertirFechaFirestore(valor);
+    if(!fecha) return alternativa;
+    return new Intl.DateTimeFormat("es-CO", {
+        day:"2-digit", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit"
+    }).format(fecha);
+}
+
+function formatearFechaHoraEventoParaInput(valor) {
+    const fecha = convertirFechaFirestore(valor);
+    if(!fecha) return "";
+    const local = new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+}
+
+function obtenerInicioEvento(comunicado = {}) {
+    const fecha = String(comunicado.fechaInicio || "");
+    const hora = String(comunicado.horaInicio || "");
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(fecha) || !/^\d{2}:\d{2}$/.test(hora)) return null;
+    const inicio = new Date(`${fecha}T${hora}:00`);
+    return Number.isNaN(inicio.getTime()) ? null : inicio;
+}
+
+function eventoAceptaRespuestas(comunicado = {}, ahora = Date.now()) {
+    const limite = obtenerFechaLimiteRespuestaEvento(comunicado);
+    return !limite || limite.getTime() >= ahora;
+}
+
+function programarActualizacionDisponibilidadEventos(eventos = []) {
+    if(temporizadorDisponibilidadEventos) clearTimeout(temporizadorDisponibilidadEventos);
+    temporizadorDisponibilidadEventos = null;
+    const ahora = Date.now();
+    const siguiente = eventos
+        .map(obtenerFechaLimiteRespuestaEvento)
+        .filter(fecha => fecha && fecha.getTime() > ahora)
+        .reduce((menor, fecha) => Math.min(menor, fecha.getTime()), Infinity);
+    if(!Number.isFinite(siguiente)) return;
+    const espera = Math.max(1000, Math.min(60000, siguiente - ahora + 500));
+    temporizadorDisponibilidadEventos = setTimeout(renderComunicados, espera);
+}
+
 function normalizarPagoTotalEvento(valor) {
     const digitos = String(valor ?? "").replace(/\D/g, "");
     if(!digitos) return NaN;
@@ -3481,7 +3577,7 @@ function formatearCampoPagoEvento(campo) {
 }
 
 function obtenerMetricasComunicado(id) {
-    return metricasComunicados.get(id) || { vistos:0, asisten:0, noAsisten:0, miRespuesta:"" };
+    return metricasComunicados.get(id) || { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", cargado:false };
 }
 
 function detenerMetricasComunicados() {
@@ -3489,8 +3585,11 @@ function detenerMetricasComunicados() {
     unsubscribeMetricasComunicados.clear();
     metricasComunicados.clear();
     comunicadosVistosSesion.clear();
+    respuestasEventosEnCurso.clear();
     if(observerComunicados) observerComunicados.disconnect();
     observerComunicados = null;
+    if(temporizadorDisponibilidadEventos) clearTimeout(temporizadorDisponibilidadEventos);
+    temporizadorDisponibilidadEventos = null;
     errorMetricasComunicadosNotificado = false;
 }
 
@@ -3498,7 +3597,7 @@ function escucharMetricasComunicado(id) {
     if(!auth.currentUser || unsubscribeMetricasComunicados.has(id)) return;
     const uid = auth.currentUser.uid;
     const cancelar = db.collection("comunicados").doc(id).collection("respuestas").onSnapshot(snapshot => {
-        const metricas = { vistos:0, asisten:0, noAsisten:0, miRespuesta:"" };
+        const metricas = { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", cargado:true };
         snapshot.forEach(documento => {
             const respuesta = documento.data() || {};
             if(respuesta.visto === true) metricas.vistos++;
@@ -3509,7 +3608,8 @@ function escucharMetricasComunicado(id) {
         metricasComunicados.set(id, metricas);
         renderComunicados();
     }, error => {
-        unsubscribeMetricasComunicados.delete(id);
+        metricasComunicados.set(id, { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", cargado:true });
+        renderComunicados();
         console.warn("No se pudieron cargar las métricas del comunicado", id, error.code);
         if(!errorMetricasComunicadosNotificado && puedeGestionarComunicadosActual()) {
             errorMetricasComunicadosNotificado = true;
@@ -3570,39 +3670,102 @@ function observarComunicadosVisibles() {
 
 async function responderAsistenciaComunicado(id, respuesta) {
     if(!["asiste", "no_asiste"].includes(respuesta)) return;
+    if(respuestasEventosEnCurso.has(id)) return;
     const usuario = auth.currentUser;
     const comunicado = allComunicados.find(item => item.id === id);
     if(!usuario || !currentUserData) return notify("Inicia sesión para responder.");
     if(!comunicado || normalizarTipoComunicado(comunicado) !== "evento" || !comunicadoVisibleParaUsuario(comunicado)) {
         return notify("Este evento ya no está disponible para tu equipo.");
     }
+    if(!eventoAceptaRespuestas(comunicado)) return notify("El plazo para responder este evento ya terminó.");
+    const metricasActuales = obtenerMetricasComunicado(id);
+    if(metricasActuales.miRespuesta) return notify("Ya registraste tu respuesta para este evento.");
     const referencia = db.collection("comunicados").doc(id).collection("respuestas").doc(usuario.uid);
     const liberar = bloquearBotonActual("GUARDANDO…");
+    respuestasEventosEnCurso.add(id);
     try {
         await referencia.set({ visto:true, respuesta, actualizado:fechaServidor() }, { merge:true });
         comunicadosVistosSesion.add(`${usuario.uid}:${id}`);
+        metricasComunicados.set(id, {
+            ...metricasActuales,
+            miRespuesta:respuesta,
+            asisten:metricasActuales.asisten + (respuesta === "asiste" ? 1 : 0),
+            noAsisten:metricasActuales.noAsisten + (respuesta === "no_asiste" ? 1 : 0)
+        });
+        renderComunicados();
         notify(respuesta === "asiste" ? "✅ Confirmaste tu asistencia" : "Respuesta guardada: no asistiré");
     } catch(error) {
         manejarError(error, "No se pudo guardar tu respuesta");
     } finally {
+        respuestasEventosEnCurso.delete(id);
         liberar();
     }
 }
 
+function ordenarEventosPorInicio(a, b) {
+    const inicioA = obtenerInicioEvento(a)?.getTime() || Number.MAX_SAFE_INTEGER;
+    const inicioB = obtenerInicioEvento(b)?.getTime() || Number.MAX_SAFE_INTEGER;
+    return inicioA - inicioB;
+}
+
+function renderEventoGuardado(comunicado) {
+    const estado = comunicado.estadoEvento === "Confirmado" ? "CONFIRMADO" : "POR CONFIRMAR";
+    const enlace = obtenerUrlHttpSegura(comunicado.linkDoc);
+    const documento = enlace ? `<a href="${escaparHTML(enlace)}" target="_blank" rel="noopener noreferrer" class="com-doc-link"><i class="fa-solid fa-paperclip"></i> Abrir enlace o documento</a>` : "";
+    return `<article class="events-saved-item">
+        <div class="events-saved-item-header"><h4>${escaparHTML(comunicado.titulo || "Evento")}</h4><span class="events-saved-item-status">${estado}</span></div>
+        <p class="events-saved-item-message">${escaparHTML(comunicado.mensaje || "")}</p>
+        <div class="events-saved-item-data">
+            <span>Fecha<strong>${escaparHTML(formatearFechaComunicado(comunicado.fechaInicio))} – ${escaparHTML(formatearFechaComunicado(comunicado.fechaFin))}</strong></span>
+            <span>Hora de inicio<strong>${escaparHTML(comunicado.horaInicio || "Por definir")}</strong></span>
+            <span>Ubicación<strong>${escaparHTML(comunicado.ubicacion || "Por definir")}</strong></span>
+            <span>Punto de encuentro<strong>${escaparHTML(comunicado.puntoEncuentro || "Por definir")}</strong></span>
+            <span>Pago total<strong>${escaparHTML(formatearPagoComunicado(comunicado.pagoTotal))}</strong></span>
+        </div>${documento}
+    </article>`;
+}
+
+function renderGestionEventos(eventos) {
+    return eventos.map(comunicado => {
+        const idEvento = codificarDatoEvento(comunicado.id);
+        const limite = obtenerFechaLimiteRespuestaEvento(comunicado);
+        const estadoRespuesta = !limite
+            ? "Sin fecha límite"
+            : eventoAceptaRespuestas(comunicado)
+                ? `Respuestas hasta ${formatearFechaHoraEvento(limite)}`
+                : `Respuestas cerradas · ${formatearFechaHoraEvento(limite)}`;
+        return `<div class="events-management-item">
+            <span><strong>${escaparHTML(comunicado.titulo || "Evento")}</strong><small>${escaparHTML(estadoRespuesta)}</small></span>
+            <div class="events-management-actions">
+                <button type="button" class="com-card-action" onclick="editarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Editar evento"><i class="fa-solid fa-pen"></i></button>
+                <button type="button" class="com-card-action is-delete" onclick="eliminarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Eliminar evento"><i class="fa-solid fa-trash"></i></button>
+            </div>
+        </div>`;
+    }).join("");
+}
+
 function renderComunicados() {
-    const contenedor = document.getElementById("comunicados-list");
-    if(!contenedor || !currentUserData || !auth.currentUser) return;
+    const contenedorAnuncios = document.getElementById("comunicados-list");
+    const contenedorEventos = document.getElementById("eventos-list");
+    if((!contenedorAnuncios && !contenedorEventos) || !currentUserData || !auth.currentUser) return;
     const puedeGestionar = puedeGestionarComunicadosActual();
     const puedeVerVisualizaciones = puedeVerContadorVisualizacionesActual();
     const visibles = allComunicados.filter(comunicadoVisibleParaUsuario);
     sincronizarMetricasComunicados(visibles);
+    const anuncios = visibles.filter(comunicado => normalizarTipoComunicado(comunicado) === "anuncio");
+    const eventos = visibles.filter(comunicado => normalizarTipoComunicado(comunicado) === "evento");
+    const respuestasCargadas = eventos.every(comunicado => metricasComunicados.has(comunicado.id));
+    const eventosDisponibles = respuestasCargadas ? eventos
+        .filter(comunicado => !obtenerMetricasComunicado(comunicado.id).miRespuesta && eventoAceptaRespuestas(comunicado))
+        .sort(ordenarEventosPorInicio) : [];
+    const eventosAsiste = respuestasCargadas ? eventos
+        .filter(comunicado => obtenerMetricasComunicado(comunicado.id).miRespuesta === "asiste")
+        .sort(ordenarEventosPorInicio) : [];
+    const eventosNoAsiste = respuestasCargadas ? eventos
+        .filter(comunicado => obtenerMetricasComunicado(comunicado.id).miRespuesta === "no_asiste") : [];
+    programarActualizacionDisponibilidadEventos(eventos);
 
-    if(!visibles.length) {
-        contenedor.innerHTML = '<div class="com-empty"><i class="fa-regular fa-bell-slash"></i><p>No hay anuncios ni eventos para tu equipo.</p></div>';
-        return;
-    }
-
-    contenedor.innerHTML = visibles.map(comunicado => {
+    const renderTarjetas = lista => lista.map(comunicado => {
         const idEvento = codificarDatoEvento(comunicado.id);
         const tipo = normalizarTipoComunicado(comunicado);
         const esEvento = tipo === "evento";
@@ -3624,16 +3787,15 @@ function renderComunicados() {
             <div class="com-event-detail"><i class="fa-regular fa-calendar"></i><div><span>Fecha</span><strong>${escaparHTML(formatearFechaComunicado(comunicado.fechaInicio))} – ${escaparHTML(formatearFechaComunicado(comunicado.fechaFin))}</strong></div></div>
             <div class="com-event-detail"><i class="fa-regular fa-clock"></i><div><span>Hora de inicio</span><strong>${escaparHTML(comunicado.horaInicio || "Por definir")}</strong></div></div>
             <div class="com-event-detail is-payment"><i class="fa-solid fa-money-bill-wave"></i><div><span>Pago total</span><strong>${escaparHTML(formatearPagoComunicado(comunicado.pagoTotal))}</strong></div></div>
+            <div class="com-event-detail is-deadline"><i class="fa-solid fa-hourglass-half"></i><div><span>Responde hasta</span><strong>${escaparHTML(formatearFechaHoraEvento(comunicado.respuestaHasta))}</strong></div></div>
         </div>` : "";
         const documento = enlace ? `<a href="${escaparHTML(enlace)}" target="_blank" rel="noopener noreferrer" class="com-doc-link"><i class="fa-solid fa-paperclip"></i> Abrir enlace o documento</a>` : "";
-        const respuesta = metricas.miRespuesta;
         const asistencia = esEvento ? `<div class="com-response-panel">
             <strong>¿Asistirás a este evento?</strong>
             <div class="com-response-actions">
-                <button type="button" class="com-response-button is-yes ${respuesta === "asiste" ? "active" : ""}" aria-pressed="${respuesta === "asiste"}" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'asiste')"><i class="fa-solid fa-check"></i> Sí asistiré</button>
-                <button type="button" class="com-response-button is-no ${respuesta === "no_asiste" ? "active" : ""}" aria-pressed="${respuesta === "no_asiste"}" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'no_asiste')"><i class="fa-solid fa-xmark"></i> No asistiré</button>
+                <button type="button" class="com-response-button is-yes" aria-pressed="false" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'asiste')"><i class="fa-solid fa-check"></i> Sí asistiré</button>
+                <button type="button" class="com-response-button is-no" aria-pressed="false" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'no_asiste')"><i class="fa-solid fa-xmark"></i> No asistiré</button>
             </div>
-            <p class="com-my-response">${respuesta === "asiste" ? "Tu respuesta: asistiré" : respuesta === "no_asiste" ? "Tu respuesta: no asistiré" : "Todavía no has respondido"}</p>
         </div>` : "";
         const contadorVisualizaciones = puedeVerVisualizaciones
             ? `<span class="com-view-counter" title="${metricas.vistos} visualizaciones" aria-label="${metricas.vistos} visualizaciones"><i class="fa-regular fa-eye" aria-hidden="true"></i><strong>${metricas.vistos}</strong></span>`
@@ -3654,6 +3816,42 @@ function renderComunicados() {
             <div class="com-footer">Publicado: ${fechaPublicacion ? fechaPublicacion.toLocaleDateString("es-CO") : "---"}</div>
         </article>`;
     }).join("");
+
+    if(contenedorAnuncios) {
+        contenedorAnuncios.innerHTML = anuncios.length
+            ? renderTarjetas(anuncios)
+            : '<div class="com-empty"><i class="fa-regular fa-bell-slash"></i><p>No hay anuncios para tu equipo.</p></div>';
+    }
+    if(contenedorEventos) {
+        const contadorDisponibles = document.getElementById("eventos-contador-disponibles");
+        const contadorAsiste = document.getElementById("eventos-contador-asiste");
+        const contadorNoAsiste = document.getElementById("eventos-contador-no-asiste");
+        if(contadorDisponibles) contadorDisponibles.textContent = respuestasCargadas ? eventosDisponibles.length : "…";
+        if(contadorAsiste) contadorAsiste.textContent = respuestasCargadas ? eventosAsiste.length : "…";
+        if(contadorNoAsiste) contadorNoAsiste.textContent = respuestasCargadas ? eventosNoAsiste.length : "…";
+
+        const panelAsiste = document.getElementById("eventos-asistire-panel");
+        const listaAsiste = document.getElementById("eventos-asistire-list");
+        const cantidadAsiste = document.getElementById("eventos-asistire-cantidad");
+        if(panelAsiste) panelAsiste.hidden = !respuestasCargadas || eventosAsiste.length === 0;
+        if(cantidadAsiste) cantidadAsiste.textContent = eventosAsiste.length;
+        if(listaAsiste) listaAsiste.innerHTML = eventosAsiste.map(renderEventoGuardado).join("");
+
+        const panelGestion = document.getElementById("eventos-gestion-panel");
+        const listaGestion = document.getElementById("eventos-gestion-list");
+        const cantidadGestion = document.getElementById("eventos-gestion-cantidad");
+        if(panelGestion) panelGestion.hidden = !puedeGestionar || eventos.length === 0;
+        if(cantidadGestion) cantidadGestion.textContent = eventos.length;
+        if(listaGestion) listaGestion.innerHTML = puedeGestionar ? renderGestionEventos([...eventos].sort(ordenarEventosPorInicio)) : "";
+
+        const encabezadoDisponibles = document.getElementById("eventos-disponibles-encabezado");
+        if(encabezadoDisponibles) encabezadoDisponibles.hidden = !respuestasCargadas || eventosDisponibles.length === 0;
+        contenedorEventos.innerHTML = !respuestasCargadas
+            ? '<div class="com-empty"><i class="fa-solid fa-spinner fa-spin"></i><p>Cargando tus respuestas…</p></div>'
+            : eventosDisponibles.length
+                ? renderTarjetas(eventosDisponibles)
+                : '<div class="com-empty"><i class="fa-solid fa-check"></i><p>No tienes eventos pendientes por responder.</p></div>';
+    }
     observarComunicadosVisibles();
 }
 
@@ -3669,6 +3867,7 @@ function cambiarTipoComunicado(tipo) {
     document.querySelector("#com-publicar span").textContent = document.getElementById("com-edit-id").value
         ? "GUARDAR CAMBIOS" : esEvento ? "PUBLICAR EVENTO" : "PUBLICAR ANUNCIO";
     actualizarEstadoFormularioEvento();
+    actualizarPresentacionEditorComunicado(esEvento ? "evento" : "anuncio");
 }
 
 function actualizarEstadoFormularioEvento() {
@@ -3689,7 +3888,7 @@ function limpiarFormularioComunicado(cerrar = false) {
     formulario.reset();
     document.getElementById("com-edit-id").value = "";
     document.getElementById("com-cancelar-edicion").hidden = true;
-    cambiarTipoComunicado("anuncio");
+    cambiarTipoComunicado(tipoComunicadoDeSeccion(seccionEditorComunicadoActual()));
     document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = casilla.value === "Todos"; });
     actualizarEstadoFormularioEvento();
     if(cerrar) document.getElementById("admin-com-form").open = false;
@@ -3705,6 +3904,7 @@ function editarComunicado(id) {
     const comunicado = allComunicados.find(item => item.id === id);
     if(!comunicado) return notify("La publicación ya no está disponible.");
     const tipo = normalizarTipoComunicado(comunicado);
+    showSection(tipo === "evento" ? "eventos" : "comunicados");
     const valor = (campo, dato) => { document.getElementById(campo).value = dato ?? ""; };
     valor("com-edit-id", comunicado.id);
     valor("com-titulo", comunicado.titulo);
@@ -3716,11 +3916,13 @@ function editarComunicado(id) {
     valor("com-hora-inicio", comunicado.horaInicio || comunicado.horaEv);
     valor("com-punto-encuentro", comunicado.puntoEncuentro);
     valor("com-pago-total", comunicado.pagoTotal || "");
+    valor("com-respuesta-hasta", formatearFechaHoraEventoParaInput(comunicado.respuestaHasta));
     formatearCampoPagoEvento(document.getElementById("com-pago-total"));
     valor("com-link-doc", comunicado.linkDoc);
     const elegidos = Array.isArray(comunicado.destinatarios) ? comunicado.destinatarios : ["Todos"];
     document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = elegidos.includes(casilla.value); });
     cambiarTipoComunicado(tipo);
+    actualizarPresentacionEditorComunicado(tipo);
     document.getElementById("com-cancelar-edicion").hidden = false;
     const panel = document.getElementById("admin-com-form");
     panel.open = true;
@@ -4197,7 +4399,7 @@ async function publicarComunicado() {
     if(!titulo || !mensaje) return notify("El título y la información son obligatorios.");
     if(linkOriginal && !linkDoc) return notify("El enlace debe comenzar con http:// o https://.");
 
-    let estadoEvento = "", ubicacion = "", fechaInicio = "", fechaFin = "", horaInicio = "", puntoEncuentro = "", pagoTotal = 0;
+    let estadoEvento = "", ubicacion = "", fechaInicio = "", fechaFin = "", horaInicio = "", puntoEncuentro = "", pagoTotal = 0, respuestaHasta = null;
     if(tipo === "evento") {
         estadoEvento = valor("com-estado-evento") === "Confirmado" ? "Confirmado" : "Por confirmar";
         ubicacion = valor("com-ubicacion");
@@ -4206,17 +4408,24 @@ async function publicarComunicado() {
         horaInicio = valor("com-hora-inicio");
         puntoEncuentro = valor("com-punto-encuentro");
         pagoTotal = normalizarPagoTotalEvento(valor("com-pago-total"));
-        if(!ubicacion || !fechaInicio || !fechaFin || !horaInicio || !puntoEncuentro) {
+        const respuestaHastaTexto = valor("com-respuesta-hasta");
+        respuestaHasta = new Date(`${respuestaHastaTexto}:00`);
+        if(!ubicacion || !fechaInicio || !fechaFin || !horaInicio || !puntoEncuentro || !respuestaHastaTexto || Number.isNaN(respuestaHasta.getTime())) {
             return notify("Completa correctamente todos los datos del evento.");
         }
         if(!Number.isSafeInteger(pagoTotal) || pagoTotal < 1 || pagoTotal > 100000000) {
             return notify("Ingresa un pago total válido entre $1 y $100.000.000.");
         }
         if(fechaFin < fechaInicio) return notify("La fecha de finalización no puede ser anterior a la fecha de inicio.");
+        const inicioEvento = new Date(`${fechaInicio}T${horaInicio}:00`);
+        if(respuestaHasta.getTime() <= Date.now()) return notify("La fecha límite para responder debe estar en el futuro.");
+        if(!Number.isNaN(inicioEvento.getTime()) && respuestaHasta.getTime() > inicioEvento.getTime()) {
+            return notify("La fecha límite para responder no puede ser posterior al inicio del evento.");
+        }
     }
 
     const datos = { tipo, titulo, mensaje, destinatarios, estadoEvento, ubicacion, fechaInicio, fechaFin,
-        horaInicio, puntoEncuentro, pagoTotal, linkDoc, actualizado:fechaServidor() };
+        horaInicio, puntoEncuentro, pagoTotal, respuestaHasta, linkDoc, actualizado:fechaServidor() };
     const liberar = bloquearBotonActual(editId ? "GUARDANDO…" : "PUBLICANDO…");
     comunicadoGuardando = true;
     try {

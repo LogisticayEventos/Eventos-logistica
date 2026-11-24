@@ -60,7 +60,7 @@
             estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=3.14.2">
+    <link rel="stylesheet" href="style.css?v=3.16.0">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -433,6 +433,7 @@
             </header>
             <nav class="nav-menu">
                 <button onclick="showSection('comunicados')" class="nav-item" id="nav-comunicados"><i class="fa-solid fa-house"></i> INICIO</button>
+                <button onclick="showSection('eventos')" class="nav-item" id="nav-eventos"><i class="fa-solid fa-calendar-check"></i> EVENTOS</button>
                 <button onclick="showSection('resumen')" class="nav-item" id="nav-resumen" style="display:none;"><i class="fa-solid fa-chart-pie"></i> RESUMEN</button>
                 <button onclick="showSection('boletas-ins')" class="nav-item" id="nav-boletas-ins" style="display:none;"><i class="fa-solid fa-ticket"></i> VENTA</button>
                 <button onclick="showSection('boletas-list')" class="nav-item" id="nav-boletas-list"><i class="fa-solid fa-list-ul"></i> LISTA</button>
@@ -442,15 +443,16 @@
             </nav>
             <div class="content-scroll">
                 <section id="sec-comunicados" class="section-content">
+                    <div id="com-composer-slot-home">
                     <details id="admin-com-form" style="display:none;" class="admin-panel-lite com-composer">
                         <summary class="com-composer-summary">
-                            <span class="com-composer-summary-icon"><i class="fa-solid fa-bullhorn"></i></span>
-                            <span><strong>Crear anuncio o evento</strong><small>Abre este panel solo cuando necesites publicar.</small></span>
+                            <span class="com-composer-summary-icon"><i id="com-composer-summary-icon" class="fa-solid fa-bullhorn"></i></span>
+                            <span><strong id="com-composer-summary-title">Crear anuncio</strong><small id="com-composer-summary-help">Publica información para los equipos seleccionados.</small></span>
                             <i class="fa-solid fa-chevron-down com-composer-chevron" aria-hidden="true"></i>
                         </summary>
                         <form id="com-editor-form" class="com-composer-body" onsubmit="event.preventDefault(); publicarComunicado()">
                             <input type="hidden" id="com-edit-id">
-                            <fieldset class="com-type-fieldset">
+                            <fieldset class="com-type-fieldset" hidden>
                                 <legend>¿Qué quieres publicar?</legend>
                                 <div class="com-type-switch">
                                     <label><input type="radio" name="com-tipo" value="anuncio" checked onchange="cambiarTipoComunicado(this.value)"><span><i class="fa-solid fa-bullhorn"></i> Anuncio</span></label>
@@ -472,6 +474,7 @@
                                 <label class="com-field"><span>Fecha de finalización</span><input type="date" id="com-fecha-fin" disabled></label>
                                 <label class="com-field"><span>Hora de inicio</span><input type="time" id="com-hora-inicio" disabled></label>
                                 <label class="com-field"><span>Pago total</span><div class="com-money-input"><span>$</span><input type="text" id="com-pago-total" inputmode="numeric" maxlength="15" pattern="[0-9.$, ]*" title="Escribe el pago total usando números" placeholder="0" autocomplete="off" oninput="formatearCampoPagoEvento(this)" disabled></div></label>
+                                <label class="com-field com-field-wide com-response-deadline-field"><span>Disponible para responder hasta</span><input type="datetime-local" id="com-respuesta-hasta" disabled><small>Después de esta fecha y hora ya no se podrá marcar asistencia.</small></label>
                                 <label class="com-field com-field-wide"><span>Punto de encuentro</span><input type="text" id="com-punto-encuentro" maxlength="300" placeholder="Indica dónde y cómo debe presentarse el personal" disabled></label>
                             </div>
                             <label class="com-field"><span>Enlace o documento <small>(opcional)</small></span><input type="url" id="com-link-doc" maxlength="1000" placeholder="https://…"></label>
@@ -481,6 +484,7 @@
                             </div>
                         </form>
                     </details>
+                    </div>
 
                     <div id="virtual-ticket-user-card" class="virtual-ticket-user-card" style="display:none;">
                         <div class="virtual-ticket-user-heading">
@@ -502,6 +506,32 @@
                         </div>
                     </div>
                     <div id="comunicados-list"></div>
+                </section>
+
+                <section id="sec-eventos" class="section-content">
+                    <div id="com-composer-slot-events"></div>
+                    <div class="events-page-heading">
+                        <span><i class="fa-solid fa-calendar-check"></i></span>
+                        <div><h3>EVENTOS</h3><p>Consulta los próximos eventos y confirma si asistirás.</p></div>
+                    </div>
+                    <div class="events-user-summary" aria-label="Resumen de mis eventos">
+                        <div class="events-summary-card is-available"><i class="fa-regular fa-calendar"></i><span><strong id="eventos-contador-disponibles">0</strong><small>Eventos disponibles</small></span></div>
+                        <div class="events-summary-card is-attending"><i class="fa-solid fa-user-check"></i><span><strong id="eventos-contador-asiste">0</strong><small>Eventos a los que asistes</small></span></div>
+                        <div class="events-summary-card is-declined"><i class="fa-solid fa-user-xmark"></i><span><strong id="eventos-contador-no-asiste">0</strong><small>Eventos a los que no asistes</small></span></div>
+                    </div>
+                    <details id="eventos-asistire-panel" class="events-saved-panel" hidden>
+                        <summary><span><i class="fa-solid fa-calendar-day"></i><strong>Eventos a los que asistirás</strong></span><span class="events-saved-count" id="eventos-asistire-cantidad">0</span><i class="fa-solid fa-chevron-down events-saved-chevron" aria-hidden="true"></i></summary>
+                        <div id="eventos-asistire-list" class="events-saved-list"></div>
+                    </details>
+                    <details id="eventos-gestion-panel" class="events-saved-panel events-management-panel" hidden>
+                        <summary><span><i class="fa-solid fa-sliders"></i><strong>Administrar eventos publicados</strong></span><span class="events-saved-count" id="eventos-gestion-cantidad">0</span><i class="fa-solid fa-chevron-down events-saved-chevron" aria-hidden="true"></i></summary>
+                        <div id="eventos-gestion-list" class="events-management-list"></div>
+                    </details>
+                    <div id="eventos-disponibles-encabezado" class="events-available-heading">
+                        <span><i class="fa-solid fa-reply"></i></span>
+                        <div><strong>Eventos por responder</strong><small>Selecciona si asistirás o no asistirás.</small></div>
+                    </div>
+                    <div id="eventos-list"></div>
                 </section>
 
                 <section id="sec-resumen" class="section-content">
@@ -1099,6 +1129,6 @@
             document.addEventListener("DOMContentLoaded", comprobar, { once:true });
         })();
     </script>
-    <script defer src="script.js?v=3.14.2"></script>
+    <script defer src="script.js?v=3.16.0"></script>
 </body>
 </html>
