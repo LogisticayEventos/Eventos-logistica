@@ -60,7 +60,7 @@
             estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=3.14.1">
+    <link rel="stylesheet" href="style.css?v=3.14.2">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -471,7 +471,7 @@
                                 <label class="com-field"><span>Fecha de inicio</span><input type="date" id="com-fecha-inicio" disabled></label>
                                 <label class="com-field"><span>Fecha de finalización</span><input type="date" id="com-fecha-fin" disabled></label>
                                 <label class="com-field"><span>Hora de inicio</span><input type="time" id="com-hora-inicio" disabled></label>
-                                <label class="com-field"><span>Pago total</span><div class="com-money-input"><span>$</span><input type="number" id="com-pago-total" min="1" max="100000000" step="1000" inputmode="numeric" placeholder="0" disabled></div></label>
+                                <label class="com-field"><span>Pago total</span><div class="com-money-input"><span>$</span><input type="text" id="com-pago-total" inputmode="numeric" maxlength="15" pattern="[0-9.$, ]*" title="Escribe el pago total usando números" placeholder="0" autocomplete="off" oninput="formatearCampoPagoEvento(this)" disabled></div></label>
                                 <label class="com-field com-field-wide"><span>Punto de encuentro</span><input type="text" id="com-punto-encuentro" maxlength="300" placeholder="Indica dónde y cómo debe presentarse el personal" disabled></label>
                             </div>
                             <label class="com-field"><span>Enlace o documento <small>(opcional)</small></span><input type="url" id="com-link-doc" maxlength="1000" placeholder="https://…"></label>
@@ -1099,6 +1099,6 @@
             document.addEventListener("DOMContentLoaded", comprobar, { once:true });
         })();
     </script>
-    <script defer src="script.js?v=3.14.1"></script>
+    <script defer src="script.js?v=3.14.2"></script>
 </body>
 </html>

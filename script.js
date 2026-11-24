@@ -3465,6 +3465,21 @@ function formatearPagoComunicado(valor) {
         : "$0";
 }
 
+function normalizarPagoTotalEvento(valor) {
+    const digitos = String(valor ?? "").replace(/\D/g, "");
+    if(!digitos) return NaN;
+    const total = Number(digitos);
+    return Number.isSafeInteger(total) ? total : NaN;
+}
+
+function formatearCampoPagoEvento(campo) {
+    if(!campo) return;
+    const total = normalizarPagoTotalEvento(campo.value);
+    campo.value = Number.isSafeInteger(total)
+        ? new Intl.NumberFormat("es-CO", { maximumFractionDigits:0 }).format(total)
+        : "";
+}
+
 function obtenerMetricasComunicado(id) {
     return metricasComunicados.get(id) || { vistos:0, asisten:0, noAsisten:0, miRespuesta:"" };
 }
@@ -3701,6 +3716,7 @@ function editarComunicado(id) {
     valor("com-hora-inicio", comunicado.horaInicio || comunicado.horaEv);
     valor("com-punto-encuentro", comunicado.puntoEncuentro);
     valor("com-pago-total", comunicado.pagoTotal || "");
+    formatearCampoPagoEvento(document.getElementById("com-pago-total"));
     valor("com-link-doc", comunicado.linkDoc);
     const elegidos = Array.isArray(comunicado.destinatarios) ? comunicado.destinatarios : ["Todos"];
     document.querySelectorAll('input[name="dest-color"]').forEach(casilla => { casilla.checked = elegidos.includes(casilla.value); });
@@ -4189,9 +4205,12 @@ async function publicarComunicado() {
         fechaFin = valor("com-fecha-fin");
         horaInicio = valor("com-hora-inicio");
         puntoEncuentro = valor("com-punto-encuentro");
-        pagoTotal = Number(valor("com-pago-total"));
-        if(!ubicacion || !fechaInicio || !fechaFin || !horaInicio || !puntoEncuentro || !Number.isSafeInteger(pagoTotal) || pagoTotal < 1 || pagoTotal > 100000000) {
+        pagoTotal = normalizarPagoTotalEvento(valor("com-pago-total"));
+        if(!ubicacion || !fechaInicio || !fechaFin || !horaInicio || !puntoEncuentro) {
             return notify("Completa correctamente todos los datos del evento.");
+        }
+        if(!Number.isSafeInteger(pagoTotal) || pagoTotal < 1 || pagoTotal > 100000000) {
+            return notify("Ingresa un pago total válido entre $1 y $100.000.000.");
         }
         if(fechaFin < fechaInicio) return notify("La fecha de finalización no puede ser anterior a la fecha de inicio.");
     }
