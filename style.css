@@ -6214,6 +6214,7 @@ html[data-theme="light"] .public-quote-section {
 .events-page-heading h3 { margin: 0; color: var(--text-main); font-size: .82rem; }
 .events-page-heading p { margin: 4px 0 0; color: var(--text-muted); font-size: .6rem; line-height: 1.45; }
 .events-user-summary { margin-bottom: 12px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; }
+.events-user-summary[hidden] { display: none; }
 .events-summary-card { min-width: 0; min-height: 62px; padding: 10px 11px; box-sizing: border-box; display: flex; align-items: center; gap: 9px; border: 1px solid var(--border); border-radius: 13px; background: var(--surface-soft); }
 .events-summary-card > i { width: 29px; height: 29px; flex: 0 0 29px; display: grid; place-items: center; border-radius: 9px; color: var(--accent-strong); background: color-mix(in srgb,var(--accent) 11%,transparent); font-size: .72rem; }
 .events-summary-card > span, .events-summary-card strong, .events-summary-card small { display: block; min-width: 0; }
@@ -6290,6 +6291,7 @@ html[data-theme="light"] .public-quote-section {
 .com-my-response { min-height: 1.2em; margin: 8px 0 0; color: var(--text-muted); font-size: .57rem; text-align: center; }
 .com-stats { margin-top: 12px; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 7px; }
 .com-stats.is-attendance { grid-template-columns: repeat(2,minmax(0,1fr)); }
+.com-stats.is-attendance.is-overview { grid-template-columns: repeat(3,minmax(0,1fr)); }
 .com-stat { padding: 9px 7px; display: flex; flex-direction: column; align-items: center; gap: 3px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); text-align: center; }
 .com-stat i { color: var(--accent-strong); }
 .com-stat strong { color: var(--text-main); font-size: .86rem; }
@@ -6327,3 +6329,66 @@ html[data-theme="light"] .public-quote-section {
 }
 .com-form-actions [hidden] { display: none !important; }
 .com-stats.is-single { grid-template-columns: minmax(120px, 1fr); }
+
+/* Eventos compactos y listas de seguimiento para Administración y Coordinación General */
+.events-admin-event { display: grid; grid-template-columns: minmax(0,1fr) auto; align-items: start; gap: 8px; margin-bottom: 8px; padding: 7px; border: 1px solid var(--border); border-left: 3px solid var(--event-status-color,var(--accent)); border-radius: 14px; background: var(--glass); box-shadow: 0 7px 22px rgba(0,0,0,.06); }
+.events-admin-disclosure { min-width: 0; }
+.events-admin-disclosure > summary { min-height: 54px; padding: 7px 9px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr) auto auto; align-items: center; gap: 10px; list-style: none; color: var(--text-main); cursor: pointer; }
+.events-admin-disclosure > summary::-webkit-details-marker { display: none; }
+.events-admin-summary-copy { min-width: 0; display: grid; gap: 5px; }
+.events-admin-summary-copy > strong { overflow: hidden; color: var(--text-main); font-size: .72rem; line-height: 1.3; text-overflow: ellipsis; white-space: nowrap; }
+.events-admin-summary-copy > small { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; color: var(--text-muted); font-size: .52rem; font-weight: 700; }
+.events-admin-summary-copy .com-event-status { padding: 3px 6px; font-size: .43rem; }
+.events-admin-summary-stats { display: flex; align-items: center; gap: 5px; }
+.events-admin-stat { min-width: 47px; padding: 5px 7px; display: grid; grid-template-columns: auto auto; justify-content: center; align-items: center; column-gap: 5px; border: 1px solid var(--border); border-radius: 9px; color: var(--text-muted); background: var(--surface-soft); }
+.events-admin-stat i { font-size: .52rem; }
+.events-admin-stat strong { color: var(--text-main); font-size: .65rem; line-height: 1; }
+.events-admin-stat small { grid-column: 1 / -1; margin-top: 3px; color: var(--text-muted); font-size: .42rem; font-weight: 800; line-height: 1; text-align: center; text-transform: uppercase; }
+.events-admin-stat.is-vistos i { color: var(--accent-strong); }
+.events-admin-stat.is-asisten i { color: var(--success-text); }
+.events-admin-stat.is-no-asisten i { color: var(--danger-text); }
+.events-admin-chevron, .events-admin-list-chevron { color: var(--text-muted); font-size: .58rem; transition: transform .18s ease; }
+.events-admin-disclosure[open] > summary { border-bottom: 1px solid var(--border); }
+.events-admin-disclosure[open] > summary .events-admin-chevron, .events-admin-people-list[open] .events-admin-list-chevron { transform: rotate(180deg); }
+.events-admin-expanded { padding: 11px 9px 9px; }
+.events-admin-message { margin: 0 0 12px; color: var(--text-soft); font-size: .62rem; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+.events-admin-expanded .com-event-details { margin: 0 0 9px; }
+.events-admin-expanded .com-targets { margin: 8px 0; }
+.events-admin-expanded .com-doc-link { margin: 7px 0; }
+.events-admin-people-grid { margin-top: 12px; display: grid; gap: 7px; }
+.events-admin-people-list { overflow: hidden; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-soft); }
+.events-admin-people-list > summary { min-height: 39px; padding: 8px 10px; box-sizing: border-box; display: grid; grid-template-columns: minmax(0,1fr) 26px 12px; align-items: center; gap: 8px; list-style: none; cursor: pointer; color: var(--text-main); }
+.events-admin-people-list > summary::-webkit-details-marker { display: none; }
+.events-admin-people-list > summary > span { min-width: 0; display: flex; align-items: center; gap: 8px; font-size: .58rem; font-weight: 850; }
+.events-admin-people-list > summary > span i { width: 15px; text-align: center; }
+.events-admin-people-list.is-vistos > summary > span i { color: var(--accent-strong); }
+.events-admin-people-list.is-asisten > summary > span i { color: var(--success-text); }
+.events-admin-people-list.is-no-asisten > summary > span i { color: var(--danger-text); }
+.events-admin-people-list > summary > strong { min-width: 24px; height: 24px; display: grid; place-items: center; border-radius: 999px; color: var(--text-main); background: var(--glass); font-size: .57rem; }
+.events-admin-people-list[open] > summary { border-bottom: 1px solid var(--border); }
+.events-admin-people-body { max-height: 240px; overflow: auto; padding: 5px 10px 9px; }
+.events-admin-people-body ul { margin: 0; padding: 0; list-style: none; }
+.events-admin-people-body li { min-height: 31px; padding: 6px 2px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid color-mix(in srgb,var(--border) 65%,transparent); color: var(--text-soft); font-size: .57rem; }
+.events-admin-people-body li:last-child { border-bottom: 0; }
+.events-admin-people-body li > span { min-width: 0; overflow-wrap: anywhere; }
+.events-admin-people-body li > small { flex: 0 0 auto; padding: 3px 6px; border-radius: 999px; color: var(--accent-strong); background: color-mix(in srgb,var(--accent) 10%,transparent); font-size: .45rem; font-weight: 800; }
+.events-admin-people-body li.events-admin-person-empty { color: var(--text-muted); }
+.events-admin-identity-note { margin: 7px 0 0; color: var(--text-muted); font-size: .5rem; line-height: 1.4; }
+.events-admin-actions { padding-top: 3px; display: flex; gap: 5px; }
+.events-admin-actions .com-card-action { position: static; width: 32px; height: 32px; }
+@media (max-width: 600px) {
+    .events-admin-event { gap: 3px; padding: 5px; }
+    .events-admin-disclosure > summary { grid-template-columns: minmax(0,1fr) auto; gap: 6px; padding-inline: 6px; }
+    .events-admin-summary-copy > strong { font-size: .65rem; }
+    .events-admin-summary-stats { grid-column: 1 / 2; grid-row: 2; justify-content: flex-start; }
+    .events-admin-chevron { grid-column: 2; grid-row: 1 / span 2; }
+    .events-admin-stat { min-width: 42px; padding: 4px 6px; }
+    .events-admin-stat small { font-size: .38rem; }
+    .events-admin-actions { flex-direction: column; }
+    .events-admin-actions .com-card-action { width: 29px; height: 29px; }
+}
+@media (max-width: 380px) {
+    .events-admin-stat { min-width: 37px; column-gap: 3px; padding-inline: 4px; }
+    .events-admin-stat small { font-size: .35rem; }
+    .events-admin-expanded { padding-inline: 5px; }
+}

@@ -60,7 +60,7 @@
             estilos.forEach(href => document.write(`<link rel="stylesheet" href="${href}">`));
         })();
     </script>
-    <link rel="stylesheet" href="style.css?v=3.16.0">
+    <link rel="stylesheet" href="style.css?v=3.16.2">
 </head>
 <body>
     <div id="toast-container"></div>
@@ -512,9 +512,9 @@
                     <div id="com-composer-slot-events"></div>
                     <div class="events-page-heading">
                         <span><i class="fa-solid fa-calendar-check"></i></span>
-                        <div><h3>EVENTOS</h3><p>Consulta los próximos eventos y confirma si asistirás.</p></div>
+                        <div><h3>EVENTOS</h3><p id="eventos-descripcion">Consulta los próximos eventos y confirma si asistirás.</p></div>
                     </div>
-                    <div class="events-user-summary" aria-label="Resumen de mis eventos">
+                    <div id="eventos-resumen-personal" class="events-user-summary" aria-label="Resumen de mis eventos">
                         <div class="events-summary-card is-available"><i class="fa-regular fa-calendar"></i><span><strong id="eventos-contador-disponibles">0</strong><small>Eventos disponibles</small></span></div>
                         <div class="events-summary-card is-attending"><i class="fa-solid fa-user-check"></i><span><strong id="eventos-contador-asiste">0</strong><small>Eventos a los que asistes</small></span></div>
                         <div class="events-summary-card is-declined"><i class="fa-solid fa-user-xmark"></i><span><strong id="eventos-contador-no-asiste">0</strong><small>Eventos a los que no asistes</small></span></div>
@@ -1129,6 +1129,6 @@
             document.addEventListener("DOMContentLoaded", comprobar, { once:true });
         })();
     </script>
-    <script defer src="script.js?v=3.16.0"></script>
+    <script defer src="script.js?v=3.16.2"></script>
 </body>
 </html>

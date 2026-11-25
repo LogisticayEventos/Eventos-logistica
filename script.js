@@ -916,6 +916,9 @@ let sesionIniciada = false;
 let listenersActivos = false;
 let registroEnCurso = false;
 let ultimoIngresoActualizadoEmail = "";
+let ultimoUidIdentidadEventos = "";
+let emailsPorUidEventos = new Map();
+let errorIdentidadesEventosNotificado = false;
 
 let timerBusquedaPersonal;
 let filtroCodigoGlobal = "Todos";
@@ -926,6 +929,7 @@ let unsubscribeUsuarioActual = null;
 let unsubscribeUsuarios = null;
 let unsubscribeBoletas = null;
 let unsubscribeComunicados = null;
+let unsubscribeIdentidadesEventos = null;
 let unsubscribeAnuncioFlotante = null;
 let unsubscribeConfiguracionPagos = null;
 let unsubscribeConfiguracionBoletasVirtuales = null;
@@ -1009,11 +1013,15 @@ function detenerEscuchadoresDatos() {
     if(unsubscribeUsuarios) unsubscribeUsuarios();
     if(unsubscribeBoletas) unsubscribeBoletas();
     if(unsubscribeComunicados) unsubscribeComunicados();
+    if(unsubscribeIdentidadesEventos) unsubscribeIdentidadesEventos();
     detenerMetricasComunicados();
 
     unsubscribeUsuarios = null;
     unsubscribeBoletas = null;
     unsubscribeComunicados = null;
+    unsubscribeIdentidadesEventos = null;
+    emailsPorUidEventos = new Map();
+    errorIdentidadesEventosNotificado = false;
     alcanceDatosActivo = null;
     listenersActivos = false;
 
@@ -1067,6 +1075,7 @@ function detenerEscuchadoresPrivados(conservarPerfil = false) {
     boletaVirtualActual = null;
     actualizarPanelBoletaVirtualUsuario();
     ultimoIngresoActualizadoEmail = "";
+    ultimoUidIdentidadEventos = "";
 }
 
 const IDS_PANTALLAS_ACCESO = { login: "auth-login", reg: "auth-register", reset: "auth-reset", perfil: "auth-account" };
@@ -2841,6 +2850,7 @@ function loadUser() {
         const perfilAnteriorCargado = Boolean(currentUserData);
         currentUserData = d;
         currentUserData.email = email;
+        sincronizarEscuchadorIdentidadesEventos();
         actualizarAccesosEquipoVerde();
         if(!perfilAnteriorCargado) {
             detalleAlta = "";
@@ -2866,6 +2876,12 @@ function loadUser() {
             ultimoIngresoActualizadoEmail = email;
             usuarioRef.update({ lastLogin: fechaServidor() }).catch(error => {
                 if(vigente()) manejarError(error, "No se pudo actualizar la hora de conexión");
+            });
+        }
+        if(ultimoUidIdentidadEventos !== usuario.uid) {
+            ultimoUidIdentidadEventos = usuario.uid;
+            db.collection("usuarios_identificadores").doc(usuario.uid).set({ correo:email, actualizado:fechaServidor() }, { merge:true }).catch(error => {
+                if(vigente()) console.warn("No se pudo sincronizar el identificador privado del usuario", error.code);
             });
         }
 
@@ -3014,6 +3030,7 @@ function initDataListeners() {
             allUsers.sort((a, b) => obtenerMilisegundosFecha(b.creado) - obtenerMilisegundosFecha(a.creado));
             programarRenderUsuarios();
             programarRenderBoletas();
+            renderComunicados();
         }, error => {
             mostrarEstadoLista("lista-usuarios-body", "No fue posible cargar el personal.", "error", 10);
             manejarError(error, "No se pudo cargar el personal");
@@ -3021,6 +3038,8 @@ function initDataListeners() {
     } else {
         allUsers = [{ id: email, ...currentUserData }];
     }
+
+    sincronizarEscuchadorIdentidadesEventos();
 
     const consultaBoletas = puedeVerTodo
         ? db.collection("boletas").orderBy("creado", "desc")
@@ -3486,6 +3505,30 @@ function puedeGestionarComunicadosActual() {
     return puedeGestionarPagosActual();
 }
 
+function sincronizarEscuchadorIdentidadesEventos() {
+    if(puedeGestionarComunicadosActual() && !unsubscribeIdentidadesEventos) {
+        unsubscribeIdentidadesEventos = db.collection("usuarios_identificadores").onSnapshot(snap => {
+            emailsPorUidEventos = new Map();
+            snap.forEach(doc => {
+                const correo = String(doc.data()?.correo || "").trim();
+                if(correo) emailsPorUidEventos.set(doc.id, correo);
+            });
+            renderComunicados();
+        }, error => {
+            console.warn("No se pudieron cargar las identidades de respuestas a eventos", error.code);
+            if(!errorIdentidadesEventosNotificado && error.code === "permission-denied") {
+                errorIdentidadesEventosNotificado = true;
+                notify("Publica las reglas Firebase v3.16.2 para consultar los nombres de las personas.");
+            }
+        });
+    } else if(!puedeGestionarComunicadosActual() && unsubscribeIdentidadesEventos) {
+        unsubscribeIdentidadesEventos();
+        unsubscribeIdentidadesEventos = null;
+        emailsPorUidEventos = new Map();
+        errorIdentidadesEventosNotificado = false;
+    }
+}
+
 function puedeVerContadorVisualizacionesActual() {
     const rango = obtenerRangoActual();
     return rango === "Administrador" || rango === "Coordinador General";
@@ -3577,7 +3620,7 @@ function formatearCampoPagoEvento(campo) {
 }
 
 function obtenerMetricasComunicado(id) {
-    return metricasComunicados.get(id) || { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", cargado:false };
+    return metricasComunicados.get(id) || { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", vistosIds:[], asistenIds:[], noAsistenIds:[], cargado:false };
 }
 
 function detenerMetricasComunicados() {
@@ -3597,18 +3640,28 @@ function escucharMetricasComunicado(id) {
     if(!auth.currentUser || unsubscribeMetricasComunicados.has(id)) return;
     const uid = auth.currentUser.uid;
     const cancelar = db.collection("comunicados").doc(id).collection("respuestas").onSnapshot(snapshot => {
-        const metricas = { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", cargado:true };
+        const mostrarIdentidades = puedeGestionarComunicadosActual();
+        const metricas = { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", vistosIds:[], asistenIds:[], noAsistenIds:[], cargado:true };
         snapshot.forEach(documento => {
             const respuesta = documento.data() || {};
-            if(respuesta.visto === true) metricas.vistos++;
-            if(respuesta.respuesta === "asiste") metricas.asisten++;
-            if(respuesta.respuesta === "no_asiste") metricas.noAsisten++;
+            if(respuesta.visto === true) {
+                metricas.vistos++;
+                if(mostrarIdentidades) metricas.vistosIds.push(documento.id);
+            }
+            if(respuesta.respuesta === "asiste") {
+                metricas.asisten++;
+                if(mostrarIdentidades) metricas.asistenIds.push(documento.id);
+            }
+            if(respuesta.respuesta === "no_asiste") {
+                metricas.noAsisten++;
+                if(mostrarIdentidades) metricas.noAsistenIds.push(documento.id);
+            }
             if(documento.id === uid) metricas.miRespuesta = ["asiste", "no_asiste"].includes(respuesta.respuesta) ? respuesta.respuesta : "";
         });
         metricasComunicados.set(id, metricas);
         renderComunicados();
     }, error => {
-        metricasComunicados.set(id, { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", cargado:true });
+        metricasComunicados.set(id, { vistos:0, asisten:0, noAsisten:0, miRespuesta:"", vistosIds:[], asistenIds:[], noAsistenIds:[], cargado:true });
         renderComunicados();
         console.warn("No se pudieron cargar las métricas del comunicado", id, error.code);
         if(!errorMetricasComunicadosNotificado && puedeGestionarComunicadosActual()) {
@@ -3653,7 +3706,7 @@ async function registrarVistaComunicado(id) {
 
 function observarComunicadosVisibles() {
     if(observerComunicados) observerComunicados.disconnect();
-    const tarjetas = [...document.querySelectorAll(".com-card[data-com-id]")];
+    const tarjetas = [...document.querySelectorAll(".com-card[data-com-id], .events-admin-event[data-com-id]")];
     if(typeof IntersectionObserver !== "function") {
         tarjetas.forEach(tarjeta => registrarVistaComunicado(tarjeta.dataset.comId));
         return;
@@ -3725,6 +3778,89 @@ function renderEventoGuardado(comunicado) {
     </article>`;
 }
 
+function obtenerPerfilesPorUidEvento() {
+    const perfiles = new Map();
+    const perfilesPorCorreo = new Map();
+    (Array.isArray(allUsers) ? allUsers : []).forEach(perfil => {
+        const correo = normalizarEmailCuenta(perfil?.id || perfil?.email);
+        if(correo) perfilesPorCorreo.set(correo, perfil);
+    });
+    if(puedeGestionarComunicadosActual()) emailsPorUidEventos.forEach((correo, uid) => {
+        const perfil = perfilesPorCorreo.get(normalizarEmailCuenta(correo));
+        if(perfil) perfiles.set(uid, perfil);
+    });
+    const usuario = auth.currentUser;
+    if(usuario?.uid && currentUserData) perfiles.set(usuario.uid, { ...currentUserData, email:usuario.email });
+    return perfiles;
+}
+
+function renderListaPersonasEvento(comunicadoId, tipo, titulo, icono, ids = [], abiertas = new Set()) {
+    const perfiles = obtenerPerfilesPorUidEvento();
+    const personas = [...new Set(ids.map(uid => String(uid || "").trim()).filter(Boolean))].map((uid, indice) => {
+        const perfil = perfiles.get(uid);
+        return perfil
+            ? { nombre:obtenerNombreCompletoUsuario(perfil, "Perfil sin nombre"), equipo:String(perfil.color || "").trim(), pendiente:false }
+            : { nombre:`Usuario pendiente de identificar ${indice + 1}`, equipo:"", pendiente:true };
+    }).sort((a, b) => a.nombre.localeCompare(b.nombre, "es", { sensitivity:"base" }));
+    const filas = personas.length
+        ? personas.map(persona => `<li><span>${escaparHTML(persona.nombre)}</span>${persona.equipo ? `<small>${escaparHTML(persona.equipo)}</small>` : ""}</li>`).join("")
+        : `<li class="events-admin-person-empty">Todavía no hay personas en esta lista.</li>`;
+    const nota = personas.some(persona => persona.pendiente)
+        ? `<p class="events-admin-identity-note">El nombre aparecerá cuando esa persona ingrese una vez con la aplicación actualizada.</p>`
+        : "";
+    const clavePanel = `${comunicadoId}:${tipo}`;
+    return `<details class="events-admin-people-list is-${tipo}" data-com-event-id="${escaparHTML(comunicadoId)}" data-com-people-kind="${escaparHTML(tipo)}" ${abiertas.has(clavePanel) ? "open" : ""}>
+        <summary><span><i class="fa-solid ${icono}" aria-hidden="true"></i>${escaparHTML(titulo)}</span><strong>${personas.length}</strong><i class="fa-solid fa-chevron-down events-admin-list-chevron" aria-hidden="true"></i></summary>
+        <div class="events-admin-people-body"><ul>${filas}</ul>${nota}</div>
+    </details>`;
+}
+
+function renderEventoAdministrador(comunicado, metricas, eventosAbiertos, listasAbiertas) {
+    const idEvento = codificarDatoEvento(comunicado.id);
+    const estado = comunicado.estadoEvento === "Confirmado" ? "Confirmado" : "Por confirmar";
+    const confirmado = estado === "Confirmado";
+    const enlace = obtenerUrlHttpSegura(comunicado.linkDoc);
+    const documento = enlace ? `<a href="${escaparHTML(enlace)}" target="_blank" rel="noopener noreferrer" class="com-doc-link"><i class="fa-solid fa-paperclip"></i> Abrir enlace o documento</a>` : "";
+    const destinatarios = Array.isArray(comunicado.destinatarios) && comunicado.destinatarios.length ? comunicado.destinatarios : ["Todos"];
+    const fecha = formatearFechaComunicado(comunicado.fechaInicio);
+    const fechaLimite = obtenerFechaLimiteRespuestaEvento(comunicado);
+    const estadoRespuesta = !fechaLimite ? "Sin fecha límite" : eventoAceptaRespuestas(comunicado) ? `Respuestas hasta ${formatearFechaHoraEvento(fechaLimite)}` : `Respuestas cerradas · ${formatearFechaHoraEvento(fechaLimite)}`;
+    const estadistica = (numero, titulo, icono, tipo) => `<span class="events-admin-stat is-${tipo}" title="${titulo}"><i class="fa-solid ${icono}" aria-hidden="true"></i><strong>${numero}</strong><small>${titulo}</small></span>`;
+    const lists = [
+        renderListaPersonasEvento(comunicado.id, "vistos", "Lo vieron", "fa-eye", metricas.vistosIds || [], listasAbiertas),
+        renderListaPersonasEvento(comunicado.id, "asisten", "Asistirán", "fa-user-check", metricas.asistenIds || [], listasAbiertas),
+        renderListaPersonasEvento(comunicado.id, "no-asisten", "No asistirán", "fa-user-xmark", metricas.noAsistenIds || [], listasAbiertas)
+    ].join("");
+    const acciones = `<div class="events-admin-actions" aria-label="Acciones del evento">
+        <button type="button" class="com-card-action" onclick="editarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Editar evento" title="Editar evento"><i class="fa-solid fa-pen"></i></button>
+        <button type="button" class="com-card-action is-delete" onclick="eliminarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Eliminar evento" title="Eliminar evento"><i class="fa-solid fa-trash"></i></button>
+    </div>`;
+    return `<article class="events-admin-event" data-com-id="${escaparHTML(comunicado.id)}" style="--event-status-color:${confirmado ? "var(--success)" : "var(--warning)"}">
+        <details class="events-admin-disclosure" data-com-event-id="${escaparHTML(comunicado.id)}" ${eventosAbiertos.has(comunicado.id) ? "open" : ""}>
+            <summary>
+                <span class="events-admin-summary-copy"><strong>${escaparHTML(comunicado.titulo || "Sin título")}</strong><small><span class="com-event-status ${confirmado ? "confirmed" : "pending"}">${escaparHTML(estado.toUpperCase())}</span>${escaparHTML(fecha)} · ${escaparHTML(comunicado.horaInicio || "Hora por definir")}</small></span>
+                <span class="events-admin-summary-stats">${estadistica(metricas.vistos, "Vieron", "fa-eye", "vistos")}${estadistica(metricas.asisten, "Asisten", "fa-user-check", "asisten")}${estadistica(metricas.noAsisten, "No asisten", "fa-user-xmark", "no-asisten")}</span>
+                <i class="fa-solid fa-chevron-down events-admin-chevron" aria-hidden="true"></i>
+            </summary>
+            <div class="events-admin-expanded">
+                <p class="events-admin-message">${escaparHTML(comunicado.mensaje || "")}</p>
+                <div class="com-event-details">
+                    <div class="com-event-detail"><i class="fa-solid fa-location-dot"></i><div><span>Ubicación</span><strong>${escaparHTML(comunicado.ubicacion || "Por definir")}</strong></div></div>
+                    <div class="com-event-detail"><i class="fa-solid fa-people-group"></i><div><span>Punto de encuentro</span><strong>${escaparHTML(comunicado.puntoEncuentro || "Por definir")}</strong></div></div>
+                    <div class="com-event-detail"><i class="fa-regular fa-calendar"></i><div><span>Fecha</span><strong>${escaparHTML(formatearFechaComunicado(comunicado.fechaInicio))} – ${escaparHTML(formatearFechaComunicado(comunicado.fechaFin))}</strong></div></div>
+                    <div class="com-event-detail"><i class="fa-regular fa-clock"></i><div><span>Hora de inicio</span><strong>${escaparHTML(comunicado.horaInicio || "Por definir")}</strong></div></div>
+                    <div class="com-event-detail is-payment"><i class="fa-solid fa-money-bill-wave"></i><div><span>Pago total</span><strong>${escaparHTML(formatearPagoComunicado(comunicado.pagoTotal))}</strong></div></div>
+                    <div class="com-event-detail is-deadline"><i class="fa-solid fa-hourglass-half"></i><div><span>Disponibilidad</span><strong>${escaparHTML(estadoRespuesta)}</strong></div></div>
+                </div>
+                <p class="com-targets"><i class="fa-solid fa-users"></i> Visible para: ${escaparHTML(destinatarios.join(", "))}</p>
+                ${documento}
+                <div class="events-admin-people-grid">${lists}</div>
+            </div>
+        </details>
+        ${acciones}
+    </article>`;
+}
+
 function renderGestionEventos(eventos) {
     return eventos.map(comunicado => {
         const idEvento = codificarDatoEvento(comunicado.id);
@@ -3749,7 +3885,10 @@ function renderComunicados() {
     const contenedorEventos = document.getElementById("eventos-list");
     if((!contenedorAnuncios && !contenedorEventos) || !currentUserData || !auth.currentUser) return;
     const puedeGestionar = puedeGestionarComunicadosActual();
+    const esVistaGestionEventos = puedeGestionar;
     const puedeVerVisualizaciones = puedeVerContadorVisualizacionesActual();
+    const eventosAbiertos = new Set(Array.from(contenedorEventos?.querySelectorAll(".events-admin-disclosure[open]") || []).map(elemento => elemento.dataset.comEventId));
+    const listasAbiertas = new Set(Array.from(contenedorEventos?.querySelectorAll(".events-admin-people-list[open]") || []).map(elemento => `${elemento.dataset.comEventId}:${elemento.dataset.comPeopleKind}`));
     const visibles = allComunicados.filter(comunicadoVisibleParaUsuario);
     sincronizarMetricasComunicados(visibles);
     const anuncios = visibles.filter(comunicado => normalizarTipoComunicado(comunicado) === "anuncio");
@@ -3773,9 +3912,11 @@ function renderComunicados() {
         const confirmado = estado === "Confirmado";
         const enlace = obtenerUrlHttpSegura(comunicado.linkDoc);
         const metricas = obtenerMetricasComunicado(comunicado.id);
+        if(esEvento && esVistaGestionEventos) return renderEventoAdministrador(comunicado, metricas, eventosAbiertos, listasAbiertas);
         const destinatarios = Array.isArray(comunicado.destinatarios) && comunicado.destinatarios.length ? comunicado.destinatarios : ["Todos"];
         const fechaPublicacion = convertirFechaFirestore(comunicado.fecha);
         const claseGestion = puedeGestionar ? " has-management" : "";
+        const mostrarContadorVisualizaciones = puedeVerVisualizaciones && !esVistaGestionEventos;
         const accionesGestion = puedeGestionar ? `<div class="com-card-actions">
             <button type="button" class="com-card-action" onclick="editarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Editar publicación"><i class="fa-solid fa-pen"></i></button>
             <button type="button" class="com-card-action is-delete" onclick="eliminarComunicado(decodeURIComponent('${idEvento}'))" aria-label="Eliminar publicación"><i class="fa-solid fa-trash"></i></button>
@@ -3790,22 +3931,23 @@ function renderComunicados() {
             <div class="com-event-detail is-deadline"><i class="fa-solid fa-hourglass-half"></i><div><span>Responde hasta</span><strong>${escaparHTML(formatearFechaHoraEvento(comunicado.respuestaHasta))}</strong></div></div>
         </div>` : "";
         const documento = enlace ? `<a href="${escaparHTML(enlace)}" target="_blank" rel="noopener noreferrer" class="com-doc-link"><i class="fa-solid fa-paperclip"></i> Abrir enlace o documento</a>` : "";
-        const asistencia = esEvento ? `<div class="com-response-panel">
+        const asistencia = esEvento && !esVistaGestionEventos ? `<div class="com-response-panel">
             <strong>¿Asistirás a este evento?</strong>
             <div class="com-response-actions">
                 <button type="button" class="com-response-button is-yes" aria-pressed="false" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'asiste')"><i class="fa-solid fa-check"></i> Sí asistiré</button>
                 <button type="button" class="com-response-button is-no" aria-pressed="false" onclick="responderAsistenciaComunicado(decodeURIComponent('${idEvento}'),'no_asiste')"><i class="fa-solid fa-xmark"></i> No asistiré</button>
             </div>
         </div>` : "";
-        const contadorVisualizaciones = puedeVerVisualizaciones
+        const contadorVisualizaciones = mostrarContadorVisualizaciones
             ? `<span class="com-view-counter" title="${metricas.vistos} visualizaciones" aria-label="${metricas.vistos} visualizaciones"><i class="fa-regular fa-eye" aria-hidden="true"></i><strong>${metricas.vistos}</strong></span>`
             : "";
-        const estadisticas = esEvento ? `<div class="com-stats is-attendance" aria-label="Respuestas de asistencia">
+        const estadisticas = esEvento ? `<div class="com-stats is-attendance ${esVistaGestionEventos ? "is-overview" : ""}" aria-label="Estadísticas del evento">
+            ${esVistaGestionEventos ? `<span class="com-stat"><i class="fa-regular fa-eye"></i><strong>${metricas.vistos}</strong><small>Vieron</small></span>` : ""}
             <span class="com-stat"><i class="fa-solid fa-user-check"></i><strong>${metricas.asisten}</strong><small>Asisten</small></span>
             <span class="com-stat"><i class="fa-solid fa-user-xmark"></i><strong>${metricas.noAsisten}</strong><small>No asisten</small></span>
         </div>` : "";
 
-        return `<article class="com-card ${esEvento ? "is-event" : "is-announcement"}${claseGestion}${puedeVerVisualizaciones ? " has-view-counter" : ""}" data-com-id="${escaparHTML(comunicado.id)}" style="--event-status-color:${confirmado ? "var(--success)" : "var(--warning)"}">
+        return `<article class="com-card ${esEvento ? "is-event" : "is-announcement"}${claseGestion}${mostrarContadorVisualizaciones ? " has-view-counter" : ""}" data-com-id="${escaparHTML(comunicado.id)}" style="--event-status-color:${confirmado ? "var(--success)" : "var(--warning)"}">
             ${accionesGestion}
             <div class="com-header"><span class="com-tag">${esEvento ? "EVENTO" : "INFO"}</span>${estadoHtml}<h3>${escaparHTML(comunicado.titulo || "Sin título")}</h3></div>
             <p class="com-body">${escaparHTML(comunicado.mensaje || "")}</p>
@@ -3823,6 +3965,11 @@ function renderComunicados() {
             : '<div class="com-empty"><i class="fa-regular fa-bell-slash"></i><p>No hay anuncios para tu equipo.</p></div>';
     }
     if(contenedorEventos) {
+        const descripcionEventos = document.getElementById("eventos-descripcion");
+        if(descripcionEventos) descripcionEventos.textContent = esVistaGestionEventos
+            ? "Consulta por evento las visualizaciones y respuestas de asistencia."
+            : "Consulta los próximos eventos y confirma si asistirás.";
+
         const contadorDisponibles = document.getElementById("eventos-contador-disponibles");
         const contadorAsiste = document.getElementById("eventos-contador-asiste");
         const contadorNoAsiste = document.getElementById("eventos-contador-no-asiste");
@@ -3833,7 +3980,7 @@ function renderComunicados() {
         const panelAsiste = document.getElementById("eventos-asistire-panel");
         const listaAsiste = document.getElementById("eventos-asistire-list");
         const cantidadAsiste = document.getElementById("eventos-asistire-cantidad");
-        if(panelAsiste) panelAsiste.hidden = !respuestasCargadas || eventosAsiste.length === 0;
+        if(panelAsiste) panelAsiste.hidden = esVistaGestionEventos || !respuestasCargadas || eventosAsiste.length === 0;
         if(cantidadAsiste) cantidadAsiste.textContent = eventosAsiste.length;
         if(listaAsiste) listaAsiste.innerHTML = eventosAsiste.map(renderEventoGuardado).join("");
 
@@ -3844,13 +3991,18 @@ function renderComunicados() {
         if(cantidadGestion) cantidadGestion.textContent = eventos.length;
         if(listaGestion) listaGestion.innerHTML = puedeGestionar ? renderGestionEventos([...eventos].sort(ordenarEventosPorInicio)) : "";
 
+        const resumenPersonal = document.getElementById("eventos-resumen-personal");
+        if(resumenPersonal) resumenPersonal.hidden = esVistaGestionEventos;
+
         const encabezadoDisponibles = document.getElementById("eventos-disponibles-encabezado");
-        if(encabezadoDisponibles) encabezadoDisponibles.hidden = !respuestasCargadas || eventosDisponibles.length === 0;
-        contenedorEventos.innerHTML = !respuestasCargadas
+        if(encabezadoDisponibles) encabezadoDisponibles.hidden = esVistaGestionEventos || !respuestasCargadas || eventosDisponibles.length === 0;
+        contenedorEventos.innerHTML = !respuestasCargadas && !esVistaGestionEventos
             ? '<div class="com-empty"><i class="fa-solid fa-spinner fa-spin"></i><p>Cargando tus respuestas…</p></div>'
-            : eventosDisponibles.length
-                ? renderTarjetas(eventosDisponibles)
-                : '<div class="com-empty"><i class="fa-solid fa-check"></i><p>No tienes eventos pendientes por responder.</p></div>';
+            : (esVistaGestionEventos ? eventos : eventosDisponibles).length
+                ? renderTarjetas(esVistaGestionEventos ? [...eventos].sort(ordenarEventosPorInicio) : eventosDisponibles)
+                : esVistaGestionEventos
+                    ? '<div class="com-empty"><i class="fa-regular fa-calendar-xmark"></i><p>No hay eventos publicados.</p></div>'
+                    : '<div class="com-empty"><i class="fa-solid fa-check"></i><p>No tienes eventos pendientes por responder.</p></div>';
     }
     observarComunicadosVisibles();
 }
